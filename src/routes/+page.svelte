@@ -1,1 +1,4 @@
-<button class="btn btn-primary">hello</button>
+<script lang="ts">
+</script>
+
+<h1>Hello World</h1>
