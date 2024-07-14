@@ -1,4 +1,7 @@
 <script lang="ts">
+	import Link from '$lib/components/ui/link/link.svelte';
 </script>
 
-<h1>Hello World</h1>
+<section class="flex items-center justify-center">
+	<Link href="/play" size="default">Play</Link>
+</section>
