@@ -40,10 +40,11 @@
   },
   "type": "module",
   "dependencies": {
-    "bits-ui": "^0.21.11",
+    "bits-ui": "^0.21.12",
+    "chess.js": "^1.0.0-beta.8",
     "clsx": "^2.1.1",
     "mode-watcher": "^0.3.1",
-    "svelte-chess": "^0.11.1",
+    "svelte-chessground": "^2.0.3",
     "svelte-radix": "^1.1.0",
     "tailwind-merge": "^2.3.0",
     "tailwind-variants": "^0.2.1"
