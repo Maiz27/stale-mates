@@ -1,24 +1,22 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
-	import { getChessJsColor, isVsAI } from '$lib/components/chessBoard/utils';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Select from '$lib/components/ui/select';
-	import { Chess } from 'chess.js';
-	import type { PageData } from './$types';
+	import { GameState } from '$lib/chess/GameState';
+	import type { GameOver } from '$lib/chess/types';
 	import type { Color } from 'chessground/types';
+	import type { PageData } from './$types';
 
 	export let data: PageData;
 
 	let gameMode: 'pve' | 'pvp' = 'pve';
 	let difficulty = 10;
-	let chess = new Chess();
-
+	let gameState: GameState = new GameState({ gameMode, player: data.playerColor });
 	let chessboardComponent: ChessBoard;
-	let gameStarted = false;
-	let gameOverState: { isOver: boolean; winner: Color | 'draw' | null } = {
-		isOver: false,
-		winner: null
-	};
+
+	$: started = false;
+	$: gameOver = { isOver: false, winner: null as Color | 'draw' | null } as GameOver;
 
 	const difficultyOptions = [
 		{ value: 1, label: 'Beginner' },
@@ -30,57 +28,39 @@
 		{ value: 20, label: 'Expert' }
 	];
 
+	onMount(() => {
+		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
+		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
+
+		return () => {
+			unsubscribeGameOver();
+			unsubscribeStarted();
+		};
+	});
+
 	const startNewGame = () => {
-		chess.reset();
-		chessboardComponent.updateBoard(chess.fen());
-		chessboardComponent.newGame();
-		gameStarted = true;
-		gameOverState = { isOver: false, winner: null };
-		if (isVsAI(gameMode) && data.playerColor === 'black') {
-			chessboardComponent.makeAIMove();
+		if (chessboardComponent) {
+			chessboardComponent.newGame();
 		}
 	};
 
 	const endGame = () => {
-		gameStarted = false;
-		gameOverState = { isOver: false, winner: null };
-		chess.reset();
-		chessboardComponent.updateBoard(chess.fen());
-		chessboardComponent.newGame();
+		if (chessboardComponent) {
+			chessboardComponent.endGame();
+		}
 	};
 
 	const getHint = async () => {
-		await chessboardComponent.getHint();
-	};
-
-	const handleMove = (from: string, to: string, promotion?: string) => {
-		if (!from || !to) return;
-		const move = chess.move({ from, to, promotion });
-		if (move) {
-			chessboardComponent.updateBoard(chess.fen());
-			if (isVsAI(gameMode) && getChessJsColor(data.playerColor) !== chess.turn()) {
-				chessboardComponent.makeAIMove();
-			}
+		if (chessboardComponent) {
+			await chessboardComponent.getHint();
 		}
-	};
-
-	const handleAIMove = (from: string, to: string, promotion?: string) => {
-		const aiMove = chess.move({ from, to, promotion });
-		if (aiMove) {
-			chessboardComponent.updateBoard(chess.fen());
-		}
-	};
-
-	const handleGameOver = (winner: Color | 'draw') => {
-		gameOverState = { isOver: true, winner };
-		gameStarted = false;
 	};
 
 	const handleDifficultyChange = (selected: { value: number } | undefined) => {
 		if (selected) {
 			difficulty = selected.value;
-			if (gameStarted) {
-				chessboardComponent.setEngineDifficulty(difficulty);
+			if (chessboardComponent) {
+				chessboardComponent.setDifficulty(difficulty);
 			}
 		}
 	};
@@ -110,32 +90,23 @@
 	</div>
 
 	<div class="flex gap-2">
-		{#if gameStarted}
+		{#if started}
 			<Button on:click={endGame}>End Game</Button>
 		{:else}
 			<Button on:click={startNewGame}>Start New Game</Button>
 		{/if}
-		<Button on:click={getHint} variant="outline" disabled={!gameStarted}>Get Hint</Button>
+		<Button on:click={getHint} variant="outline" disabled={!started}>Get Hint</Button>
 	</div>
 
-	{#if gameOverState.isOver}
+	{#if gameOver.isOver}
 		<div class="rounded-md bg-gray-100 p-4 text-center">
-			{#if gameOverState.winner === 'draw'}
+			{#if gameOver.winner === 'draw'}
 				<p class="text-lg font-bold">Game Over: It's a draw!</p>
 			{:else}
-				<p class="text-lg font-bold">Game Over: {gameOverState.winner} wins!</p>
+				<p class="text-lg font-bold">Game Over: {gameOver.winner} wins!</p>
 			{/if}
 		</div>
 	{/if}
 </div>
 
-<ChessBoard
-	bind:this={chessboardComponent}
-	{gameMode}
-	{gameStarted}
-	playerColor={data.playerColor}
-	fen={chess.fen()}
-	onMove={handleMove}
-	onAIMove={handleAIMove}
-	onGameOver={handleGameOver}
-/>
+<ChessBoard bind:this={chessboardComponent} {gameState} playerColor={data.playerColor} />

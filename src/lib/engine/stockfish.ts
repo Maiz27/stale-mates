@@ -1,15 +1,15 @@
 import { Engine, EngineState } from './engine';
+import type { ChessMove } from '$lib/chess/types';
 
 interface SearchParams {
 	moveTime: number;
 	depth: number;
 }
 
-interface ChessMove {
-	from: string;
-	to: string;
-}
-
+/**
+ * Stockfish class that interacts with the Stockfish chess engine via a Web Worker.
+ * It provides methods to control the engine, set difficulty, and retrieve best moves.
+ */
 export class Stockfish extends Engine {
 	private state: EngineState;
 	private difficulty: number;
@@ -20,10 +20,14 @@ export class Stockfish extends Engine {
 	private currentFen: string = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Initial position
 	private debug: boolean;
 
+	/**
+	 * Creates a new Stockfish instance.
+	 * @param debug - If true, enables detailed logging.
+	 */
 	constructor(debug: boolean = false) {
 		super('/stockfish.js');
 		this.state = EngineState.Uninitialized;
-		this.difficulty = 10;
+		this.difficulty = 10; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
 		this.ponder = { from: '', to: '' };
 		this.searchParams = { moveTime: 1000, depth: 5 };
@@ -80,15 +84,30 @@ export class Stockfish extends Engine {
 		};
 	}
 
+	/**
+	 * Sets the difficulty level of the engine.
+	 * @param level - Difficulty level (1-20, where 1 is easiest and 20 is hardest)
+	 *
+	 * This method adjusts several Stockfish parameters based on the difficulty level:
+	 * 1. Skill Level: Mapped from 0-20 based on the input level.
+	 * 2. Contempt: Mapped from 0-100 based on the input level.
+	 *    Higher contempt makes the engine play more aggressively.
+	 * 3. MultiPV: Decreases as difficulty increases, making the engine consider fewer alternative moves.
+	 * 4. Move Time: Increases with difficulty, giving the engine more time to think.
+	 * 5. Depth: Increases with difficulty, making the engine search deeper into the game tree.
+	 */
 	setDifficulty(level: number): void {
 		this.difficulty = level;
 		const skillLevel = this.mapLevelToSkill(level);
 		const contempt = this.mapLevelToContempt(level);
-		const multiPV = Math.max(1, Math.floor((20 - level) / 3));
-		const moveTime = 1000 + (20 - level) * 250;
+		const multiPV = Math.max(1, Math.floor((21 - level) / 4)); // 5 to 1
+		const moveTime = 500 + level * 200; // 750ms to 4500ms
 		const depth = this.mapLevelToDepth(level);
 
-		this.log(`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}`, 'info');
+		this.log(
+			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}`,
+			'info'
+		);
 		this.worker.postMessage(`setoption name Skill Level value ${skillLevel}`);
 		this.worker.postMessage(`setoption name Contempt value ${contempt}`);
 		this.worker.postMessage(`setoption name MultiPV value ${multiPV}`);
@@ -130,6 +149,17 @@ export class Stockfish extends Engine {
 		this.worker.postMessage('setoption name Clear Hash');
 	}
 
+	/**
+	 * Provides a hint for the current position.
+	 * @param playerColor - The color of the player to get a hint for ('w' for white, 'b' for black)
+	 * @returns A promise that resolves to the suggested move
+	 *
+	 * This method temporarily adjusts the engine settings to provide a hint:
+	 * 1. Enables UCI_AnalyseMode for more thorough analysis.
+	 * 2. Sets Analysis Contempt to favor the player's color.
+	 * 3. Uses a depth based on the current difficulty level.
+	 * 4. Sets a move time that increases with difficulty.
+	 */
 	async getHint(playerColor: 'w' | 'b'): Promise<ChessMove> {
 		return new Promise((resolve) => {
 			const originalCallback = this.messageCallback;
@@ -141,7 +171,7 @@ export class Stockfish extends Engine {
 				}
 			};
 			const hintDepth = Math.max(10, Math.floor(this.difficulty / 5));
-			const hintTime = 1000 + this.difficulty * 50;
+			const hintTime = 1500 + this.difficulty * 50; // 1500ms to 2500ms
 			const forcedColor = playerColor === 'w' ? 'White' : 'Black';
 
 			this.worker.postMessage(`setoption name UCI_AnalyseMode value true`);
@@ -151,16 +181,31 @@ export class Stockfish extends Engine {
 		});
 	}
 
+	/**
+	 * Maps the difficulty level (1-20) to a Stockfish Skill Level (0-20).
+	 * @param level - The input difficulty level
+	 * @returns The corresponding Stockfish Skill Level
+	 */
 	private mapLevelToSkill(level: number): number {
-		return Math.floor((level / 20) * 20); // Linear mapping
+		return Math.floor(((level - 1) / 19) * 20); // Linear mapping from 1-20 to 0-20
 	}
 
+	/**
+	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (0-100).
+	 * @param level - The input difficulty level
+	 * @returns The corresponding Stockfish Contempt value
+	 */
 	private mapLevelToContempt(level: number): number {
-		return Math.floor(((20 - level) / 20) * 100); // Inverse linear mapping
+		return Math.floor(((level - 1) / 19) * 100); // Linear mapping from 1-20 to 0-100
 	}
 
+	/**
+	 * Maps the difficulty level (1-20) to a search depth (1-15).
+	 * @param level - The input difficulty level
+	 * @returns The corresponding search depth
+	 */
 	private mapLevelToDepth(level: number): number {
-		return Math.max(2, Math.floor(level / 2) + 1);
+		return Math.floor(((level - 1) / 19) * 14) + 1; // Linear mapping from 1-20 to 1-15
 	}
 
 	private setState(state: EngineState): void {
