@@ -7,6 +7,6 @@
 <p>This is the play page.</p>
 
 <section class="flex items-center justify-center gap-8">
-	<Link href="/play/ai">Play Against AI</Link>
+	<Link href="/play/ai?color=white">Play Against AI</Link>
 	<Link href="/play/pvp">Play Against Human</Link>
 </section>
