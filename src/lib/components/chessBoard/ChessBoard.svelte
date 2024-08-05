@@ -13,7 +13,8 @@
 		isVsAI,
 		isPromotionMove,
 		highlightHint,
-		updateBoardState
+		updateBoardState,
+		getCheckState
 	} from './utils';
 	import type { Config } from 'chessground/config';
 	import type { Color } from 'chessground/types';
@@ -33,6 +34,9 @@
 	let config: Config;
 
 	let chessJsPlayerColor = getChessJsColor(playerColor);
+	let checkState: { inCheck: boolean; kingSquare?: string; attackingSquares?: string[] } = {
+		inCheck: false
+	};
 	let gameOverState: { isOver: boolean; winner: Color | 'draw' | null } = {
 		isOver: false,
 		winner: null
@@ -58,6 +62,7 @@
 			onMove(orig, dest);
 		}
 		checkGameOver();
+		checkState = getCheckState(chess);
 	}
 
 	function handlePromotion(event: CustomEvent) {
@@ -69,6 +74,7 @@
 			return null;
 		});
 		checkGameOver();
+		checkState = getCheckState(chess);
 	}
 
 	function handleEngineMessage(message: string) {
@@ -81,6 +87,7 @@
 					onAIMove(from, to);
 				}
 				checkGameOver();
+				checkState = getCheckState(chess);
 			}
 		}
 	}
@@ -97,6 +104,7 @@
 	}
 
 	export function updateBoard(newFen: string) {
+		checkState = getCheckState(chess);
 		fen = updateBoardState(chess, engine, chessground, newFen);
 		updateBoardConfig();
 		checkGameOver();
@@ -142,6 +150,12 @@
 			{:else}
 				Game Over: {gameOverState.winner} wins!
 			{/if}
+		</div>
+	{:else if checkState.inCheck}
+		<div
+			class="absolute left-0 right-0 top-0 z-10 bg-red-800 bg-opacity-80 py-2 text-center text-white"
+		>
+			Check!
 		</div>
 	{/if}
 	<Chessground bind:this={chessground} {config} orientation={playerColor} />

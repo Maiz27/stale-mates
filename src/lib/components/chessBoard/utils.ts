@@ -112,12 +112,13 @@ export function getCheckState(chess: Chess) {
 			.board()
 			.flat()
 			.find((piece) => piece && piece.type === 'k' && piece.color === turn)?.square;
+
 		const attackingSquares = chess
 			.moves({ verbose: true })
-			.filter((move) => move.flags.includes('c') || move.to === kingSquare)
+			.filter((move) => move.flags.includes('c'))
 			.map((move) => move.from);
 
-		return { inCheck: true, kingSquare, attackingSquares: attackingSquares[0] };
+		return { inCheck: true, kingSquare, attackingSquares };
 	}
 	return { inCheck: false };
 }
@@ -150,11 +151,11 @@ export function updateBoardState(
 	const checkState = getCheckState(chess);
 	const shapes: DrawShape[] = [];
 
-	if (checkState.inCheck && checkState.attackingSquares) {
-		shapes.push(
-			{ orig: checkState.kingSquare!, brush: 'red' },
-			{ orig: checkState.attackingSquares, brush: 'red' }
-		);
+	if (checkState.inCheck && checkState.kingSquare && checkState.attackingSquares) {
+		shapes.push({ orig: checkState.kingSquare, brush: 'red' });
+		checkState.attackingSquares.forEach((square) => {
+			shapes.push({ orig: square, brush: 'red' });
+		});
 	}
 
 	chessground.setAutoShapes(shapes);
