@@ -1,7 +1,7 @@
 import { Chess, SQUARES, type Color as ChessJsColor, type Square } from 'chess.js';
 import type { Color } from 'chessground/types';
 import type { GameMode } from './types';
-import { Stockfish } from '$lib/engine/Stockfish_fix_case_error';
+import { Stockfish } from '$lib/engine/Stockfish';
 
 export function initializeEngine(
 	messageHandler: (message: string) => void,

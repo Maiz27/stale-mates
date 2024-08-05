@@ -1,6 +1,6 @@
 import { writable, type Writable } from 'svelte/store';
 import { Chess, type Square } from 'chess.js';
-import type { Stockfish } from '$lib/engine/Stockfish_fix_case_error';
+import type { Stockfish } from '$lib/engine/Stockfish';
 import type { Color } from 'chessground/types';
 import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove } from './types';
 import {
