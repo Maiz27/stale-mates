@@ -6,19 +6,16 @@
 	import { Chessground } from 'svelte-chessground';
 	import PromotionModal from './PromotionModal.svelte';
 	import {
-		toDestinations,
-		isPromotionMove,
-		getCheckState,
-		highlightHint,
 		initializeChess,
 		initializeEngine,
 		updateConfig,
 		getChessJsColor,
-		isWhite,
-		isVsAI
+		isVsAI,
+		isPromotionMove,
+		highlightHint,
+		updateBoardState
 	} from './utils';
 	import type { Config } from 'chessground/config';
-	import type { DrawShape } from 'chessground/draw';
 	import type { Color } from 'chessground/types';
 
 	export let fen: string;
@@ -26,7 +23,8 @@
 	export let playerColor: Color = 'white';
 	export let gameStarted: boolean = false;
 	export let onMove: (from: string, to: string, promotion?: string) => void;
-	export let onAIMove: (move: { from: string; to: string }) => void;
+	export let onAIMove: (from: string, to: string, promotion?: string) => void;
+	export let onGameOver: (winner: Color | 'draw') => void;
 
 	let chessground: Chessground;
 	let chess: Chess;
@@ -35,13 +33,23 @@
 	let config: Config;
 
 	let chessJsPlayerColor = getChessJsColor(playerColor);
+	let gameOverState: { isOver: boolean; winner: Color | 'draw' | null } = {
+		isOver: false,
+		winner: null
+	};
 
 	onMount(() => {
 		chess = initializeChess(fen);
 		engine = initializeEngine(handleEngineMessage);
-		config = updateConfig(fen, playerColor, handleMove);
-		chessground.set(config);
+		updateBoardConfig();
 	});
+
+	function updateBoardConfig() {
+		config = updateConfig(gameStarted, fen, playerColor, gameMode, handleMove);
+		if (chessground) {
+			chessground.set(config);
+		}
+	}
 
 	function handleMove(orig: string, dest: string) {
 		if (isPromotionMove(chess, orig, dest)) {
@@ -49,6 +57,7 @@
 		} else {
 			onMove(orig, dest);
 		}
+		checkGameOver();
 	}
 
 	function handlePromotion(event: CustomEvent) {
@@ -59,49 +68,38 @@
 			}
 			return null;
 		});
+		checkGameOver();
 	}
 
 	function handleEngineMessage(message: string) {
 		if (message.includes('bestmove')) {
-			const move = engine.getBestMove();
+			const { from, to } = engine.getBestMove();
 			if (isVsAI(gameMode) && chess.turn() !== chessJsPlayerColor) {
-				onAIMove(move);
+				if (isPromotionMove(chess, from, to)) {
+					onAIMove(from, to, 'q');
+				} else {
+					onAIMove(from, to);
+				}
+				checkGameOver();
 			}
 		}
 	}
 
-	export function updateBoard(newFen: string) {
-		fen = newFen;
-		chess.load(fen);
-		engine.setPosition(fen);
-
-		const checkState = getCheckState(chess);
-		const shapes: DrawShape[] = [];
-
-		if (checkState.inCheck && checkState.attackingSquares) {
-			shapes.push(
-				{ orig: checkState.kingSquare!, brush: 'red' },
-				{ orig: checkState.attackingSquares, brush: 'red' }
-			);
-		}
-		chessground.set({
-			fen,
-			turnColor: isWhite(playerColor) ? 'white' : 'black',
-			movable: {
-				color: gameStarted
-					? isVsAI(gameMode)
-						? chess.turn() == chessJsPlayerColor
-							? playerColor
-							: undefined
-						: 'both'
-					: undefined,
-				dests: toDestinations(chess)
-			},
-			draggable: {
-				enabled: gameStarted
+	function checkGameOver() {
+		if (chess.isGameOver()) {
+			let winner: Color | 'draw' = 'draw';
+			if (chess.isCheckmate()) {
+				winner = chess.turn() === 'w' ? 'black' : 'white';
 			}
-		});
-		chessground.setAutoShapes(shapes);
+			gameOverState = { isOver: true, winner };
+			onGameOver(winner);
+		}
+	}
+
+	export function updateBoard(newFen: string) {
+		fen = updateBoardState(chess, engine, chessground, newFen);
+		updateBoardConfig();
+		checkGameOver();
 	}
 
 	export function setEngineDifficulty(difficulty: number) {
@@ -117,6 +115,8 @@
 
 	export function newGame() {
 		engine.newGame();
+		gameOverState = { isOver: false, winner: null };
+		updateBoardConfig();
 	}
 
 	export function makeAIMove() {
@@ -124,9 +124,26 @@
 			engine.go();
 		}
 	}
+
+	$: {
+		if (gameStarted !== undefined) {
+			updateBoardConfig();
+		}
+	}
 </script>
 
 <section class="relative mx-auto md:w-1/2 2xl:w-1/3">
+	{#if gameOverState.isOver}
+		<div
+			class="absolute left-0 right-0 top-0 z-10 bg-gray-800 bg-opacity-80 py-2 text-center text-white"
+		>
+			{#if gameOverState.winner === 'draw'}
+				Game Over: Draw
+			{:else}
+				Game Over: {gameOverState.winner} wins!
+			{/if}
+		</div>
+	{/if}
 	<Chessground bind:this={chessground} {config} orientation={playerColor} />
 	{#if $promotionMove}
 		<PromotionModal on:promotion={handlePromotion} />

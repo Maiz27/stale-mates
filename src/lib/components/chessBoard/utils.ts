@@ -3,8 +3,7 @@ import type { Chessground } from 'svelte-chessground';
 import type { Config } from 'chessground/config';
 import type { DrawShape } from 'chessground/draw';
 import { Stockfish } from '$lib/engine';
-
-export type Color = 'both' | 'white' | 'black' | undefined;
+import type { Color } from 'chessground/types';
 
 export function initializeChess(fen: string): Chess {
 	return new Chess(fen);
@@ -20,31 +19,30 @@ export function initializeEngine(
 }
 
 export function updateConfig(
+	gameStarted: boolean,
 	fen: string,
 	playerColor: Color,
+	gameMode: 'pve' | 'pvp',
 	handleMove: (orig: string, dest: string) => void
 ): Config {
-	return {
-		...getConfig(fen, playerColor),
-		events: {
-			move: handleMove
-		}
-	};
-}
+	const chess = new Chess(fen);
+	const turn = chess.turn();
+	const isPlayerTurn = isGamePlayable(gameStarted, gameMode, playerColor, turn);
 
-export function getConfig(fen: string, color: Color): Config {
 	return {
 		fen,
-		turnColor: color as 'white' | 'black',
+		turnColor: turn === 'w' ? 'white' : 'black',
 		movable: {
-			color,
+			color: isPlayerTurn ? playerColor : undefined,
+			dests: isPlayerTurn ? toDestinations(chess) : new Map(),
 			free: false,
-			dests: toDestinations(new Chess(fen)),
 			showDests: true
 		},
 		draggable: {
-			enabled: true,
-			showGhost: true
+			enabled: isPlayerTurn
+		},
+		events: {
+			move: handleMove
 		},
 		highlight: {
 			lastMove: true,
@@ -64,6 +62,17 @@ export function getConfig(fen: string, color: Color): Config {
 	};
 }
 
+export function isGamePlayable(
+	gameStarted: boolean,
+	gameMode: 'pve' | 'pvp',
+	playerColor: Color,
+	currentTurn: ChessJsColor
+): boolean {
+	if (!gameStarted) return false;
+	if (gameMode === 'pvp') return true;
+	return currentTurn === getChessJsColor(playerColor);
+}
+
 export function getBrushes() {
 	return {
 		green: { key: 'green', color: '#15781B', opacity: 1, lineWidth: 10 },
@@ -75,10 +84,6 @@ export function getBrushes() {
 
 export function getChessJsColor(color: Color): ChessJsColor {
 	return color === 'white' ? 'w' : 'b';
-}
-
-export function isWhite(color: Color): boolean {
-	return color === 'white' || color === 'both';
 }
 
 export function isVsAI(gameMode: 'pve' | 'pvp'): boolean {
@@ -131,4 +136,27 @@ export function toDestinations(chess: Chess): Map<Square, Square[]> {
 	});
 
 	return destinations;
+}
+
+export function updateBoardState(
+	chess: Chess,
+	engine: Stockfish,
+	chessground: Chessground,
+	newFen: string
+) {
+	chess.load(newFen);
+	engine.setPosition(newFen);
+
+	const checkState = getCheckState(chess);
+	const shapes: DrawShape[] = [];
+
+	if (checkState.inCheck && checkState.attackingSquares) {
+		shapes.push(
+			{ orig: checkState.kingSquare!, brush: 'red' },
+			{ orig: checkState.attackingSquares, brush: 'red' }
+		);
+	}
+
+	chessground.setAutoShapes(shapes);
+	return newFen;
 }
