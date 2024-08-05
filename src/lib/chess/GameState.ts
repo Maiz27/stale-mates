@@ -1,10 +1,16 @@
 import { writable, type Writable } from 'svelte/store';
-import type { Stockfish } from '$lib/engine/Stockfish';
 import { Chess, type Square } from 'chess.js';
-import { initializeEngine } from './utils';
-import { getCheckState, getChessJsColor, isPromotionMove, isVsAI, toDestinations } from './utils';
+import type { Stockfish } from '$lib/engine/Stockfish_fix_case_error';
 import type { Color } from 'chessground/types';
 import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove } from './types';
+import {
+	initializeEngine,
+	getCheckState,
+	getChessJsColor,
+	isPromotionMove,
+	isVsAI,
+	toDestinations
+} from './utils';
 
 export class GameState {
 	private chess: Chess;
