@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as Avatar from '$lib/components/ui/avatar';
+	// import * as Avatar from '$lib/components/ui/avatar';
 	import ThemeToggle from '$lib/components/theme/ThemeToggle.svelte';
 </script>
 
@@ -11,10 +11,10 @@
 			</a>
 		</div>
 		<div class="flex items-center gap-2">
-			<Avatar.Root>
+			<!-- <Avatar.Root>
 				<Avatar.Image src="https://github.com/shadcn.png" alt="@shadcn" />
 				<Avatar.Fallback>CN</Avatar.Fallback>
-			</Avatar.Root>
+			</Avatar.Root> -->
 			<ThemeToggle />
 		</div>
 	</div>

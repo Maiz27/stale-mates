@@ -145,6 +145,7 @@ export class Stockfish extends Engine {
 	}
 
 	newGame(): void {
+		this.setState(EngineState.Waiting);
 		this.worker.postMessage('ucinewgame');
 		this.worker.postMessage('setoption name Clear Hash');
 	}
