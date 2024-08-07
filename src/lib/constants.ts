@@ -2,15 +2,22 @@ export const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq 
 
 export const DIFFICULTY_OPTIONS = [
 	{ value: 1, label: 'Beginner' },
-	{ value: 4, label: 'Strong Beginner' },
+	{ value: 3, label: 'Casual' },
 	{ value: 7, label: 'Intermediate' },
-	{ value: 10, label: 'Strong Intermediate' },
-	{ value: 13, label: 'Advanced' },
-	{ value: 17, label: 'Strong Advanced' },
-	{ value: 20, label: 'Expert' }
+	{ value: 11, label: 'Advanced' },
+	{ value: 15, label: 'Expert' },
+	{ value: 18, label: 'Master' },
+	{ value: 20, label: 'Grandmaster' }
 ];
 
 export const COLOR_OPTIONS = [
 	{ value: 'white', label: 'White' },
 	{ value: 'black', label: 'Black' }
+];
+
+export const PROMOTION_OPTIONS = [
+	{ value: 'q', label: 'Queen' },
+	{ value: 'r', label: 'Rook' },
+	{ value: 'b', label: 'Bishop' },
+	{ value: 'n', label: 'Knight' }
 ];

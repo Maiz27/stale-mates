@@ -14,6 +14,7 @@
 
 	let chessground: Chessground;
 	let config: Config;
+	let promotionModalOpen = false;
 
 	$: fen = '';
 	$: turn = 'white' as Color;
@@ -33,9 +34,12 @@
 		const unsubscribeCheckState = gameState.checkState.subscribe((value) => (checkState = value));
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
 		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-		const unsubscribePromotionMove = gameState.promotionMove.subscribe(
-			(value) => (promotionMove = value)
-		);
+		const unsubscribePromotionMove = gameState.promotionMove.subscribe((value) => {
+			promotionMove = value;
+			if (value) {
+				promotionModalOpen = true;
+			}
+		});
 		const unsubscribeHint = gameState.hint.subscribe((value) => {
 			hint = value;
 			updateHintShape();
@@ -166,6 +170,6 @@
 	{/if}
 	<Chessground bind:this={chessground} {config} orientation={playerColor} />
 	{#if promotionMove}
-		<PromotionModal on:promotion={handlePromotion} />
+		<PromotionModal bind:open={promotionModalOpen} on:promotion={handlePromotion} />
 	{/if}
 </section>
