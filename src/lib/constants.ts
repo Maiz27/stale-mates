@@ -1,3 +1,13 @@
+export const MOVE_AUDIOS_PATHS = {
+	normal: '/audio/move-self.mp3',
+	capture: '/audio/capture.mp3',
+	castle: '/audio/castle.mp3',
+	check: '/audio/move-check.mp3',
+	promote: '/audio/promote.mp3',
+	'game-start': '/audio/game-start.mp3',
+	'game-end': '/audio/game-end.mp3'
+};
+
 export const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export const DIFFICULTY_OPTIONS = [

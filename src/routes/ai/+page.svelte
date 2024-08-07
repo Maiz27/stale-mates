@@ -6,7 +6,7 @@
 	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
 	import { GameState } from '$lib/chess/GameState';
 	import { getDifficultyLabel } from '$lib/utils';
-	import type { GameOver } from '$lib/chess/types';
+	import type { ChessMove, GameOver } from '$lib/chess/types';
 	import type { Color } from 'chessground/types';
 	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
 
@@ -20,14 +20,19 @@
 
 	$: started = false;
 	$: gameOver = { isOver: false, winner: null as Color | 'draw' | null } as GameOver;
+	$: moveHistory = [] as ChessMove[];
 
 	onMount(() => {
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
 		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
+		const unsubscribeMoveHistory = gameState.moveHistory.subscribe(
+			(value) => (moveHistory = value)
+		);
 
 		return () => {
 			unsubscribeGameOver();
 			unsubscribeStarted();
+			unsubscribeMoveHistory();
 		};
 	});
 
@@ -103,7 +108,7 @@
 			<Button
 				on:click={undoMove}
 				variant="outline"
-				disabled={!started || !$settingsStore.undo}
+				disabled={!started || !$settingsStore.undo || moveHistory.length < 2}
 				title="Undo Move"
 			>
 				<Icon icon="radix-icons:thick-arrow-left" />

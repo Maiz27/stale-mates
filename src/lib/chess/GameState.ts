@@ -1,8 +1,8 @@
 import { writable, type Writable } from 'svelte/store';
-import { Chess, type Square } from 'chess.js';
+import { Chess, type Move, type Square } from 'chess.js';
 import type { Stockfish } from '$lib/engine/Stockfish';
 import type { Color } from 'chessground/types';
-import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove } from './types';
+import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove, MoveType } from './types';
 import {
 	initializeEngine,
 	getCheckState,
@@ -17,9 +17,10 @@ import type { GameSettings } from '$lib/stores/gameSettings';
 export class GameState {
 	private chess: Chess;
 	private engine: Stockfish;
-	private moveHistory: ChessMove[] = [];
 	mode: GameMode;
 	player: Color;
+	moveHistory: Writable<ChessMove[]> = writable([]);
+	lastMove: Writable<MoveType> = writable('normal');
 
 	started: Writable<boolean> = writable(false);
 	promotionMove: Writable<PromotionMove> = writable(null);
@@ -53,6 +54,7 @@ export class GameState {
 		this.engine.setPosition(STARTING_FEN);
 		this.started.set(true);
 		this.triggerAiMove();
+		this.lastMove.set('game-start');
 	}
 
 	endGame() {
@@ -60,6 +62,7 @@ export class GameState {
 		this.updateGameState();
 		this.started.set(false);
 		this.gameOver.set({ isOver: false, winner: null });
+		this.lastMove.set('game-end');
 	}
 
 	async getHint() {
@@ -100,10 +103,11 @@ export class GameState {
 		try {
 			const move = this.chess.move({ from, to, promotion });
 			if (move) {
-				this.moveHistory.push({ from, to, promotion });
+				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
 				this.updateGameState();
 				this.engine.setPosition(this.chess.fen());
 				this.triggerAiMove();
+				this.determineMoveType(move);
 				return true;
 			}
 		} catch (error) {
@@ -118,15 +122,9 @@ export class GameState {
 			return;
 		}
 
-		if (this.moveHistory.length < 2) {
-			console.log('Not enough moves to undo');
-			return;
-		}
-
 		this.chess.undo();
 		this.chess.undo();
-		this.moveHistory.pop();
-		this.moveHistory.pop();
+		this.moveHistory.update((history) => history.slice(0, -2));
 
 		this.updateGameState();
 		this.engine.setPosition(this.chess.fen());
@@ -160,9 +158,29 @@ export class GameState {
 		if (this.chess.isGameOver()) {
 			let winner: Color | 'draw' = 'draw';
 			if (this.chess.isCheckmate()) {
+				this.lastMove.set('game-end');
 				winner = this.chess.turn() === 'w' ? 'black' : 'white';
 			}
 			this.gameOver.set({ isOver: true, winner });
 		}
+	}
+
+	private determineMoveType(move: Move) {
+		console.log(move);
+		let moveType: MoveType = 'normal';
+
+		if (move.captured) {
+			moveType = 'capture';
+		} else if (move.flags.includes('k') || move.flags.includes('q')) {
+			moveType = 'castle';
+		} else if (move.flags.includes('p')) {
+			moveType = 'promote';
+		}
+
+		if (this.chess.isCheck()) {
+			moveType = 'check';
+		}
+
+		this.lastMove.set(moveType);
 	}
 }

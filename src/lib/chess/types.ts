@@ -14,3 +14,12 @@ export type ChessMove = {
 	to: Square | string;
 	promotion?: PieceSymbol | string;
 };
+
+export type MoveType =
+	| 'normal'
+	| 'capture'
+	| 'castle'
+	| 'check'
+	| 'promote'
+	| 'game-start'
+	| 'game-end';

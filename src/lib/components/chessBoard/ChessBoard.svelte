@@ -5,9 +5,10 @@
 	import type { Color } from 'chessground/types';
 	import { GameState } from '$lib/chess/GameState';
 	import PromotionModal from './PromotionModal.svelte';
-	import type { PromotionMove, GameOver } from '$lib/chess/types';
+	import type { PromotionMove, GameOver, MoveType } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
 	import type { GameSettings } from '$lib/stores/gameSettings';
+	import { MOVE_AUDIOS_PATHS } from '$lib/constants';
 
 	export let playerColor: Color;
 	export let gameState: GameState;
@@ -15,6 +16,7 @@
 	let chessground: Chessground;
 	let config: Config;
 	let promotionModalOpen = false;
+	let audioFiles: Record<MoveType, HTMLAudioElement> = {} as Record<MoveType, HTMLAudioElement>;
 
 	$: fen = '';
 	$: turn = 'white' as Color;
@@ -24,16 +26,25 @@
 	$: started = false;
 	$: promotionMove = null as PromotionMove;
 	$: hint = null as { from: string; to: string } | null;
+	$: moveType = 'normal' as MoveType;
 
 	onMount(() => {
+		// Initialize audio files
+		Object.entries(MOVE_AUDIOS_PATHS).forEach(([key, path]) => {
+			audioFiles[key as MoveType] = new Audio(path);
+			audioFiles[key as MoveType].load();
+			audioFiles[key as MoveType].volume = 0.9;
+		});
+
+		// Subscribe to game state changes
 		const unsubscribeFen = gameState.fen.subscribe((value) => (fen = value));
 		const unsubscribeTurn = gameState.turn.subscribe((value) => (turn = value));
-		const unsubscribeDestinations = gameState.destinations.subscribe(
-			(value) => (destinations = value)
-		);
 		const unsubscribeCheckState = gameState.checkState.subscribe((value) => (checkState = value));
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
 		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
+		const unsubscribeDestinations = gameState.destinations.subscribe(
+			(value) => (destinations = value)
+		);
 		const unsubscribePromotionMove = gameState.promotionMove.subscribe((value) => {
 			promotionMove = value;
 			if (value) {
@@ -43,6 +54,10 @@
 		const unsubscribeHint = gameState.hint.subscribe((value) => {
 			hint = value;
 			updateHintShape();
+		});
+		const unsubscribeMoveType = gameState.lastMove.subscribe((value) => {
+			moveType = value;
+			playAudio();
 		});
 
 		return () => {
@@ -54,6 +69,7 @@
 			unsubscribeStarted();
 			unsubscribePromotionMove();
 			unsubscribeHint();
+			unsubscribeMoveType();
 		};
 	});
 
@@ -62,6 +78,10 @@
 		orientation: playerColor,
 		turnColor: turn,
 		check: checkState.inCheck,
+		highlight: {
+			lastMove: true,
+			check: true
+		},
 		events: {
 			move: handleMove,
 			change: () => {
@@ -74,7 +94,10 @@
 			color: started && turn === playerColor ? playerColor : undefined,
 			dests: destinations,
 			free: false,
-			showDests: true
+			showDests: true,
+			events: {
+				after: playAudio
+			}
 		},
 		drawable: {
 			enabled: true,
@@ -122,6 +145,14 @@
 		}
 	}
 
+	async function playAudio() {
+		if (audioFiles[moveType]) {
+			await audioFiles[moveType]
+				.play()
+				.catch((error) => console.error('Audio playback failed:', error));
+		}
+	}
+
 	export function newGame() {
 		gameState.newGame();
 	}
@@ -160,12 +191,6 @@
 			{:else}
 				Game Over: {gameOver.winner} wins!
 			{/if}
-		</div>
-	{:else if checkState.inCheck && started}
-		<div
-			class="absolute left-0 right-0 top-0 z-10 bg-red-800 bg-opacity-80 py-2 text-center text-white"
-		>
-			Check!
 		</div>
 	{/if}
 	<Chessground bind:this={chessground} {config} orientation={playerColor} />
