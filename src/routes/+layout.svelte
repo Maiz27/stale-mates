@@ -9,7 +9,7 @@
 <div class="min-h-screen">
 	<Header />
 
-	<main class="p-6">
+	<main>
 		<slot />
 	</main>
 </div>

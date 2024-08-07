@@ -1,25 +1,21 @@
 <script lang="ts">
 	import { mediaQuery } from 'svelte-legos';
-	import { createEventDispatcher } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { PROMOTION_OPTIONS } from '$lib/constants';
 
-	export let open = false;
-	const dispatch = createEventDispatcher();
+	let open = false;
 	const isDesktop = mediaQuery('(min-width: 768px)');
-	const title = 'Choose Promotion Piece';
-	const description = 'Choose the piece you want to promote to a queen, rook, bishop, or knight.';
-
-	function handlePromotion(piece: string) {
-		dispatch('promotion', { piece });
-		open = false;
-	}
+	const title = 'Play Friend: Friendly Duel';
+	const description =
+		'Match wits with friends in casual or competitive games. Enjoy chess together and improve your skills!';
 </script>
 
 {#if $isDesktop}
 	<Dialog.Root bind:open>
+		<Dialog.Trigger asChild let:builder>
+			<Button builders={[builder]} variant="outline">{title}</Button>
+		</Dialog.Trigger>
 		<Dialog.Content class="sm:max-w-[425px]">
 			<Dialog.Header>
 				<Dialog.Title>{title}</Dialog.Title>
@@ -27,27 +23,22 @@
 					{description}
 				</Dialog.Description>
 			</Dialog.Header>
-			<div class="flex justify-around">
-				{#each PROMOTION_OPTIONS as option}
-					<Button on:click={() => handlePromotion(option.value)}>{option.label}</Button>
-				{/each}
-			</div>
+			<p>Work in progress, stay tuned!</p>
 		</Dialog.Content>
 	</Dialog.Root>
 {:else}
 	<Drawer.Root bind:open>
-		<Drawer.Content class="pb-4">
+		<Drawer.Trigger asChild let:builder>
+			<Button variant="outline" builders={[builder]}>{title}</Button>
+		</Drawer.Trigger>
+		<Drawer.Content>
 			<Drawer.Header class="text-left">
 				<Drawer.Title>{title}</Drawer.Title>
 				<Drawer.Description>
 					{description}
 				</Drawer.Description>
 			</Drawer.Header>
-			<div class="flex flex-col space-y-2 px-4">
-				{#each PROMOTION_OPTIONS as option}
-					<Button on:click={() => handlePromotion(option.value)}>{option.label}</Button>
-				{/each}
-			</div>
+			<p>Work in progress, stay tuned!</p>
 		</Drawer.Content>
 	</Drawer.Root>
 {/if}

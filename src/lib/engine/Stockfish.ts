@@ -1,5 +1,6 @@
 import { Engine, EngineState } from './engine';
 import type { ChessMove } from '$lib/chess/types';
+import { STARTING_FEN } from '$lib/constants';
 
 interface SearchParams {
 	moveTime: number;
@@ -17,17 +18,17 @@ export class Stockfish extends Engine {
 	private ponder: ChessMove;
 	private searchParams: SearchParams;
 	private messageCallback: ((message: string) => void) | null = null;
-	private currentFen: string = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Initial position
+	private currentFen: string = STARTING_FEN;
 	private debug: boolean;
 
 	/**
 	 * Creates a new Stockfish instance.
 	 * @param debug - If true, enables detailed logging.
 	 */
-	constructor(debug: boolean = false) {
+	constructor({ debug = false, difficulty = 10 }) {
 		super('/stockfish.js');
 		this.state = EngineState.Uninitialized;
-		this.difficulty = 10; // Default difficulty level (range: 1-20)
+		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
 		this.ponder = { from: '', to: '' };
 		this.searchParams = { moveTime: 1000, depth: 5 };
@@ -85,24 +86,41 @@ export class Stockfish extends Engine {
 	}
 
 	/**
-	 * Sets the difficulty level of the engine.
+	 * Sets the difficulty level of the chess engine.
 	 * @param level - Difficulty level (1-20, where 1 is easiest and 20 is hardest)
 	 *
 	 * This method adjusts several Stockfish parameters based on the difficulty level:
-	 * 1. Skill Level: Mapped from 0-20 based on the input level.
-	 * 2. Contempt: Mapped from 0-100 based on the input level.
-	 *    Higher contempt makes the engine play more aggressively.
-	 * 3. MultiPV: Decreases as difficulty increases, making the engine consider fewer alternative moves.
-	 * 4. Move Time: Increases with difficulty, giving the engine more time to think.
-	 * 5. Depth: Increases with difficulty, making the engine search deeper into the game tree.
+	 * 1. Skill Level (0-20): Mapped non-linearly from the input level.
+	 *    Lower values make the engine play weaker, allowing for more mistakes.
+	 *    At 0, the engine plays randomly from a selection of good moves.
+	 *
+	 * 2. Contempt (0-100): Mapped non-linearly from the input level.
+	 *    Higher values make the engine play more aggressively and take more risks to avoid draws.
+	 *    At 0, the engine plays objectively; at 100, it strongly prefers winning over drawing.
+	 *
+	 * 3. MultiPV (5-1): Decreases linearly as difficulty increases.
+	 *    Determines the number of alternative moves the engine considers.
+	 *    At lower difficulties, more alternatives are considered, making play more varied.
+	 *    At higher difficulties, fewer alternatives are considered, focusing on the best moves.
+	 *
+	 * 4. Move Time (100-3500 ms): Increases non-linearly with difficulty.
+	 *    Determines how long the engine thinks about each move.
+	 *    Longer times at higher difficulties allow for deeper, more accurate analysis.
+	 *
+	 * 5. Depth (1-15): Increases non-linearly with difficulty.
+	 *    Determines how many moves ahead the engine calculates.
+	 *    Greater depth at higher difficulties results in stronger, more strategic play.
+	 *
+	 * The non-linear mappings ensure a smooth progression of difficulty,
+	 * with more pronounced changes at higher levels for a greater challenge.
 	 */
 	setDifficulty(level: number): void {
 		this.difficulty = level;
 		const skillLevel = this.mapLevelToSkill(level);
 		const contempt = this.mapLevelToContempt(level);
-		const multiPV = Math.max(1, Math.floor((21 - level) / 4)); // 5 to 1
-		const moveTime = 500 + level * 200; // 750ms to 4500ms
+		const moveTime = this.mapLevelToMoveTime(level);
 		const depth = this.mapLevelToDepth(level);
+		const multiPV = this.mapLevelToMultiPV(level);
 
 		this.log(
 			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}`,
@@ -145,8 +163,11 @@ export class Stockfish extends Engine {
 	}
 
 	newGame(): void {
+		this.log('Stockfish: Starting new game');
+		this.setState(EngineState.Waiting);
 		this.worker.postMessage('ucinewgame');
 		this.worker.postMessage('setoption name Clear Hash');
+		this.log('Stockfish: Sent ucinewgame and Clear Hash commands');
 	}
 
 	/**
@@ -157,8 +178,18 @@ export class Stockfish extends Engine {
 	 * This method temporarily adjusts the engine settings to provide a hint:
 	 * 1. Enables UCI_AnalyseMode for more thorough analysis.
 	 * 2. Sets Analysis Contempt to favor the player's color.
-	 * 3. Uses a depth based on the current difficulty level.
-	 * 4. Sets a move time that increases with difficulty.
+	 * 3. Uses a depth that scales with difficulty:
+	 *    - Minimum depth of 8 for lower difficulties.
+	 *    - Maximum depth of 15 for higher difficulties.
+	 * 4. Sets a move time that scales with difficulty:
+	 *    - Minimum move time of 1000ms for lower difficulties.
+	 *    - Maximum move time of 3500ms for higher difficulties.
+	 * 5. Uses MultiPV to consider multiple lines, ensuring varied hints:
+	 *    - Higher MultiPV at lower difficulties for more varied suggestions.
+	 *    - Lower MultiPV at higher difficulties for more focused, stronger hints.
+	 *
+	 * This approach balances hint quality with response time, ensuring
+	 * decent hints across all difficulty levels without excessive delays.
 	 */
 	async getHint(playerColor: 'w' | 'b'): Promise<ChessMove> {
 		return new Promise((resolve) => {
@@ -170,12 +201,21 @@ export class Stockfish extends Engine {
 					this.messageCallback = originalCallback;
 				}
 			};
-			const hintDepth = Math.max(10, Math.floor(this.difficulty / 5));
-			const hintTime = 1500 + this.difficulty * 50; // 1500ms to 2500ms
+
+			// Scale depth based on difficulty (8 to 15)
+			const hintDepth = Math.min(15, Math.max(8, Math.floor(7 + this.difficulty / 2)));
+
+			// Scale move time based on difficulty (1000ms to 3500ms)
+			const hintTime = Math.min(3500, Math.max(1000, 1000 + this.difficulty * 125));
+
+			// Vary MultiPV based on difficulty (5 to 1)
+			const multiPV = Math.max(1, Math.min(5, 6 - Math.floor(this.difficulty / 4)));
+
 			const forcedColor = playerColor === 'w' ? 'White' : 'Black';
 
 			this.worker.postMessage(`setoption name UCI_AnalyseMode value true`);
 			this.worker.postMessage(`setoption name Analysis Contempt value ${forcedColor}`);
+			this.worker.postMessage(`setoption name MultiPV value ${multiPV}`);
 			this.worker.postMessage(`position fen ${this.currentFen}`);
 			this.worker.postMessage(`go depth ${hintDepth} movetime ${hintTime}`);
 		});
@@ -183,29 +223,57 @@ export class Stockfish extends Engine {
 
 	/**
 	 * Maps the difficulty level (1-20) to a Stockfish Skill Level (0-20).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding Stockfish Skill Level
+	 * Uses a power function with exponent 1.7 to create a more balanced difficulty curve.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding Stockfish Skill Level (0-20)
 	 */
 	private mapLevelToSkill(level: number): number {
-		return Math.floor(((level - 1) / 19) * 20); // Linear mapping from 1-20 to 0-20
+		return Math.round(Math.pow((level - 1) / 19, 1.7) * 20);
 	}
 
 	/**
 	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (0-100).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding Stockfish Contempt value
+	 * Uses a power function with exponent 1.3 for a slightly more aggressive progression.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding Stockfish Contempt value (0-100)
 	 */
 	private mapLevelToContempt(level: number): number {
-		return Math.floor(((level - 1) / 19) * 100); // Linear mapping from 1-20 to 0-100
+		return Math.round(Math.pow((level - 1) / 19, 1.3) * 100);
 	}
 
 	/**
 	 * Maps the difficulty level (1-20) to a search depth (1-15).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding search depth
+	 * Uses a power function with exponent 1.4 for a balanced depth increase.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding search depth (1-15)
 	 */
 	private mapLevelToDepth(level: number): number {
-		return Math.floor(((level - 1) / 19) * 14) + 1; // Linear mapping from 1-20 to 1-15
+		return Math.round(1 + Math.pow((level - 1) / 19, 1.4) * 14);
+	}
+
+	/**
+	 * Maps the difficulty level (1-20) to a move time (100-3500 ms).
+	 * Uses a power function with exponent 1.5 for a more balanced time progression.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding move time in milliseconds (100-3500)
+	 */
+	private mapLevelToMoveTime(level: number): number {
+		return Math.round(100 + Math.pow((level - 1) / 19, 1.5) * 3400);
+	}
+
+	/**
+	 * Maps the difficulty level (1-20) to a MultiPV value (5-1).
+	 * MultiPV decreases as difficulty increases, making the engine consider fewer alternative moves at higher difficulties.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding MultiPV value (5-1)
+	 */
+	private mapLevelToMultiPV(level: number): number {
+		return Math.max(1, Math.floor((21 - level) / 4));
 	}
 
 	private setState(state: EngineState): void {

@@ -12,5 +12,14 @@ export type CheckState = { inCheck: boolean; kingSquare?: string; attackingSquar
 export type ChessMove = {
 	from: Square | string;
 	to: Square | string;
-	promotion?: PieceSymbol;
+	promotion?: PieceSymbol | string;
 };
+
+export type MoveType =
+	| 'normal'
+	| 'capture'
+	| 'castle'
+	| 'check'
+	| 'promote'
+	| 'game-start'
+	| 'game-end';

@@ -1,8 +1,8 @@
 import { writable, type Writable } from 'svelte/store';
-import { Chess, type Square } from 'chess.js';
+import { Chess, type Move, type Square } from 'chess.js';
 import type { Stockfish } from '$lib/engine/Stockfish';
 import type { Color } from 'chessground/types';
-import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove } from './types';
+import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove, MoveType } from './types';
 import {
 	initializeEngine,
 	getCheckState,
@@ -11,12 +11,16 @@ import {
 	isVsAI,
 	toDestinations
 } from './utils';
+import { STARTING_FEN } from '$lib/constants';
+import type { GameSettings } from '$lib/stores/gameSettings';
 
 export class GameState {
 	private chess: Chess;
 	private engine: Stockfish;
 	mode: GameMode;
 	player: Color;
+	moveHistory: Writable<ChessMove[]> = writable([]);
+	lastMove: Writable<MoveType> = writable('normal');
 
 	started: Writable<boolean> = writable(false);
 	promotionMove: Writable<PromotionMove> = writable(null);
@@ -29,12 +33,13 @@ export class GameState {
 
 	constructor({
 		debug = false,
-		fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+		fen = STARTING_FEN,
 		player = 'white' as Color,
-		gameMode = 'pve' as GameMode
+		gameMode = 'pve' as GameMode,
+		difficulty = 10
 	}) {
 		this.chess = new Chess(fen);
-		this.engine = initializeEngine(this.handleEngineMessage.bind(this), debug);
+		this.engine = initializeEngine(this.handleEngineMessage.bind(this), difficulty, debug);
 		this.mode = gameMode;
 		this.player = player;
 		this.fen = writable(fen);
@@ -46,17 +51,18 @@ export class GameState {
 		this.chess.reset();
 		this.updateGameState();
 		this.engine.newGame();
+		this.engine.setPosition(STARTING_FEN);
 		this.started.set(true);
-		if (isVsAI(this.mode) && this.player === 'black') {
-			this.engine.go();
-		}
+		this.triggerAiMove();
+		this.lastMove.set('game-start');
 	}
 
 	endGame() {
-		this.started.set(false);
-		this.gameOver.set({ isOver: false, winner: null });
 		this.chess.reset();
 		this.updateGameState();
+		this.started.set(false);
+		this.gameOver.set({ isOver: false, winner: null });
+		this.lastMove.set('game-end');
 	}
 
 	async getHint() {
@@ -74,6 +80,11 @@ export class GameState {
 		this.engine.setDifficulty(difficulty);
 	}
 
+	updateSettings(settings: GameSettings) {
+		this.player = settings.color!;
+		this.setDifficulty(settings.difficulty);
+	}
+
 	handlePlayerMove({ from, to }: ChessMove) {
 		if (isPromotionMove(this.chess, from, to)) {
 			this.promotionMove.set({ from, to });
@@ -82,15 +93,21 @@ export class GameState {
 		}
 	}
 
+	triggerAiMove() {
+		if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
+			this.engine.go();
+		}
+	}
+
 	makeMove({ from, to, promotion }: ChessMove) {
 		try {
 			const move = this.chess.move({ from, to, promotion });
 			if (move) {
+				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
 				this.updateGameState();
 				this.engine.setPosition(this.chess.fen());
-				if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
-					this.engine.go();
-				}
+				this.triggerAiMove();
+				this.determineMoveType(move);
 				return true;
 			}
 		} catch (error) {
@@ -99,11 +116,28 @@ export class GameState {
 		return false;
 	}
 
+	undoMove() {
+		if (!isVsAI(this.mode)) {
+			console.log('Undo is only available in Player vs AI mode');
+			return;
+		}
+
+		this.chess.undo();
+		this.chess.undo();
+		this.moveHistory.update((history) => history.slice(0, -2));
+
+		this.updateGameState();
+		this.engine.setPosition(this.chess.fen());
+	}
+
 	private handleEngineMessage(message: string) {
 		if (message.includes('bestmove')) {
 			const { from, to } = this.engine.getBestMove();
 			if (isVsAI(this.mode) && this.chess.turn() !== getChessJsColor(this.player)) {
-				this.makeMove({ from, to, promotion: 'q' });
+				const move = isPromotionMove(this.chess, from, to)
+					? { from, to, promotion: 'q' }
+					: { from, to };
+				this.makeMove(move);
 			}
 		}
 	}
@@ -124,9 +158,29 @@ export class GameState {
 		if (this.chess.isGameOver()) {
 			let winner: Color | 'draw' = 'draw';
 			if (this.chess.isCheckmate()) {
+				this.lastMove.set('game-end');
 				winner = this.chess.turn() === 'w' ? 'black' : 'white';
 			}
 			this.gameOver.set({ isOver: true, winner });
 		}
+	}
+
+	private determineMoveType(move: Move) {
+		console.log(move);
+		let moveType: MoveType = 'normal';
+
+		if (move.captured) {
+			moveType = 'capture';
+		} else if (move.flags.includes('k') || move.flags.includes('q')) {
+			moveType = 'castle';
+		} else if (move.flags.includes('p')) {
+			moveType = 'promote';
+		}
+
+		if (this.chess.isCheck()) {
+			moveType = 'check';
+		}
+
+		this.lastMove.set(moveType);
 	}
 }
