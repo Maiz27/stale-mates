@@ -4,7 +4,7 @@
 	import { COLOR_OPTIONS } from '$lib/constants';
 	import type { Color } from 'chessground/types';
 
-	let color: Color = 'white';
+	export let color: Color = 'white';
 
 	const dispatch = createEventDispatcher();
 

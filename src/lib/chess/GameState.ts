@@ -12,6 +12,7 @@ import {
 	toDestinations
 } from './utils';
 import { STARTING_FEN } from '$lib/constants';
+import type { GameSettings } from '$lib/stores/gameSettings';
 
 export class GameState {
 	private chess: Chess;
@@ -33,10 +34,11 @@ export class GameState {
 		debug = false,
 		fen = STARTING_FEN,
 		player = 'white' as Color,
-		gameMode = 'pve' as GameMode
+		gameMode = 'pve' as GameMode,
+		difficulty = 10
 	}) {
 		this.chess = new Chess(fen);
-		this.engine = initializeEngine(this.handleEngineMessage.bind(this), debug);
+		this.engine = initializeEngine(this.handleEngineMessage.bind(this), difficulty, debug);
 		this.mode = gameMode;
 		this.player = player;
 		this.fen = writable(fen);
@@ -50,15 +52,12 @@ export class GameState {
 		this.engine.newGame();
 		this.engine.setPosition(STARTING_FEN);
 		this.started.set(true);
-		if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
-			this.engine.go();
-		}
+		this.triggerAiMove();
 	}
 
 	endGame() {
 		this.chess.reset();
 		this.updateGameState();
-		this.engine.newGame();
 		this.started.set(false);
 		this.gameOver.set({ isOver: false, winner: null });
 	}
@@ -78,11 +77,22 @@ export class GameState {
 		this.engine.setDifficulty(difficulty);
 	}
 
+	updateSettings(settings: GameSettings) {
+		this.player = settings.color!;
+		this.setDifficulty(settings.difficulty);
+	}
+
 	handlePlayerMove({ from, to }: ChessMove) {
 		if (isPromotionMove(this.chess, from, to)) {
 			this.promotionMove.set({ from, to });
 		} else {
 			this.makeMove({ from, to });
+		}
+	}
+
+	triggerAiMove() {
+		if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
+			this.engine.go();
 		}
 	}
 
@@ -93,9 +103,7 @@ export class GameState {
 				this.moveHistory.push({ from, to, promotion });
 				this.updateGameState();
 				this.engine.setPosition(this.chess.fen());
-				if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
-					this.engine.go();
-				}
+				this.triggerAiMove();
 				return true;
 			}
 		} catch (error) {

@@ -3,7 +3,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { DIFFICULTY_OPTIONS } from '$lib/constants';
 
-	let difficulty: number = 10;
+	export let difficulty: number = 10;
 
 	const dispatch = createEventDispatcher();
 

@@ -5,9 +5,10 @@ import { Stockfish } from '$lib/engine/Stockfish';
 
 export function initializeEngine(
 	messageHandler: (message: string) => void,
+	difficulty: number = 10,
 	debug: boolean = true
 ): Stockfish {
-	const engine = new Stockfish(debug);
+	const engine = new Stockfish({ debug, difficulty });
 	engine.onMessage(messageHandler);
 	return engine;
 }

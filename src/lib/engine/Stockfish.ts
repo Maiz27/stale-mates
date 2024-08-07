@@ -25,10 +25,10 @@ export class Stockfish extends Engine {
 	 * Creates a new Stockfish instance.
 	 * @param debug - If true, enables detailed logging.
 	 */
-	constructor(debug: boolean = false) {
+	constructor({ debug = false, difficulty = 10 }) {
 		super('/stockfish.js');
 		this.state = EngineState.Uninitialized;
-		this.difficulty = 10; // Default difficulty level (range: 1-20)
+		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
 		this.ponder = { from: '', to: '' };
 		this.searchParams = { moveTime: 1000, depth: 5 };
@@ -101,9 +101,9 @@ export class Stockfish extends Engine {
 		this.difficulty = level;
 		const skillLevel = this.mapLevelToSkill(level);
 		const contempt = this.mapLevelToContempt(level);
-		const multiPV = Math.max(1, Math.floor((21 - level) / 4)); // 5 to 1
-		const moveTime = 500 + level * 200; // 750ms to 4500ms
+		const moveTime = this.mapLevelToMoveTime(level);
 		const depth = this.mapLevelToDepth(level);
+		const multiPV = Math.max(1, Math.floor((21 - level) / 4)); // 5 to 1
 
 		this.log(
 			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}`,
@@ -153,10 +153,6 @@ export class Stockfish extends Engine {
 		this.log('Stockfish: Sent ucinewgame and Clear Hash commands');
 	}
 
-	resetMessageHandler() {
-		this.worker.onmessage = this.handleMessage.bind(this);
-	}
-
 	/**
 	 * Provides a hint for the current position.
 	 * @param playerColor - The color of the player to get a hint for ('w' for white, 'b' for black)
@@ -191,8 +187,8 @@ export class Stockfish extends Engine {
 
 	/**
 	 * Maps the difficulty level (1-20) to a Stockfish Skill Level (0-20).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding Stockfish Skill Level
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding Stockfish Skill Level (0-20)
 	 */
 	private mapLevelToSkill(level: number): number {
 		return Math.floor(((level - 1) / 19) * 20); // Linear mapping from 1-20 to 0-20
@@ -200,8 +196,8 @@ export class Stockfish extends Engine {
 
 	/**
 	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (0-100).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding Stockfish Contempt value
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding Stockfish Contempt value (0-100)
 	 */
 	private mapLevelToContempt(level: number): number {
 		return Math.floor(((level - 1) / 19) * 100); // Linear mapping from 1-20 to 0-100
@@ -209,11 +205,20 @@ export class Stockfish extends Engine {
 
 	/**
 	 * Maps the difficulty level (1-20) to a search depth (1-15).
-	 * @param level - The input difficulty level
-	 * @returns The corresponding search depth
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding search depth (1-15)
 	 */
 	private mapLevelToDepth(level: number): number {
 		return Math.floor(((level - 1) / 19) * 14) + 1; // Linear mapping from 1-20 to 1-15
+	}
+
+	/**
+	 * Maps the difficulty level (1-20) to a move time (100-5000 ms).
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding move time in milliseconds (100-5000)
+	 */
+	private mapLevelToMoveTime(level: number): number {
+		return Math.floor(100 + (level / 20) * 4900); // Maps 0-20 to 100-5000 ms
 	}
 
 	private setState(state: EngineState): void {

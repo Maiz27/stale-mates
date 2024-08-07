@@ -5,44 +5,42 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DifficultySelector from '../controls/DifficultySelector.svelte';
 	import ColorSelector from '../controls/ColorSelector.svelte';
-	import type { Color } from 'chessground/types';
+	import type { GameSettings } from '$lib/stores/gameSettings';
 
-	export let CTA = 'Start Game';
-
-	let color: Color = 'white';
-	let difficulty = 10;
-	let hints = true;
-	let undo = true;
-
-	const handleColorChange = (event: CustomEvent) => {
-		color = event.detail.value;
-	};
-
-	const handleDifficultyChange = (event: CustomEvent) => {
-		difficulty = event.detail.value;
-	};
+	export let isGameStarted = false;
+	export let settings: GameSettings;
+	export let CTA = isGameStarted ? 'Update Settings' : 'Start Game';
 
 	const dispatch = createEventDispatcher();
 
+	const handleColorChange = (event: CustomEvent) => {
+		settings.color = event.detail.value;
+	};
+
+	const handleDifficultyChange = (event: CustomEvent) => {
+		settings.difficulty = event.detail.value;
+	};
+
 	const handleSubmit = () => {
-		dispatch('submit', { color, difficulty, hints, undo });
+		dispatch('submit', settings);
 	};
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="grid items-start gap-4 px-4 pb-4 md:pb-0">
-	<ColorSelector on:colorChange={handleColorChange} />
-
-	<DifficultySelector on:difficultyChange={handleDifficultyChange} />
-
+<form on:submit|preventDefault={handleSubmit} class="grid items-start gap-4 px-4 md:px-0">
+	{#if !isGameStarted}
+		<ColorSelector on:colorChange={handleColorChange} color={settings.color} />
+	{/if}
+	<DifficultySelector
+		on:difficultyChange={handleDifficultyChange}
+		difficulty={settings.difficulty}
+	/>
 	<div class="flex items-center gap-2">
-		<Label for="ai-vs-ai">Allow Hints:</Label>
-		<Switch includeInput bind:checked={hints} />
+		<Label for="hints">Allow Hints:</Label>
+		<Switch id="hints" bind:checked={settings.hints} />
 	</div>
-
 	<div class="flex items-center gap-2">
-		<Label for="ai-vs-ai">Allow Undo:</Label>
-		<Switch includeInput bind:checked={undo} />
+		<Label for="undo">Allow Undo:</Label>
+		<Switch id="undo" bind:checked={settings.undo} />
 	</div>
-
 	<Button type="submit">{CTA}</Button>
 </form>

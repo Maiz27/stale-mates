@@ -1,23 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
+	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
 	import { GameState } from '$lib/chess/GameState';
+	import { getDifficultyLabel } from '$lib/utils';
 	import type { GameOver } from '$lib/chess/types';
 	import type { Color } from 'chessground/types';
-	import type { PageData } from './$types';
-	import { getDifficultyLabel } from '$lib/utils';
-
-	export let data: PageData;
-
-	let color = data.color;
-	let difficulty = data.difficulty;
-	let hints = data.hints;
-	let undo = data.undo;
+	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
 
 	let gameMode: 'pve' | 'pvp' = 'pve';
-	let gameState: GameState = new GameState({ gameMode, player: color, debug: true });
+	let gameState: GameState = new GameState({
+		gameMode,
+		player: $settingsStore.color,
+		difficulty: $settingsStore.difficulty
+	});
 	let chessboardComponent: ChessBoard;
 
 	$: started = false;
@@ -26,8 +24,6 @@
 	onMount(() => {
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
 		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-
-		// gameState.newGame();
 
 		return () => {
 			unsubscribeGameOver();
@@ -59,12 +55,9 @@
 		}
 	};
 
-	const handleDifficultyChange = (selected: { value: number } | undefined) => {
-		if (selected) {
-			difficulty = selected.value;
-			if (chessboardComponent) {
-				chessboardComponent.setDifficulty(difficulty);
-			}
+	const handleSettingsUpdate = (newSettings: GameSettings) => {
+		if (chessboardComponent) {
+			chessboardComponent.updateSettings(newSettings);
 		}
 	};
 </script>
@@ -75,16 +68,20 @@
 			<h1 class="text-3xl font-black leading-tight md:text-4xl">Play AI: Adaptive Challenge</h1>
 			<div class="grid grid-cols-2 gap-y-2 md:grid-cols-4">
 				<div>
-					Player: <span class="text-primary">{color === 'white' ? 'White' : 'Black'}</span>
+					Player: <span class="text-primary"
+						>{$settingsStore.color === 'white' ? 'White' : 'Black'}</span
+					>
 				</div>
 				<div>
-					Difficulty: <span class="text-primary">{getDifficultyLabel(difficulty)}</span>
+					Difficulty: <span class="text-primary"
+						>{getDifficultyLabel($settingsStore.difficulty)}</span
+					>
 				</div>
 				<div>
-					Hints: <span class="text-primary">{hints ? 'On' : 'Off'}</span>
+					Hints: <span class="text-primary">{$settingsStore.hints ? 'On' : 'Off'}</span>
 				</div>
 				<div>
-					Undo: <span class="text-primary">{undo ? 'On' : 'Off'}</span>
+					Undo: <span class="text-primary">{$settingsStore.undo ? 'On' : 'Off'}</span>
 				</div>
 			</div>
 		</div>
@@ -95,37 +92,29 @@
 			{:else}
 				<Button on:click={startNewGame}>Start New Game</Button>
 			{/if}
-			<Button on:click={getHint} variant="outline" disabled={!started || !hints} title="Get Hint">
+			<Button
+				on:click={getHint}
+				variant="outline"
+				disabled={!started || !$settingsStore.hints}
+				title="Get Hint"
+			>
 				<Icon icon="radix-icons:question-mark" />
 			</Button>
-			<Button on:click={undoMove} variant="outline" disabled={!started || !undo} title="Undo Move">
+			<Button
+				on:click={undoMove}
+				variant="outline"
+				disabled={!started || !$settingsStore.undo}
+				title="Undo Move"
+			>
 				<Icon icon="radix-icons:thick-arrow-left" />
 			</Button>
-			<Button on:click={getHint} variant="outline" disabled={!started} title="Settings">
-				<Icon icon="radix-icons:gear" />
-			</Button>
+			<PlayAiDrawer isSave={true} isGameStarted={started} onSettingsUpdate={handleSettingsUpdate} />
 		</div>
 	</section>
 
-	<!-- <div class="space-y-4">
-		<div class="flex items-center gap-2">
-			<label for="difficulty">Select Difficulty: </label>
-			<Select.Root
-				items={difficultyOptions}
-				onSelectedChange={handleDifficultyChange}
-				selected={difficultyOptions.find((option) => option.value === difficulty)}
-			>
-				<Select.Trigger class="w-[180px]">
-					<Select.Value placeholder="Select Difficulty" />
-				</Select.Trigger>
-				<Select.Content>
-					{#each difficultyOptions as option}
-						<Select.Item value={option.value}>{option.label}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		</div>
-	</div> -->
-
-	<ChessBoard bind:this={chessboardComponent} {gameState} playerColor={color} />
+	<ChessBoard
+		bind:this={chessboardComponent}
+		{gameState}
+		playerColor={$settingsStore.color || 'white'}
+	/>
 </div>

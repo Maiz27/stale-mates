@@ -5,8 +5,9 @@
 	import type { Color } from 'chessground/types';
 	import { GameState } from '$lib/chess/GameState';
 	import PromotionModal from './PromotionModal.svelte';
-	import type { PromotionMove, GameOver } from '$lib/chess//types';
+	import type { PromotionMove, GameOver } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
+	import type { GameSettings } from '$lib/stores/gameSettings';
 
 	export let playerColor: Color;
 	export let gameState: GameState;
@@ -135,6 +136,13 @@
 
 	export function setDifficulty(difficulty: number) {
 		gameState.setDifficulty(difficulty);
+	}
+
+	export function updateSettings(settings: GameSettings) {
+		gameState.updateSettings(settings);
+		if (!started) {
+			playerColor = settings.color!;
+		}
 	}
 </script>
 
