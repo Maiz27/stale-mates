@@ -1,14 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import * as Select from '$lib/components/ui/select';
+	import { COLOR_OPTIONS } from '$lib/constants';
 	import type { Color } from 'chessground/types';
 
 	let color: Color = 'white';
-
-	const colorOptions = [
-		{ value: 'white', label: 'White' },
-		{ value: 'black', label: 'Black' }
-	];
 
 	const dispatch = createEventDispatcher();
 
@@ -23,15 +19,15 @@
 <div class="flex items-center gap-2">
 	<label for="color">Color: </label>
 	<Select.Root
-		items={colorOptions}
+		items={COLOR_OPTIONS}
 		onSelectedChange={handleColorChange}
-		selected={colorOptions.find((option) => option.value === color)}
+		selected={COLOR_OPTIONS.find((option) => option.value === color)}
 	>
 		<Select.Trigger class="w-[180px]">
 			<Select.Value placeholder="Select Color" />
 		</Select.Trigger>
 		<Select.Content>
-			{#each colorOptions as option}
+			{#each COLOR_OPTIONS as option}
 				<Select.Item value={option.value}>{option.label}</Select.Item>
 			{/each}
 		</Select.Content>

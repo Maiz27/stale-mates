@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { createEventDispatcher } from 'svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DifficultySelector from '../controls/DifficultySelector.svelte';
 	import ColorSelector from '../controls/ColorSelector.svelte';
 	import type { Color } from 'chessground/types';
+
+	export let CTA = 'Start Game';
 
 	let color: Color = 'white';
 	let difficulty = 10;
@@ -20,12 +22,10 @@
 		difficulty = event.detail.value;
 	};
 
-	const handleSubmit = () => {
-		// Store values in local storage
-		localStorage.setItem('chessGameSettings', JSON.stringify({ color, difficulty, hints, undo }));
+	const dispatch = createEventDispatcher();
 
-		// Navigate to game page with query params
-		goto(`/ai?color=${color}&difficulty=${difficulty}&hints=${hints}&undo=${undo}`);
+	const handleSubmit = () => {
+		dispatch('submit', { color, difficulty, hints, undo });
 	};
 </script>
 
@@ -44,5 +44,5 @@
 		<Switch includeInput bind:checked={undo} />
 	</div>
 
-	<Button type="submit">Start Game</Button>
+	<Button type="submit">{CTA}</Button>
 </form>

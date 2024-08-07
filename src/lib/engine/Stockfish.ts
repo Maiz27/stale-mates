@@ -1,5 +1,6 @@
 import { Engine, EngineState } from './engine';
 import type { ChessMove } from '$lib/chess/types';
+import { STARTING_FEN } from '$lib/constants';
 
 interface SearchParams {
 	moveTime: number;
@@ -17,7 +18,7 @@ export class Stockfish extends Engine {
 	private ponder: ChessMove;
 	private searchParams: SearchParams;
 	private messageCallback: ((message: string) => void) | null = null;
-	private currentFen: string = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Initial position
+	private currentFen: string = STARTING_FEN;
 	private debug: boolean;
 
 	/**
@@ -145,9 +146,15 @@ export class Stockfish extends Engine {
 	}
 
 	newGame(): void {
+		this.log('Stockfish: Starting new game');
 		this.setState(EngineState.Waiting);
 		this.worker.postMessage('ucinewgame');
 		this.worker.postMessage('setoption name Clear Hash');
+		this.log('Stockfish: Sent ucinewgame and Clear Hash commands');
+	}
+
+	resetMessageHandler() {
+		this.worker.onmessage = this.handleMessage.bind(this);
 	}
 
 	/**

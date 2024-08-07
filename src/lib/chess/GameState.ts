@@ -11,10 +11,12 @@ import {
 	isVsAI,
 	toDestinations
 } from './utils';
+import { STARTING_FEN } from '$lib/constants';
 
 export class GameState {
 	private chess: Chess;
 	private engine: Stockfish;
+	private moveHistory: ChessMove[] = [];
 	mode: GameMode;
 	player: Color;
 
@@ -29,7 +31,7 @@ export class GameState {
 
 	constructor({
 		debug = false,
-		fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+		fen = STARTING_FEN,
 		player = 'white' as Color,
 		gameMode = 'pve' as GameMode
 	}) {
@@ -46,17 +48,19 @@ export class GameState {
 		this.chess.reset();
 		this.updateGameState();
 		this.engine.newGame();
+		this.engine.setPosition(STARTING_FEN);
 		this.started.set(true);
-		if (isVsAI(this.mode) && this.player === 'black') {
+		if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
 			this.engine.go();
 		}
 	}
 
 	endGame() {
-		this.started.set(false);
-		this.gameOver.set({ isOver: false, winner: null });
 		this.chess.reset();
 		this.updateGameState();
+		this.engine.newGame();
+		this.started.set(false);
+		this.gameOver.set({ isOver: false, winner: null });
 	}
 
 	async getHint() {
@@ -86,6 +90,7 @@ export class GameState {
 		try {
 			const move = this.chess.move({ from, to, promotion });
 			if (move) {
+				this.moveHistory.push({ from, to, promotion });
 				this.updateGameState();
 				this.engine.setPosition(this.chess.fen());
 				if (isVsAI(this.mode) && getChessJsColor(this.player) !== this.chess.turn()) {
@@ -99,11 +104,34 @@ export class GameState {
 		return false;
 	}
 
+	undoMove() {
+		if (!isVsAI(this.mode)) {
+			console.log('Undo is only available in Player vs AI mode');
+			return;
+		}
+
+		if (this.moveHistory.length < 2) {
+			console.log('Not enough moves to undo');
+			return;
+		}
+
+		this.chess.undo();
+		this.chess.undo();
+		this.moveHistory.pop();
+		this.moveHistory.pop();
+
+		this.updateGameState();
+		this.engine.setPosition(this.chess.fen());
+	}
+
 	private handleEngineMessage(message: string) {
 		if (message.includes('bestmove')) {
 			const { from, to } = this.engine.getBestMove();
 			if (isVsAI(this.mode) && this.chess.turn() !== getChessJsColor(this.player)) {
-				this.makeMove({ from, to, promotion: 'q' });
+				const move = isPromotionMove(this.chess, from, to)
+					? { from, to, promotion: 'q' }
+					: { from, to };
+				this.makeMove(move);
 			}
 		}
 	}

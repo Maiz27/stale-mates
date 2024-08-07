@@ -129,6 +129,10 @@
 		return await gameState.getHint();
 	}
 
+	export function undoMove() {
+		gameState.undoMove();
+	}
+
 	export function setDifficulty(difficulty: number) {
 		gameState.setDifficulty(difficulty);
 	}

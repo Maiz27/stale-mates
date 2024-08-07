@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -10,6 +11,11 @@
 	const title = 'Play AI: Adaptive Challenge';
 	const description =
 		'Face our AI in games that match your style, from relaxed matches to thrilling challenges.';
+
+	const handleSubmit = (event: CustomEvent) => {
+		const { color, difficulty, hints, undo } = event.detail;
+		goto(`/ai?color=${color}&difficulty=${difficulty}&hints=${hints}&undo=${undo}`);
+	};
 </script>
 
 {#if $isDesktop}
@@ -24,7 +30,7 @@
 					{description}
 				</Dialog.Description>
 			</Dialog.Header>
-			<PlayAiForm />
+			<PlayAiForm on:submit={handleSubmit} />
 		</Dialog.Content>
 	</Dialog.Root>
 {:else}
@@ -39,7 +45,7 @@
 					{description}
 				</Drawer.Description>
 			</Drawer.Header>
-			<PlayAiForm />
+			<PlayAiForm on:submit={handleSubmit} />
 		</Drawer.Content>
 	</Drawer.Root>
 {/if}
