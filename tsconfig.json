@@ -9,8 +9,15 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
-		"moduleResolution": "bundler"
-	}
+		"moduleResolution": "bundler",
+		"baseUrl": ".",
+		"paths": {
+			"$lib/*": ["src/lib/*"],
+			"$shared/*": ["src/lib/shared/*"]
+		}
+	},
+	"include": ["src/**/*.d.ts", "src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "worker/**/*.ts"],
+	"exclude": ["node_modules/*", ".svelte-kit/*", "static/*"]
 	// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
 	// except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
 	//
