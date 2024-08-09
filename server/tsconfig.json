@@ -6,11 +6,10 @@
 		"moduleResolution": "Bundler",
 		"strict": true,
 		"skipLibCheck": true,
-		"lib": ["ESNext"],
-		"types": ["@cloudflare/workers-types"],
+		"types": ["node"],
 		"jsx": "react-jsx",
 		"jsxImportSource": "hono/jsx"
 	},
-	"include": ["src/**/*.ts", "../src/lib/shared/**/*.ts"],
+	"include": ["src/**/*.ts", "../src/lib/**/*.ts"],
 	"exclude": ["node_modules/*"]
 }

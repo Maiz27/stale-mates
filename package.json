@@ -13,10 +13,12 @@
 		"format": "prettier --write .",
 		"test:integration": "playwright test",
 		"test:unit": "vitest",
-		"dev:worker": "cd worker && wrangler dev src/index.ts",
-		"build:worker": "cd worker && wrangler publish --dry-run",
-		"deploy:worker": "cd worker && wrangler publish",
-		"dev:all": "concurrently \"npm run dev\" \"npm run dev:worker\""
+		"dev:server": "cd server && tsx watch src/index.ts",
+		"build:server": "cd server && tsc",
+		"start:server": "cd server && node dist/index.js",
+		"dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
+		"build:all": "npm run build && npm run build:server",
+		"start:all": "concurrently \"npm run preview\" \"npm run start:server\""
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.28.1",
@@ -42,7 +44,7 @@
 		"vite": "^5.0.3",
 		"vitest": "^1.2.0",
 		"concurrently": "^7.0.0",
-		"wrangler": "^3.0.0"
+		"tsx": "^4.7.1"
 	},
 	"type": "module",
 	"dependencies": {

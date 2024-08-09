@@ -10,4 +10,11 @@ declare global {
 	}
 }
 
-export {};
+// Declare $app modules to make them available in src/lib
+declare module '$app/navigation' {
+	export { goto, invalidate, prefetch, prefetchRoutes } from '@sveltejs/kit';
+}
+
+declare module '$app/stores' {
+	export { getStores, page, navigating, updated } from '@sveltejs/kit';
+}

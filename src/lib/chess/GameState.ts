@@ -17,6 +17,7 @@ import type { GameSettings } from '$lib/stores/gameSettings';
 export class GameState {
 	private chess: Chess;
 	private engine: Stockfish;
+	private ws: WebSocket | null = null;
 	mode: GameMode;
 	player: Color;
 	moveHistory: Writable<ChessMove[]> = writable([]);
@@ -36,7 +37,8 @@ export class GameState {
 		fen = STARTING_FEN,
 		player = 'white' as Color,
 		gameMode = 'pve' as GameMode,
-		difficulty = 10
+		difficulty = 10,
+		websocket = null as WebSocket | null
 	}) {
 		this.chess = new Chess(fen);
 		this.engine = initializeEngine(this.handleEngineMessage.bind(this), difficulty, debug);
@@ -45,6 +47,7 @@ export class GameState {
 		this.fen = writable(fen);
 		this.turn = writable(this.chess.turn() === 'w' ? 'white' : 'black');
 		this.updateDestinations();
+		this.ws = websocket;
 	}
 
 	newGame() {
@@ -108,12 +111,23 @@ export class GameState {
 				this.engine.setPosition(this.chess.fen());
 				this.triggerAiMove();
 				this.determineMoveType(move);
+				if (this.mode === 'pvp' && this.ws) {
+					this.ws.send(JSON.stringify({ type: 'move', move: { from, to, promotion } }));
+				}
 				return true;
 			}
 		} catch (error) {
 			console.error('Invalid move:', { from, to, promotion }, error);
 		}
 		return false;
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	updateFromServer(serverState: any) {
+		this.chess.load(serverState.fen);
+		this.updateGameState();
+		this.moveHistory.set(serverState.moveHistory);
+		this.lastMove.set(serverState.lastMove);
 	}
 
 	undoMove() {
