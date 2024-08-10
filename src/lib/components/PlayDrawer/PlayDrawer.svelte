@@ -1,14 +1,58 @@
 <script lang="ts">
+	import Icon from '@iconify/svelte';
+	import { goto } from '$app/navigation';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import ColorSelector from '../controls/ColorSelector.svelte';
+	import type { Color } from 'chessground/types';
 
 	let open = false;
+	let opponentLink = '';
+	let playerLink = '';
+	let color: Color | 'random' = 'white';
+
 	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Play Friend: Friendly Duel';
 	const description =
 		'Match wits with friends in casual or competitive games. Enjoy chess together and improve your skills!';
+	const extraOptions = [{ value: 'random', label: 'Random Color' }];
+
+	async function createGame() {
+		try {
+			const response = await fetch(`${import.meta.env.VITE_API_URL}/game/create`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({})
+			});
+
+			if (!response.ok) throw new Error('Failed to create game');
+
+			const { gameId } = await response.json();
+			const playerColor = color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
+			const opponentColor = playerColor === 'white' ? 'black' : 'white';
+			opponentLink = `${window.location.origin}/game?room=${gameId}&color=${opponentColor}`;
+			playerLink = `${window.location.origin}/game?room=${gameId}&color=${playerColor}`;
+		} catch (error) {
+			console.error('Error creating game:', error);
+		}
+	}
+
+	const handleColorChange = (event: CustomEvent) => {
+		color = event.detail.value;
+	};
+
+	const navigateToGame = () => {
+		goto(playerLink);
+	};
+
+	const copyLink = () => {
+		navigator.clipboard.writeText(opponentLink);
+	};
 </script>
 
 {#if $isDesktop}
@@ -23,7 +67,37 @@
 					{description}
 				</Dialog.Description>
 			</Dialog.Header>
-			<p>Work in progress, stay tuned!</p>
+			<div class="w-full space-y-4">
+				<div class="space-y-4">
+					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
+					{#if opponentLink}
+						<div>
+							<p class="text-sm text-muted-foreground">
+								Share this link with your friend to play together:
+							</p>
+							<div class="relative grid place-items-center">
+								<Input
+									disabled
+									value={opponentLink}
+									type="url"
+									placeholder="link"
+									class="max-w-sm"
+								/>
+								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+									<button title="Copy Link" on:click={copyLink} class="p-1 hover:bg-muted">
+										<Icon icon="radix-icons:copy" font-size="1.2rem" />
+									</button>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+				{#if opponentLink}
+					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
+				{:else}
+					<Button class="w-full" on:click={createGame}>Create Game</Button>
+				{/if}
+			</div>
 		</Dialog.Content>
 	</Dialog.Root>
 {:else}
@@ -38,7 +112,37 @@
 					{description}
 				</Drawer.Description>
 			</Drawer.Header>
-			<p>Work in progress, stay tuned!</p>
+			<div class="w-full space-y-4 px-4 pb-4">
+				<div class="space-y-4">
+					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
+					{#if opponentLink}
+						<div>
+							<p class="text-sm text-muted-foreground">
+								Share this link with your friend to play together:
+							</p>
+							<div class="relative grid place-items-center">
+								<Input
+									disabled
+									value={opponentLink}
+									type="url"
+									placeholder="link"
+									class="max-w-sm"
+								/>
+								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+									<button title="Copy Link" on:click={copyLink} class="p-1 hover:bg-muted">
+										<Icon icon="radix-icons:copy" font-size="1.2rem" />
+									</button>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+				{#if opponentLink}
+					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
+				{:else}
+					<Button class="w-full" on:click={createGame}>Create Game</Button>
+				{/if}
+			</div>
 		</Drawer.Content>
 	</Drawer.Root>
 {/if}
