@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import WebSocket from 'ws';
+import { nanoid } from 'nanoid';
 
 type Player = {
 	id: string;
@@ -16,7 +17,6 @@ type GameRoom = {
 const games = new Map<string, GameRoom>();
 
 async function generateId(): Promise<string> {
-	const { nanoid } = await import('nanoid');
 	return nanoid();
 }
 
