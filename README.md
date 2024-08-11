@@ -1,6 +1,8 @@
 # Statemates: A Full-Stack Chess Platform
 
-Welcome to Statemates, a full-stack chess platform built with SvelteKit, Express.js, WebSockets, and the Stockfish engine. This project showcases real-time multiplayer gameplay and adjustable AI difficulty.
+Statemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Statemates Now](https://stale-mates.vercel.app/)
+
+![Portfolio Website Overview](https://drive.google.com/thumbnail?id=1I961hNzXzdUrqmRhsIfNhdCVqUU0tKBt&sz=w1024&t=1681358800&mime=image/png)
 
 ## Table of Contents
 
@@ -8,6 +10,11 @@ Welcome to Statemates, a full-stack chess platform built with SvelteKit, Express
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Features](#features)
+  - [Tech Stack](#tech-stack)
+    - [Frontend](#frontend)
+    - [Backend](#backend)
+    - [Chess Logic](#chess-logic)
+    - [Build Tools](#build-tools)
   - [Getting Started](#getting-started)
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
@@ -18,20 +25,39 @@ Welcome to Statemates, a full-stack chess platform built with SvelteKit, Express
 
 ## Introduction
 
-Statemates is a chess platform that demonstrates the power of modern web technologies in creating interactive, real-time applications. You can read a detailed breakdown of the project's development journey in our [blog post](link-to-your-blog-post).
-
-This project was born out of a passion for chess and a desire to explore the capabilities of SvelteKit and WebSocket technology in creating a seamless gaming experience.
+Statemates was born out of a passion for chess and a desire to explore the capabilities of SvelteKit and WebSocket technology in creating a seamless gaming experience. You can read a detailed breakdown of the project's development journey [here](https://www.magedfaiz.xyz/projects/stalemates).
 
 ## Features
 
-- **SvelteKit Frontend**: Utilizing the latest features for a responsive and efficient UI.
-- **Express.js Backend**: Robust server-side logic for game management.
-- **WebSockets**: Enabling real-time multiplayer gameplay.
-- **Stockfish.js Integration**: Providing a challenging AI opponent with adjustable difficulty.
-- **chess.js**: Handling game logic and move validation.
-- **Customizable UI**: Built with Tailwind CSS for easy styling.
-- **Hint System**: Get assistance during gameplay.
-- **Take-back Moves**: Undo moves in AI games for learning and practice.
+- Play against an AI opponent with adjustable difficulty levels
+- Engage in real-time multiplayer chess games
+- Receive hints to improve your game play
+- Take back moves in AI games for learning and practice
+- Enjoy a responsive and intuitive chessboard interface
+
+## Tech Stack
+
+### Frontend
+
+- SvelteKit: For building a responsive and efficient user interface
+- Tailwind CSS: For rapid and customizable styling
+- shadcn-svelte: For pre-built, customizable UI components
+- svelte-chessground: For the interactive chessboard component
+
+### Backend
+
+- Express.js: Powering the server-side logic and API
+- WebSockets: Enabling real-time communication for multiplayer games
+
+### Chess Logic
+
+- chess.js: Handling game rules, move validation, and board state
+- Stockfish.js: Providing the AI opponent with adjustable difficulty
+
+### Build Tools
+
+- Vite: For fast development and optimized production builds
+- TypeScript: For type-safe JavaScript development
 
 ## Getting Started
 
@@ -46,17 +72,21 @@ Follow these instructions to get Statemates up and running on your local machine
 
 1. **Clone the repository:**
 
-   ```
-   git clone https://github.com/your-username/statemates.git
+   ```bash
+   git clone https://github.com/Maiz27/statemates.git
    cd statemates
    ```
 
 2. **Install dependencies:**
 
+   ```bash
+   npm i
    ```
-   npm install
-   # or with Bun
-   bun install
+
+   Or with Bun:
+
+   ```bash
+   bun i
    ```
 
 3. **Set up environment variables:**
@@ -65,12 +95,21 @@ Follow these instructions to get Statemates up and running on your local machine
    - Copy `api/.env.example` to `api/.env`
 
 4. **Install API dependencies:**
-   ```
+
+   ```bash
    cd api
-   npm install
-   # or with Bun
-   bun install
+   npm i
    ```
+
+   Or with Bun:
+
+   ```bash
+   cd api
+   bun i
+   ```
+
+5. Stockfish.js setup:
+   The Stockfish.js file is located in the static folder of the project. No additional setup is required as it's already in the correct location for the application to use.
 
 ## Scripts
 
@@ -107,9 +146,13 @@ The `package.json` includes several scripts for common tasks:
 
 To run both the frontend and backend concurrently:
 
-```
+```bash
 npm run dev:all
-# or with Bun
+```
+
+Or with Bun:
+
+```bash
 bun run dev:all
 ```
 
