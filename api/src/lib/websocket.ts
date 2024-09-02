@@ -3,7 +3,7 @@ import { IncomingMessage } from 'http';
 import { URL } from 'url';
 import { addPlayerToGame, removePlayerFromGame, handlePlayerMessage, checkGameStart } from './game';
 
-export async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
+export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
 	const url = new URL(req.url!, `http://${req.headers.host}`);
 	const gameId = url.searchParams.get('room');
 	const color = url.searchParams.get('color') as 'white' | 'black';
@@ -14,7 +14,7 @@ export async function handleWebSocketConnection(ws: WebSocket, req: IncomingMess
 	}
 
 	try {
-		const playerId = await addPlayerToGame(gameId, color, ws);
+		const playerId = addPlayerToGame(gameId, color, ws);
 
 		if (!playerId) {
 			ws.close(1008, 'Unable to join game');

@@ -40,10 +40,12 @@ export abstract class GameState {
 
 	abstract setDifficulty(difficulty: number): void;
 	abstract updateSettings(settings: GameSettings): void;
-	abstract makeMove(move: ChessMove): boolean;
 	abstract undoMove(): void;
 	abstract getHint(): Promise<ChessMove | null>;
 
+	protected onMove(move: Move): void {
+		console.log('Move:', move);
+	}
 	protected onNewGame(): void {}
 
 	newGame() {
@@ -68,6 +70,22 @@ export abstract class GameState {
 		} else {
 			this.makeMove({ from, to });
 		}
+	}
+
+	makeMove({ from, to, promotion }: ChessMove): boolean {
+		try {
+			const move = this.chess.move({ from, to, promotion });
+			if (move) {
+				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
+				this.updateGameState();
+				this.determineMoveType(move);
+				this.onMove(move);
+				return true;
+			}
+		} catch (error) {
+			console.error('Invalid move:', { from, to, promotion }, error);
+		}
+		return false;
 	}
 
 	clearHint(): void {

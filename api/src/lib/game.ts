@@ -1,104 +1,52 @@
-import { Chess } from 'chess.js';
 import WebSocket from 'ws';
-import { nanoid } from 'nanoid';
-
-type Player = {
-	id: string;
-	color: 'white' | 'black';
-	ws: WebSocket;
-};
-
-type GameRoom = {
-	id: string;
-	players: Player[];
-	chess: Chess | null;
-};
+import { GameRoom } from './GameRoom';
 
 const games = new Map<string, GameRoom>();
 
-async function generateId(): Promise<string> {
-	return nanoid();
+export function createGame(): string {
+	const game = new GameRoom();
+	games.set(game.id, game);
+	return game.id;
 }
 
-export async function createGame(): Promise<string> {
-	const gameId = await generateId();
-	games.set(gameId, { id: gameId, players: [], chess: null });
-	return gameId;
-}
-
-export async function addPlayerToGame(
+export function addPlayerToGame(
 	gameId: string,
 	color: 'white' | 'black',
 	ws: WebSocket
-): Promise<string | null> {
+): string | null {
 	const game = games.get(gameId);
-	if (!game || game.players.length >= 2) return null;
+	if (!game) return null;
 
-	const playerId = await generateId();
-	const player: Player = { id: playerId, color, ws };
-	game.players.push(player);
-
-	if (game.players.length === 2) {
-		game.chess = new Chess();
-		broadcastGameState(game);
+	try {
+		return game.addPlayer(color, ws);
+	} catch (error) {
+		console.error('Error adding player to game:', error);
+		return null;
 	}
-
-	return playerId;
 }
 
 export function removePlayerFromGame(gameId: string, playerId: string) {
 	const game = games.get(gameId);
-	if (!game) return;
+	if (game) {
+		game.removePlayer(playerId);
+		if (game.players.length === 0) {
+			games.delete(gameId);
+		}
+	}
+}
 
-	game.players = game.players.filter((p) => p.id !== playerId);
-	if (game.players.length === 0) {
-		games.delete(gameId);
-	} else {
-		broadcastGameState(game);
+export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
+	const game = games.get(gameId);
+	if (game) {
+		game.handleMessage(playerId, JSON.parse(message));
 	}
 }
 
 export function checkGameStart(gameId: string): boolean {
 	const game = games.get(gameId);
-	if (!game || game.players.length !== 2) return false;
-
-	game.chess = new Chess();
-	broadcastGameState(game);
-
-	game.players.forEach((player) => {
-		player.ws.send(JSON.stringify({ type: 'opponentJoined' }));
-		player.ws.send(JSON.stringify({ type: 'gameStart' }));
-	});
-
-	return true;
-}
-
-export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
-	const game = games.get(gameId);
-	if (!game) return;
-
-	const data = JSON.parse(message);
-	if (data.type === 'move') {
-		const move = data.move;
-		if (game.chess) {
-			const success = game.chess.move(move);
-			if (!success) {
-				console.log('Invalid move:', move);
-			}
-			broadcastGameState(game);
-		}
+	if (game) {
+		game.checkGameStart();
+		return true;
 	}
-}
-
-function broadcastGameState(game: GameRoom) {
-	const gameState = {
-		type: 'gameState',
-		fen: game.chess?.fen() || ''
-	};
-
-	const stateJson = JSON.stringify(gameState);
-
-	game.players.forEach((player) => {
-		player.ws.send(stateJson);
-	});
+	return false;
 }

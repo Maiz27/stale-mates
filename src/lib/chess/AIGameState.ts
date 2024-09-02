@@ -29,21 +29,9 @@ export class AIGameState extends GameState {
 		}
 	}
 
-	makeMove({ from, to, promotion }: ChessMove): boolean {
-		try {
-			const move = this.chess.move({ from, to, promotion });
-			if (move) {
-				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
-				this.updateGameState();
-				this.engine.setPosition(this.chess.fen());
-				this.determineMoveType(move);
-				this.triggerAiMove();
-				return true;
-			}
-		} catch (error) {
-			console.error('Invalid move:', { from, to, promotion }, error);
-		}
-		return false;
+	protected onMove(): void {
+		this.engine.setPosition(this.chess.fen());
+		this.triggerAiMove();
 	}
 
 	undoMove() {
