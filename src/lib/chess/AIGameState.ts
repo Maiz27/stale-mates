@@ -72,7 +72,9 @@ export class AIGameState extends GameState {
 
 	private triggerAiMove() {
 		if (this.player !== get(this.turn)) {
-			this.engine.go();
+			setTimeout(() => {
+				this.engine.go();
+			}, 500);
 		}
 	}
 

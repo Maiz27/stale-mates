@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Chessground } from 'svelte-chessground';
+	import PromotionModal from './PromotionModal.svelte';
 	import type { Config } from 'chessground/config';
 	import type { Color } from 'chessground/types';
-	import PromotionModal from './PromotionModal.svelte';
-	import type { PromotionMove, GameOver, MoveType } from '$lib/chess/types';
+	import type { PromotionMove, GameOver } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
 	import type { GameSettings } from '$lib/stores/gameSettings';
-	import { MOVE_AUDIOS_PATHS } from '$lib/constants';
 	import type { AIGameState } from '$lib/chess/AIGameState';
 	import type { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
 
@@ -17,7 +16,6 @@
 	let chessground: Chessground;
 	let config: Config;
 	let promotionModalOpen = false;
-	let audioFiles: Record<MoveType, HTMLAudioElement> = {} as Record<MoveType, HTMLAudioElement>;
 
 	$: fen = '';
 	$: turn = 'white' as Color;
@@ -27,16 +25,8 @@
 	$: started = false;
 	$: promotionMove = null as PromotionMove;
 	$: hint = null as { from: string; to: string } | null;
-	$: moveType = 'normal' as MoveType;
 
 	onMount(() => {
-		// Initialize audio files
-		Object.entries(MOVE_AUDIOS_PATHS).forEach(([key, path]) => {
-			audioFiles[key as MoveType] = new Audio(path);
-			audioFiles[key as MoveType].load();
-			audioFiles[key as MoveType].volume = 0.9;
-		});
-
 		// Subscribe to game state changes
 		const unsubscribeFen = gameState.fen.subscribe((value) => (fen = value));
 		const unsubscribeTurn = gameState.turn.subscribe((value) => (turn = value));
@@ -56,10 +46,6 @@
 			hint = value;
 			updateHintShape();
 		});
-		const unsubscribeMoveType = gameState.lastMove.subscribe((value) => {
-			moveType = value;
-			playAudio();
-		});
 
 		return () => {
 			unsubscribeFen();
@@ -70,7 +56,6 @@
 			unsubscribeStarted();
 			unsubscribePromotionMove();
 			unsubscribeHint();
-			unsubscribeMoveType();
 		};
 	});
 
@@ -82,6 +67,9 @@
 		highlight: {
 			lastMove: true,
 			check: true
+		},
+		animation: {
+			enabled: true
 		},
 		events: {
 			move: handleMove,
@@ -95,10 +83,7 @@
 			color: started && turn === playerColor ? playerColor : undefined,
 			dests: destinations,
 			free: false,
-			showDests: true,
-			events: {
-				after: playAudio
-			}
+			showDests: true
 		},
 		drawable: {
 			enabled: true,
@@ -143,14 +128,6 @@
 					chessground.set({ fen: fen });
 				}
 			}
-		}
-	}
-
-	async function playAudio() {
-		if (audioFiles[moveType]) {
-			await audioFiles[moveType]
-				.play()
-				.catch((error) => console.error('Audio playback failed:', error));
 		}
 	}
 

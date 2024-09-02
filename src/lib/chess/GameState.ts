@@ -2,12 +2,13 @@ import { writable, type Writable } from 'svelte/store';
 import { Chess, type Move, type Square } from 'chess.js';
 import { getCheckState, toDestinations } from './utils';
 import type { GameSettings } from '$lib/stores/gameSettings';
-import { STARTING_FEN } from '../constants';
+import { STARTING_FEN, MOVE_AUDIOS_PATHS } from '../constants';
 import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove, MoveType } from './types';
 import type { Color } from 'chessground/types';
 
 export abstract class GameState {
 	protected chess: Chess;
+	private audioFiles: Record<MoveType, HTMLAudioElement> = {} as Record<MoveType, HTMLAudioElement>;
 	mode: GameMode;
 	player: Color;
 	moveHistory: Writable<ChessMove[]> = writable([]);
@@ -28,6 +29,13 @@ export abstract class GameState {
 		this.fen = writable(fen);
 		this.turn = writable(this.chess.turn() === 'w' ? 'white' : 'black');
 		this.updateDestinations();
+
+		// Initialize audio files
+		Object.entries(MOVE_AUDIOS_PATHS).forEach(([key, path]) => {
+			this.audioFiles[key as MoveType] = new Audio(path);
+			this.audioFiles[key as MoveType].load();
+			this.audioFiles[key as MoveType].volume = 0.9;
+		});
 	}
 
 	abstract setDifficulty(difficulty: number): void;
@@ -111,5 +119,16 @@ export abstract class GameState {
 			moveType = 'check';
 		}
 		this.lastMove.set(moveType);
+		this.playMoveAudio(moveType);
+	}
+
+	protected async playMoveAudio(moveType: MoveType) {
+		if (this.audioFiles[moveType]) {
+			try {
+				await this.audioFiles[moveType].play();
+			} catch (error) {
+				console.error('Audio playback failed:', error);
+			}
+		}
 	}
 }
