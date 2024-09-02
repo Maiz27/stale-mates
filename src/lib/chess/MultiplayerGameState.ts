@@ -11,12 +11,13 @@ export interface MultiplayerGameStateOptions {
 
 export class MultiplayerGameState extends GameState {
 	private ws: WebSocket;
+	private timer: number | null = null;
+	private lastMoveTime: number | null = null;
 	opponentConnected: Writable<boolean> = writable(false);
 	isUnlimited: Writable<boolean> = writable(true);
 	whiteTime: Writable<number> = writable(0);
 	blackTime: Writable<number> = writable(0);
-	private timer: number | null = null;
-	private lastMoveTime: number | null = null;
+	rematchOffer: Writable<boolean> = writable(false);
 
 	constructor({ player, websocket }: MultiplayerGameStateOptions) {
 		super('pvp', player);
@@ -51,6 +52,7 @@ export class MultiplayerGameState extends GameState {
 				this.opponentConnected.set(true);
 				break;
 			case 'gameStart':
+				this.endGame();
 				this.initializeTimer(data.timeControl);
 				this.started.set(true);
 				break;
@@ -59,6 +61,9 @@ export class MultiplayerGameState extends GameState {
 				break;
 			case 'gameState':
 				this.handleGameState(data);
+				break;
+			case 'rematchOffer':
+				this.rematchOffer.set(true);
 				break;
 		}
 	}
@@ -162,6 +167,14 @@ export class MultiplayerGameState extends GameState {
 		this.turn.set(data.turn);
 		if (data.whiteTime !== undefined) this.whiteTime.set(data.whiteTime);
 		if (data.blackTime !== undefined) this.blackTime.set(data.blackTime);
+	}
+
+	offerRematch() {
+		this.ws.send(JSON.stringify({ type: 'offerRematch' }));
+	}
+
+	acceptRematch() {
+		this.ws.send(JSON.stringify({ type: 'acceptRematch' }));
 	}
 
 	setDifficulty(): void {

@@ -114,15 +114,16 @@ export class GameRoom {
 
 	private handleRematchOffer(playerId: string) {
 		this.rematchOffers.add(playerId);
-		if (this.rematchOffers.size === 2) {
-			this.restartGame();
-		} else {
-			this.broadcastRematchOffer(playerId);
-		}
+		this.broadcastRematchOffer(playerId);
+		this.checkRematchAccepted();
 	}
 
 	private handleRematchAccept(playerId: string) {
 		this.rematchOffers.add(playerId);
+		this.checkRematchAccepted();
+	}
+
+	private checkRematchAccepted() {
 		if (this.rematchOffers.size === 2) {
 			this.restartGame();
 		}
@@ -138,6 +139,17 @@ export class GameRoom {
 			}
 		});
 		this.lastMoveTime = undefined;
+
+		// Send gameStart message to both players
+		this.players.forEach((player) => {
+			player.ws.send(
+				JSON.stringify({
+					type: 'gameStart',
+					timeControl: this.timeControl
+				})
+			);
+		});
+
 		this.broadcastGameState();
 	}
 
