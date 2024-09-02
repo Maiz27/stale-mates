@@ -25,6 +25,13 @@ export const COLOR_OPTIONS = [
 	{ value: 'black', label: 'Black' }
 ];
 
+export const TIME_OPTIONS = [
+	{ value: 0, label: 'Unlimited' },
+	{ value: 1, label: '1 Minute' },
+	{ value: 3, label: '3 Minutes' },
+	{ value: 10, label: '10 Minutes' }
+];
+
 export const PROMOTION_OPTIONS = [
 	{ value: 'q', label: 'Queen' },
 	{ value: 'r', label: 'Rook' },

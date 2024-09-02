@@ -1,10 +1,11 @@
 import WebSocket from 'ws';
 import { GameRoom } from './GameRoom';
+import { TimeOption } from './types';
 
 const games = new Map<string, GameRoom>();
 
-export function createGame(): string {
-	const game = new GameRoom();
+export function createGame({ time }: { time: TimeOption }): string {
+	const game = new GameRoom({ time });
 	games.set(game.id, game);
 	return game.id;
 }
@@ -44,8 +45,7 @@ export function handlePlayerMessage(gameId: string, playerId: string, message: s
 
 export function checkGameStart(gameId: string): boolean {
 	const game = games.get(gameId);
-	if (game) {
-		game.checkGameStart();
+	if (game && game.checkGameStart()) {
 		return true;
 	}
 	return false;

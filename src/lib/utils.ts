@@ -59,3 +59,15 @@ export const flyAndScale = (
 export const getDifficultyLabel = (value: number): string => {
 	return DIFFICULTY_OPTIONS.find((option) => option.value === value)?.label || '';
 };
+
+export const formatTime = (seconds: number): string => {
+	if (seconds === Infinity) return 'Unlimited';
+
+	const minutes = Math.floor(seconds / 60);
+	const remainingSeconds = Math.round(seconds % 60);
+
+	const minutesStr = minutes.toString().padStart(2, '0');
+	const secondsStr = remainingSeconds.toString().padStart(2, '0');
+
+	return `${minutesStr}:${secondsStr}`;
+};

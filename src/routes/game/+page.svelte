@@ -4,6 +4,7 @@
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import type { Color } from 'chessground/types';
 	import { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
+	import { formatTime } from '$lib/utils';
 
 	const gameId = $page.url.searchParams.get('room');
 	const playerColor = ($page.url.searchParams.get('color') as Color) || 'white';
@@ -12,6 +13,10 @@
 	let chessboardComponent: ChessBoard;
 	let started = false;
 	let opponentConnected = false;
+
+	let isUnlimited = true;
+	let whiteTime = 0;
+	let blackTime = 0;
 
 	onMount(() => {
 		const ws = new WebSocket(
@@ -26,10 +31,18 @@
 			const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
 				(value) => (opponentConnected = value)
 			);
+			const unsubscribeIsUnlimited = gameState.isUnlimited.subscribe(
+				(value) => (isUnlimited = value)
+			);
+			const unsubscribeWhiteTime = gameState.whiteTime.subscribe((value) => (whiteTime = value));
+			const unsubscribeBlackTime = gameState.blackTime.subscribe((value) => (blackTime = value));
 
 			return () => {
 				unsubscribeStarted();
 				unsubscribeOpponentConnected();
+				unsubscribeIsUnlimited();
+				unsubscribeWhiteTime();
+				unsubscribeBlackTime();
 				if (ws.readyState === WebSocket.OPEN) {
 					ws.close();
 				}
@@ -49,6 +62,12 @@
 					<p>Opponent joined. Game starting soon...</p>
 				{:else}
 					<p>Game in progress</p>
+					{#if !isUnlimited}
+						<p>White time: {formatTime(whiteTime)}</p>
+						<p>Black time: {formatTime(blackTime)}</p>
+					{:else}
+						<p>Time: Unlimited</p>
+					{/if}
 				{/if}
 			{/if}
 		</div>

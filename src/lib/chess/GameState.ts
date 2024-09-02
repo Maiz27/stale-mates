@@ -12,7 +12,7 @@ export abstract class GameState {
 	mode: GameMode;
 	player: Color;
 	moveHistory: Writable<ChessMove[]> = writable([]);
-	lastMove: Writable<MoveType> = writable('normal');
+	audioCue: Writable<MoveType> = writable('normal');
 	started: Writable<boolean> = writable(false);
 	promotionMove: Writable<PromotionMove> = writable(null);
 	checkState: Writable<CheckState> = writable({ inCheck: false });
@@ -52,7 +52,7 @@ export abstract class GameState {
 		this.chess.reset();
 		this.updateGameState();
 		this.started.set(true);
-		this.lastMove.set('game-start');
+		this.audioCue.set('game-start');
 		this.onNewGame();
 	}
 
@@ -61,7 +61,7 @@ export abstract class GameState {
 		this.updateGameState();
 		this.started.set(false);
 		this.gameOver.set({ isOver: false, winner: null });
-		this.lastMove.set('game-end');
+		this.audioCue.set('game-end');
 	}
 
 	handlePlayerMove({ from, to }: ChessMove) {
@@ -108,7 +108,7 @@ export abstract class GameState {
 		if (this.chess.isGameOver()) {
 			let winner: Color | 'draw' = 'draw';
 			if (this.chess.isCheckmate()) {
-				this.lastMove.set('game-end');
+				this.audioCue.set('game-end');
 				winner = this.chess.turn() === 'w' ? 'black' : 'white';
 			}
 			this.gameOver.set({ isOver: true, winner });
@@ -136,7 +136,7 @@ export abstract class GameState {
 		if (this.chess.isCheck()) {
 			moveType = 'check';
 		}
-		this.lastMove.set(moveType);
+		this.audioCue.set(moveType);
 		this.playMoveAudio(moveType);
 	}
 

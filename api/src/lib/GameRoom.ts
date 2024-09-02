@@ -1,13 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import WebSocket from 'ws';
 import { Chess } from 'chess.js';
 import { nanoid } from 'nanoid';
-
-type Player = {
-	id: string;
-	color: 'white' | 'black';
-	ws: WebSocket;
-	timeRemaining?: number;
-};
+import { Player, TimeControl, TimeOption } from './types';
 
 export class GameRoom {
 	id: string;
@@ -16,12 +11,15 @@ export class GameRoom {
 	currentTurn: 'white' | 'black';
 	gameTimer?: NodeJS.Timeout;
 	rematchOffers: Set<string> = new Set();
+	timeControl: TimeControl;
+	lastMoveTime?: number;
 
-	constructor() {
+	constructor({ time = 0 }: { time: TimeOption }) {
 		this.id = nanoid();
 		this.players = [];
 		this.chess = new Chess();
 		this.currentTurn = 'white';
+		this.timeControl = this.convertTimeOption(time);
 	}
 
 	addPlayer(color: 'white' | 'black', ws: WebSocket): string {
@@ -29,7 +27,8 @@ export class GameRoom {
 			throw new Error('Game room is full');
 		}
 		const playerId = nanoid();
-		this.players.push({ id: playerId, color, ws });
+		const timeRemaining = this.timeControl.isUnlimited ? null : this.timeControl.initial;
+		this.players.push({ id: playerId, color, ws, timeRemaining });
 		return playerId;
 	}
 
@@ -52,7 +51,11 @@ export class GameRoom {
 			case 'acceptRematch':
 				this.handleRematchAccept(playerId);
 				break;
-			// Add more message types as needed
+			case 'gameOver':
+				if (message.reason === 'timeout') {
+					this.handleTimeOut(message.winner);
+				}
+				break;
 		}
 	}
 
@@ -64,7 +67,7 @@ export class GameRoom {
 
 		this.players.forEach((player) => {
 			player.ws.send(JSON.stringify({ type: 'opponentJoined' }));
-			player.ws.send(JSON.stringify({ type: 'gameStart' }));
+			player.ws.send(JSON.stringify({ type: 'gameStart', timeControl: this.timeControl }));
 		});
 
 		return true;
@@ -77,8 +80,36 @@ export class GameRoom {
 		if (success) {
 			this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
 			this.broadcastMove(player.id, move);
+			if (!this.timeControl.isUnlimited) {
+				this.updatePlayerTime(player);
+			}
 			this.checkGameEnd();
 		}
+	}
+
+	private updatePlayerTime(player: Player) {
+		if (player.timeRemaining === null) return;
+
+		const now = Date.now();
+		if (this.lastMoveTime) {
+			const timeTaken = (now - this.lastMoveTime) / 1000; // Convert to seconds
+			player.timeRemaining -= timeTaken;
+
+			// Apply increment only if player's time is below the low time threshold
+			if (player.timeRemaining <= this.timeControl.lowTimeThreshold) {
+				player.timeRemaining += this.timeControl.increment;
+			}
+
+			if (player.timeRemaining <= 0) {
+				this.handleTimeOut(player.color === 'white' ? 'black' : 'white');
+			}
+		}
+		this.lastMoveTime = now;
+		this.broadcastGameState();
+	}
+
+	private handleTimeOut(winner: 'white' | 'black') {
+		this.broadcastGameOver(winner, 'timeout');
 	}
 
 	private handleRematchOffer(playerId: string) {
@@ -101,14 +132,26 @@ export class GameRoom {
 		this.chess.reset();
 		this.currentTurn = 'white';
 		this.rematchOffers.clear();
-		// Reset timers if implemented
+		this.players.forEach((player) => {
+			if (player.timeRemaining !== null) {
+				player.timeRemaining = this.timeControl.initial;
+			}
+		});
+		this.lastMoveTime = undefined;
 		this.broadcastGameState();
 	}
 
 	private checkGameEnd() {
 		if (this.chess.isGameOver()) {
-			// Handle game over logic
-			this.broadcastGameOver();
+			let winner: 'white' | 'black' | undefined;
+			let reason: string;
+			if (this.chess.isCheckmate()) {
+				winner = this.currentTurn === 'white' ? 'black' : 'white';
+				reason = 'checkmate';
+			} else {
+				reason = 'draw';
+			}
+			this.broadcastGameOver(winner, reason);
 		}
 	}
 
@@ -129,18 +172,19 @@ export class GameRoom {
 		const stateMessage = JSON.stringify({
 			type: 'gameState',
 			fen: this.chess.fen(),
-			turn: this.currentTurn
+			turn: this.currentTurn,
+			whiteTime: this.players.find((p) => p.color === 'white')?.timeRemaining,
+			blackTime: this.players.find((p) => p.color === 'black')?.timeRemaining
 		});
 
 		this.players.forEach((player) => player.ws.send(stateMessage));
 	}
 
-	private broadcastGameOver() {
+	private broadcastGameOver(winner?: 'white' | 'black', reason?: string) {
 		const gameOverMessage = JSON.stringify({
 			type: 'gameOver',
-			result: this.chess.isCheckmate()
-				? `${this.currentTurn === 'white' ? 'Black' : 'White'} wins`
-				: 'Draw'
+			winner,
+			reason
 		});
 
 		this.players.forEach((player) => player.ws.send(gameOverMessage));
@@ -157,5 +201,20 @@ export class GameRoom {
 				player.ws.send(rematchMessage);
 			}
 		});
+	}
+
+	private convertTimeOption(time: TimeOption): TimeControl {
+		switch (time) {
+			case 0:
+				return { initial: 0, lowTimeThreshold: 0, increment: 0, isUnlimited: true };
+			case 1:
+				return { initial: 60, lowTimeThreshold: 10, increment: 3, isUnlimited: false };
+			case 3:
+				return { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false };
+			case 10:
+				return { initial: 600, lowTimeThreshold: 60, increment: 5, isUnlimited: false };
+			default:
+				throw new Error('Invalid time option');
+		}
 	}
 }

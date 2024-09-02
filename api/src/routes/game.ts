@@ -7,9 +7,11 @@ GameRouter.get('/', (req, res) => {
 	res.json({ message: 'Hello from the game API!' });
 });
 
-GameRouter.post('/create', async (req, res) => {
+GameRouter.post('/create', (req, res) => {
+	const { time } = req.body;
+
 	try {
-		const gameId = await createGame();
+		const gameId = createGame({ time });
 		res.json({ gameId });
 	} catch (error) {
 		console.error('Error creating game:', error);
