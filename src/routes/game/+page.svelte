@@ -2,13 +2,13 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
-	import { GameState } from '$lib/chess/GameState';
 	import type { Color } from 'chessground/types';
+	import { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
 
 	const gameId = $page.url.searchParams.get('room');
 	const playerColor = ($page.url.searchParams.get('color') as Color) || 'white';
 
-	let gameState: GameState;
+	let gameState: MultiplayerGameState;
 	let chessboardComponent: ChessBoard;
 	let started = false;
 	let opponentConnected = false;
@@ -20,11 +20,7 @@
 
 		ws.onopen = () => {
 			console.log('WebSocket connection established');
-			gameState = new GameState({
-				gameMode: 'pvp',
-				player: playerColor,
-				websocket: ws
-			});
+			gameState = new MultiplayerGameState({ player: playerColor, websocket: ws });
 
 			const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
 			const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(

@@ -3,15 +3,16 @@
 	import { Chessground } from 'svelte-chessground';
 	import type { Config } from 'chessground/config';
 	import type { Color } from 'chessground/types';
-	import { GameState } from '$lib/chess/GameState';
 	import PromotionModal from './PromotionModal.svelte';
 	import type { PromotionMove, GameOver, MoveType } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
 	import type { GameSettings } from '$lib/stores/gameSettings';
 	import { MOVE_AUDIOS_PATHS } from '$lib/constants';
+	import type { AIGameState } from '$lib/chess/AIGameState';
+	import type { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
 
 	export let playerColor: Color;
-	export let gameState: GameState;
+	export let gameState: AIGameState | MultiplayerGameState;
 
 	let chessground: Chessground;
 	let config: Config;
