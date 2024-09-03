@@ -92,14 +92,14 @@
 
 		<div class="flex gap-2">
 			{#if started}
-				<Button on:click={endGame}>End Game</Button>
+				<Button on:click={endGame}>{gameOver.isOver ? 'Reset Game' : 'End Game'}</Button>
 			{:else}
 				<Button on:click={startNewGame}>Start New Game</Button>
 			{/if}
 			<Button
 				on:click={getHint}
 				variant="outline"
-				disabled={!started || !$settingsStore.hints}
+				disabled={!started || !$settingsStore.hints || gameOver.isOver}
 				title="Get Hint"
 			>
 				<Icon icon="radix-icons:question-mark" />
@@ -107,12 +107,16 @@
 			<Button
 				on:click={undoMove}
 				variant="outline"
-				disabled={!started || !$settingsStore.undo || moveHistory.length < 2}
+				disabled={!started || !$settingsStore.undo || moveHistory.length < 2 || gameOver.isOver}
 				title="Undo Move"
 			>
 				<Icon icon="radix-icons:thick-arrow-left" />
 			</Button>
-			<PlayAiDrawer isSave={true} isGameStarted={started} onSettingsUpdate={handleSettingsUpdate} />
+			<PlayAiDrawer
+				isSave={true}
+				isGameStarted={started && !gameOver.isOver}
+				onSettingsUpdate={handleSettingsUpdate}
+			/>
 		</div>
 	</section>
 
