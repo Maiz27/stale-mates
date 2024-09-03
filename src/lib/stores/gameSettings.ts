@@ -10,7 +10,7 @@ export type GameSettings = {
 
 const defaultSettings: GameSettings = {
 	color: 'white',
-	difficulty: 10,
+	difficulty: 7,
 	hints: true,
 	undo: true
 };

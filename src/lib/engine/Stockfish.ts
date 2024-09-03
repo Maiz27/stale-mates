@@ -90,13 +90,14 @@ export class Stockfish extends Engine {
 	 * @param level - Difficulty level (1-20, where 1 is easiest and 20 is hardest)
 	 *
 	 * This method adjusts several Stockfish parameters based on the difficulty level:
-	 * 1. Skill Level (0-20): Mapped non-linearly from the input level.
+	 * 1. Skill Level (0-20): Mapped using a sigmoid function for a more gradual increase.
 	 *    Lower values make the engine play weaker, allowing for more mistakes.
 	 *    At 0, the engine plays randomly from a selection of good moves.
 	 *
-	 * 2. Contempt (0-100): Mapped non-linearly from the input level.
-	 *    Higher values make the engine play more aggressively and take more risks to avoid draws.
-	 *    At 0, the engine plays objectively; at 100, it strongly prefers winning over drawing.
+	 * 2. Contempt (-100 to 100): Mapped using a sigmoid function centered at 0.
+	 *    Positive values make the engine play more aggressively and take more risks to avoid draws.
+	 *    Negative values make the engine more accepting of draws.
+	 *    At 0, the engine plays objectively.
 	 *
 	 * 3. MultiPV (5-1): Decreases linearly as difficulty increases.
 	 *    Determines the number of alternative moves the engine considers.
@@ -111,8 +112,11 @@ export class Stockfish extends Engine {
 	 *    Determines how many moves ahead the engine calculates.
 	 *    Greater depth at higher difficulties results in stronger, more strategic play.
 	 *
-	 * The non-linear mappings ensure a smooth progression of difficulty,
-	 * with more pronounced changes at higher levels for a greater challenge.
+	 * The new mappings ensure a smoother progression of difficulty:
+	 * - Beginner and Casual levels have negative contempt, favoring drawish play.
+	 * - Intermediate level has slightly negative contempt, balancing between drawish and aggressive play.
+	 * - Advanced to Grandmaster levels have increasingly positive contempt, favoring more aggressive play.
+	 * This progression aims to provide a more natural increase in difficulty and aggressiveness.
 	 */
 	setDifficulty(level: number): void {
 		this.difficulty = level;
@@ -223,24 +227,28 @@ export class Stockfish extends Engine {
 
 	/**
 	 * Maps the difficulty level (1-20) to a Stockfish Skill Level (0-20).
-	 * Uses a power function with exponent 1.7 to create a more balanced difficulty curve.
+	 * Uses a sigmoid function for a more gradual increase in skill level.
 	 *
 	 * @param level - The input difficulty level (1-20)
 	 * @returns The corresponding Stockfish Skill Level (0-20)
 	 */
 	private mapLevelToSkill(level: number): number {
-		return Math.round(Math.pow((level - 1) / 19, 1.7) * 20);
+		const x = (level - 10) / 5; // Center the sigmoid at level 10
+		const sigmoid = 1 / (1 + Math.exp(-x));
+		return Math.round(sigmoid * 20);
 	}
 
 	/**
-	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (0-100).
-	 * Uses a power function with exponent 1.3 for a slightly more aggressive progression.
+	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (-100 to 100).
+	 * Uses a sigmoid function for a more balanced progression, centered at 0.
 	 *
 	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding Stockfish Contempt value (0-100)
+	 * @returns The corresponding Stockfish Contempt value (-100 to 100)
 	 */
 	private mapLevelToContempt(level: number): number {
-		return Math.round(Math.pow((level - 1) / 19, 1.3) * 100);
+		const x = (level - 10) / 3; // Center the sigmoid at level 10
+		const sigmoid = 1 / (1 + Math.exp(-x));
+		return Math.round((sigmoid * 2 - 1) * 100); // Map to range -100 to 100
 	}
 
 	/**
