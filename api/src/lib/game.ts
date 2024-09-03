@@ -1,104 +1,52 @@
-import { Chess } from 'chess.js';
 import WebSocket from 'ws';
-import { nanoid } from 'nanoid';
+import { GameRoom } from './GameRoom';
+import { TimeOption } from './types';
 
-type Player = {
-	id: string;
-	color: 'white' | 'black';
-	ws: WebSocket;
-};
+const gameRooms = new Map<string, GameRoom>();
 
-type GameRoom = {
-	id: string;
-	players: Player[];
-	chess: Chess | null;
-};
-
-const games = new Map<string, GameRoom>();
-
-async function generateId(): Promise<string> {
-	return nanoid();
+export function createGame({ time }: { time: TimeOption }): string {
+	const room = new GameRoom({ time });
+	gameRooms.set(room.id, room);
+	return room.id;
 }
 
-export async function createGame(): Promise<string> {
-	const gameId = await generateId();
-	games.set(gameId, { id: gameId, players: [], chess: null });
-	return gameId;
-}
-
-export async function addPlayerToGame(
+export function addPlayerToGame(
 	gameId: string,
 	color: 'white' | 'black',
 	ws: WebSocket
-): Promise<string | null> {
-	const game = games.get(gameId);
-	if (!game || game.players.length >= 2) return null;
+): string | null {
+	const room = gameRooms.get(gameId);
+	if (!room) return null;
 
-	const playerId = await generateId();
-	const player: Player = { id: playerId, color, ws };
-	game.players.push(player);
-
-	if (game.players.length === 2) {
-		game.chess = new Chess();
-		broadcastGameState(game);
+	try {
+		return room.addPlayer(color, ws);
+	} catch (error) {
+		console.error('Error adding player to game:', error);
+		return null;
 	}
-
-	return playerId;
 }
 
 export function removePlayerFromGame(gameId: string, playerId: string) {
-	const game = games.get(gameId);
-	if (!game) return;
-
-	game.players = game.players.filter((p) => p.id !== playerId);
-	if (game.players.length === 0) {
-		games.delete(gameId);
-	} else {
-		broadcastGameState(game);
-	}
-}
-
-export function checkGameStart(gameId: string): boolean {
-	const game = games.get(gameId);
-	if (!game || game.players.length !== 2) return false;
-
-	game.chess = new Chess();
-	broadcastGameState(game);
-
-	game.players.forEach((player) => {
-		player.ws.send(JSON.stringify({ type: 'opponentJoined' }));
-		player.ws.send(JSON.stringify({ type: 'gameStart' }));
-	});
-
-	return true;
-}
-
-export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
-	const game = games.get(gameId);
-	if (!game) return;
-
-	const data = JSON.parse(message);
-	if (data.type === 'move') {
-		const move = data.move;
-		if (game.chess) {
-			const success = game.chess.move(move);
-			if (!success) {
-				console.log('Invalid move:', move);
-			}
-			broadcastGameState(game);
+	const room = gameRooms.get(gameId);
+	if (room) {
+		room.removePlayer(playerId);
+		if (room.players.length === 0) {
+			gameRooms.delete(gameId);
 		}
 	}
 }
 
-function broadcastGameState(game: GameRoom) {
-	const gameState = {
-		type: 'gameState',
-		fen: game.chess?.fen() || ''
-	};
+export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
+	const room = gameRooms.get(gameId);
+	if (room) {
+		room.handleMessage(playerId, JSON.parse(message));
+	}
+}
 
-	const stateJson = JSON.stringify(gameState);
-
-	game.players.forEach((player) => {
-		player.ws.send(stateJson);
-	});
+export function checkGameStart(gameId: string): boolean {
+	const room = gameRooms.get(gameId);
+	if (room && room.checkGameStart()) {
+		return true;
+	}
+	return false;
 }

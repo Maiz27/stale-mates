@@ -8,11 +8,13 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ColorSelector from '../controls/ColorSelector.svelte';
 	import type { Color } from 'chessground/types';
+	import TimeSelector from '../controls/TimeSelector.svelte';
 
 	let open = false;
 	let opponentLink = '';
 	let playerLink = '';
 	let color: Color | 'random' = 'white';
+	let time = 0;
 
 	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Play Friend: Friendly Duel';
@@ -27,16 +29,18 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({})
+				body: JSON.stringify({
+					time
+				})
 			});
 
 			if (!response.ok) throw new Error('Failed to create game');
 
-			const { gameId } = await response.json();
+			const { id } = await response.json();
 			const playerColor = color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
 			const opponentColor = playerColor === 'white' ? 'black' : 'white';
-			opponentLink = `${window.location.origin}/game?room=${gameId}&color=${opponentColor}`;
-			playerLink = `${window.location.origin}/game?room=${gameId}&color=${playerColor}`;
+			opponentLink = `${window.location.origin}/room?id=${id}&color=${opponentColor}`;
+			playerLink = `${window.location.origin}/room?id=${id}&color=${playerColor}`;
 		} catch (error) {
 			console.error('Error creating game:', error);
 		}
@@ -44,6 +48,10 @@
 
 	const handleColorChange = (event: CustomEvent) => {
 		color = event.detail.value;
+	};
+
+	const handleTimeChange = (event: CustomEvent) => {
+		time = event.detail.value;
 	};
 
 	const navigateToGame = () => {
@@ -70,6 +78,7 @@
 			<div class="w-full space-y-4">
 				<div class="space-y-4">
 					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
+					<TimeSelector on:timeChange={handleTimeChange} />
 					{#if opponentLink}
 						<div>
 							<p class="text-sm text-muted-foreground">
@@ -115,6 +124,7 @@
 			<div class="w-full space-y-4 px-4 pb-4">
 				<div class="space-y-4">
 					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
+					<TimeSelector on:timeChange={handleTimeChange} />
 					{#if opponentLink}
 						<div>
 							<p class="text-sm text-muted-foreground">
