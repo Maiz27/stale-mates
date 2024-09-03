@@ -20,8 +20,8 @@ export class AIGameState extends GameState {
 		this.engine = initializeEngine(this.handleEngineMessage.bind(this), difficulty, debug);
 	}
 
-	protected onNewGame(): void {
-		super.onNewGame();
+	newGame() {
+		super.newGame();
 		this.engine.newGame();
 		this.engine.setPosition(this.chess.fen());
 		if (this.player === 'black') {
@@ -29,9 +29,13 @@ export class AIGameState extends GameState {
 		}
 	}
 
-	protected onMove(): void {
-		this.engine.setPosition(this.chess.fen());
-		this.triggerAiMove();
+	makeMove(move: ChessMove): boolean {
+		const result = super.makeMove(move);
+		if (result) {
+			this.engine.setPosition(this.chess.fen());
+			this.triggerAiMove();
+		}
+		return result;
 	}
 
 	undoMove() {

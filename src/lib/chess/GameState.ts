@@ -43,17 +43,11 @@ export abstract class GameState {
 	abstract undoMove(): void;
 	abstract getHint(): Promise<ChessMove | null>;
 
-	protected onMove(move: Move): void {
-		console.log('Move:', move);
-	}
-	protected onNewGame(): void {}
-
 	newGame() {
 		this.chess.reset();
 		this.updateGameState();
 		this.started.set(true);
 		this.audioCue.set('game-start');
-		this.onNewGame();
 	}
 
 	endGame() {
@@ -79,7 +73,6 @@ export abstract class GameState {
 				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
 				this.updateGameState();
 				this.determineMoveType(move);
-				this.onMove(move);
 				return true;
 			}
 		} catch (error) {

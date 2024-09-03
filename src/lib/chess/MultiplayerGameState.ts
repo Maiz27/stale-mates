@@ -1,4 +1,3 @@
-import { type Move } from 'chess.js';
 import { get, writable, type Writable } from 'svelte/store';
 import { GameState } from './GameState';
 import type { Color } from 'chessground/types';
@@ -25,14 +24,23 @@ export class MultiplayerGameState extends GameState {
 		this.setupWebSocketListeners();
 	}
 
-	protected onMove(move: Move): void {
-		this.ws.send(
-			JSON.stringify({
-				type: 'move',
-				move: { from: move.from, to: move.to, promotion: move.promotion }
-			})
-		);
-		this.updateTimer();
+	endGame() {
+		super.endGame();
+		this.stopTimer();
+	}
+
+	makeMove(move: ChessMove): boolean {
+		const result = super.makeMove(move);
+		if (result) {
+			this.ws.send(
+				JSON.stringify({
+					type: 'move',
+					move: { from: move.from, to: move.to, promotion: move.promotion }
+				})
+			);
+			this.updateTimer();
+		}
+		return result;
 	}
 
 	private setupWebSocketListeners() {
