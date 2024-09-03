@@ -11,8 +11,8 @@ GameRouter.post('/create', (req, res) => {
 	const { time } = req.body;
 
 	try {
-		const gameId = createGame({ time });
-		res.json({ gameId });
+		const id = createGame({ time });
+		res.json({ id });
 	} catch (error) {
 		console.error('Error creating game:', error);
 		res.status(500).json({ error: 'Failed to create game' });
@@ -20,10 +20,10 @@ GameRouter.post('/create', (req, res) => {
 });
 
 GameRouter.post('/join', (req, res) => {
-	const gameId = req.query.room as string;
+	const id = req.query.id as string;
 
-	if (!gameId) {
-		return res.status(400).json({ error: 'Game ID is required' });
+	if (!id) {
+		return res.status(400).json({ error: 'Room ID is required' });
 	}
 
 	res.json({ success: true });

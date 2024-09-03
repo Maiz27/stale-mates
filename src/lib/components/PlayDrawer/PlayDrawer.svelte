@@ -36,11 +36,11 @@
 
 			if (!response.ok) throw new Error('Failed to create game');
 
-			const { gameId } = await response.json();
+			const { id } = await response.json();
 			const playerColor = color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
 			const opponentColor = playerColor === 'white' ? 'black' : 'white';
-			opponentLink = `${window.location.origin}/game?room=${gameId}&color=${opponentColor}`;
-			playerLink = `${window.location.origin}/game?room=${gameId}&color=${playerColor}`;
+			opponentLink = `${window.location.origin}/room?id=${id}&color=${opponentColor}`;
+			playerLink = `${window.location.origin}/room?id=${id}&color=${playerColor}`;
 		} catch (error) {
 			console.error('Error creating game:', error);
 		}

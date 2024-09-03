@@ -7,11 +7,10 @@
 	import { formatTime } from '$lib/utils';
 	import Button from '$lib/components/ui/button/button.svelte';
 
-	const gameId = $page.url.searchParams.get('room');
+	const id = $page.url.searchParams.get('id');
 	const playerColor = ($page.url.searchParams.get('color') as Color) || 'white';
 
 	let gameState: MultiplayerGameState;
-	let chessboardComponent: ChessBoard;
 	let started = false;
 	let opponentConnected = false;
 	let gameOver = false;
@@ -39,7 +38,7 @@
 
 	onMount(() => {
 		const ws = new WebSocket(
-			`${import.meta.env.VITE_API_WS_URL}/game/join?room=${gameId}&color=${playerColor}`
+			`${import.meta.env.VITE_API_WS_URL}/game/join?id=${id}&color=${playerColor}`
 		);
 
 		ws.onopen = () => {
@@ -135,6 +134,6 @@
 		</div>
 	</section>
 	{#if gameState && opponentConnected}
-		<ChessBoard bind:this={chessboardComponent} {gameState} {playerColor} />
+		<ChessBoard {gameState} {playerColor} />
 	{/if}
 </div>
