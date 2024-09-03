@@ -16,6 +16,8 @@
 	let color: Color | 'random' = 'white';
 	let time = 0;
 
+	let loading = false;
+
 	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Play Friend: Friendly Duel';
 	const description =
@@ -23,6 +25,9 @@
 	const extraOptions = [{ value: 'random', label: 'Random Color' }];
 
 	async function createGame() {
+		if (loading) return;
+
+		loading = true;
 		try {
 			const response = await fetch(`${import.meta.env.VITE_API_URL}/game/create`, {
 				method: 'POST',
@@ -43,6 +48,8 @@
 			playerLink = `${window.location.origin}/room?id=${id}&color=${playerColor}`;
 		} catch (error) {
 			console.error('Error creating game:', error);
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -104,7 +111,9 @@
 				{#if opponentLink}
 					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
 				{:else}
-					<Button class="w-full" on:click={createGame}>Create Game</Button>
+					<Button class={`w-full ${loading ? 'animate-pulse' : ''}`} on:click={createGame}
+						>Create Game</Button
+					>
 				{/if}
 			</div>
 		</Dialog.Content>
@@ -150,7 +159,9 @@
 				{#if opponentLink}
 					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
 				{:else}
-					<Button class="w-full" on:click={createGame}>Create Game</Button>
+					<Button class={`w-full ${loading ? 'animate-pulse' : ''}`} on:click={createGame}
+						>Create Game</Button
+					>
 				{/if}
 			</div>
 		</Drawer.Content>
