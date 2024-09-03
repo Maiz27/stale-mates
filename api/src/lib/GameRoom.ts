@@ -2,13 +2,19 @@
 import WebSocket from 'ws';
 import { Chess } from 'chess.js';
 import { nanoid } from 'nanoid';
-import { Player, TimeControl, TimeOption } from './types';
+import { Player, TimeControl, TimeOption, Color } from './types';
+
+type GameMessage =
+	| { type: 'move'; playerId: string; move: { from: string; to: string; promotion?: string } }
+	| { type: 'offerRematch'; playerId: string }
+	| { type: 'acceptRematch'; playerId: string }
+	| { type: 'gameOver'; reason: 'timeout'; winner: Color };
 
 export class GameRoom {
 	id: string;
 	players: Player[];
 	chess: Chess;
-	currentTurn: 'white' | 'black';
+	currentTurn: Color;
 	gameTimer?: NodeJS.Timeout;
 	rematchOffers: Set<string> = new Set();
 	timeControl: TimeControl;
@@ -22,13 +28,21 @@ export class GameRoom {
 		this.timeControl = this.convertTimeOption(time);
 	}
 
-	addPlayer(color: 'white' | 'black', ws: WebSocket): string {
+	addPlayer(color: Color, ws: WebSocket): string {
 		if (this.players.length >= 2) {
 			throw new Error('Game room is full');
 		}
 		const playerId = nanoid();
 		const timeRemaining = this.timeControl.isUnlimited ? null : this.timeControl.initial;
 		this.players.push({ id: playerId, color, ws, timeRemaining });
+
+		// Notify the existing player (if any) that an opponent has joined
+		if (this.players.length === 2) {
+			this.players.forEach((player) => {
+				this.sendToPlayer(player, { type: 'opponentJoined' });
+			});
+		}
+
 		return playerId;
 	}
 
@@ -37,7 +51,7 @@ export class GameRoom {
 		this.broadcastGameState();
 	}
 
-	handleMessage(playerId: string, message: any) {
+	handleMessage(playerId: string, message: GameMessage) {
 		const player = this.players.find((p) => p.id === playerId);
 		if (!player) return;
 
@@ -66,14 +80,14 @@ export class GameRoom {
 		this.broadcastGameState();
 
 		this.players.forEach((player) => {
-			player.ws.send(JSON.stringify({ type: 'opponentJoined' }));
-			player.ws.send(JSON.stringify({ type: 'gameStart', timeControl: this.timeControl }));
+			this.sendToPlayer(player, { type: 'opponentJoined' });
+			this.sendToPlayer(player, { type: 'gameStart', timeControl: this.timeControl });
 		});
 
 		return true;
 	}
 
-	private handleMove(player: Player, move: any) {
+	private handleMove(player: Player, move: { from: string; to: string; promotion?: string }) {
 		if (player.color !== this.currentTurn) return;
 
 		const success = this.chess.move(move);
@@ -108,7 +122,7 @@ export class GameRoom {
 		this.broadcastGameState();
 	}
 
-	private handleTimeOut(winner: 'white' | 'black') {
+	private handleTimeOut(winner: Color) {
 		this.broadcastGameOver(winner, 'timeout');
 	}
 
@@ -140,14 +154,11 @@ export class GameRoom {
 		});
 		this.lastMoveTime = undefined;
 
-		// Send gameStart message to both players
 		this.players.forEach((player) => {
-			player.ws.send(
-				JSON.stringify({
-					type: 'gameStart',
-					timeControl: this.timeControl
-				})
-			);
+			this.sendToPlayer(player, {
+				type: 'gameStart',
+				timeControl: this.timeControl
+			});
 		});
 
 		this.broadcastGameState();
@@ -155,7 +166,7 @@ export class GameRoom {
 
 	private checkGameEnd() {
 		if (this.chess.isGameOver()) {
-			let winner: 'white' | 'black' | undefined;
+			let winner: Color | undefined;
 			let reason: string;
 			if (this.chess.isCheckmate()) {
 				winner = this.currentTurn === 'white' ? 'black' : 'white';
@@ -167,52 +178,56 @@ export class GameRoom {
 		}
 	}
 
-	private broadcastMove(senderId: string, move: any) {
-		const moveMessage = JSON.stringify({
+	private broadcastMove(senderId: string, move: { from: string; to: string; promotion?: string }) {
+		const moveMessage = {
 			type: 'opponentMove',
 			move: move
-		});
+		};
 
 		this.players.forEach((player) => {
 			if (player.id !== senderId) {
-				player.ws.send(moveMessage);
+				this.sendToPlayer(player, moveMessage);
 			}
 		});
 	}
 
 	private broadcastGameState() {
-		const stateMessage = JSON.stringify({
+		const stateMessage = {
 			type: 'gameState',
 			fen: this.chess.fen(),
 			turn: this.currentTurn,
 			whiteTime: this.players.find((p) => p.color === 'white')?.timeRemaining,
 			blackTime: this.players.find((p) => p.color === 'black')?.timeRemaining
-		});
+		};
 
-		this.players.forEach((player) => player.ws.send(stateMessage));
+		this.players.forEach((player) => this.sendToPlayer(player, stateMessage));
 	}
 
-	private broadcastGameOver(winner?: 'white' | 'black', reason?: string) {
-		const gameOverMessage = JSON.stringify({
+	private broadcastGameOver(winner?: Color, reason?: string) {
+		const gameOverMessage = {
 			type: 'gameOver',
 			winner,
 			reason
-		});
+		};
 
-		this.players.forEach((player) => player.ws.send(gameOverMessage));
+		this.players.forEach((player) => this.sendToPlayer(player, gameOverMessage));
 	}
 
 	private broadcastRematchOffer(offerId: string) {
-		const rematchMessage = JSON.stringify({
+		const rematchMessage = {
 			type: 'rematchOffer',
 			offerId: offerId
-		});
+		};
 
 		this.players.forEach((player) => {
 			if (player.id !== offerId) {
-				player.ws.send(rematchMessage);
+				this.sendToPlayer(player, rematchMessage);
 			}
 		});
+	}
+
+	private sendToPlayer(player: Player, message: any) {
+		player.ws.send(JSON.stringify(message));
 	}
 
 	private convertTimeOption(time: TimeOption): TimeControl {
