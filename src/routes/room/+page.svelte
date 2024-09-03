@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import type { Color } from 'chessground/types';
@@ -37,50 +37,46 @@
 	}
 
 	onMount(() => {
-		const ws = new WebSocket(
-			`${import.meta.env.VITE_API_WS_URL}/game/join?id=${id}&color=${playerColor}`
+		gameState = new MultiplayerGameState({ player: playerColor, roomId: id! });
+
+		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
+		const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
+			(value) => (opponentConnected = value)
 		);
+		const unsubscribeIsUnlimited = gameState.isUnlimited.subscribe(
+			(value) => (isUnlimited = value)
+		);
+		const unsubscribeWhiteTime = gameState.whiteTime.subscribe((value) => {
+			playerColor === 'white' ? (myTime = value) : (opponentTime = value);
+		});
+		const unsubscribeBlackTime = gameState.blackTime.subscribe((value) => {
+			playerColor === 'black' ? (myTime = value) : (opponentTime = value);
+		});
+		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => {
+			gameOver = value.isOver;
+			if (gameOver) {
+				resetRematchState();
+			}
+		});
+		const unsubscribeRematchOffer = gameState.rematchOffer.subscribe((value) => {
+			opponentOfferedRematch = value;
+		});
 
-		ws.onopen = () => {
-			console.log('WebSocket connection established');
-			gameState = new MultiplayerGameState({ player: playerColor, websocket: ws });
-
-			const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-			const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
-				(value) => (opponentConnected = value)
-			);
-			const unsubscribeIsUnlimited = gameState.isUnlimited.subscribe(
-				(value) => (isUnlimited = value)
-			);
-			const unsubscribeWhiteTime = gameState.whiteTime.subscribe((value) => {
-				playerColor === 'white' ? (myTime = value) : (opponentTime = value);
-			});
-			const unsubscribeBlackTime = gameState.blackTime.subscribe((value) => {
-				playerColor === 'black' ? (myTime = value) : (opponentTime = value);
-			});
-			const unsubscribeGameOver = gameState.gameOver.subscribe((value) => {
-				gameOver = value.isOver;
-				if (gameOver) {
-					resetRematchState();
-				}
-			});
-			const unsubscribeRematchOffer = gameState.rematchOffer.subscribe((value) => {
-				opponentOfferedRematch = value;
-			});
-
-			return () => {
-				unsubscribeStarted();
-				unsubscribeOpponentConnected();
-				unsubscribeIsUnlimited();
-				unsubscribeWhiteTime();
-				unsubscribeBlackTime();
-				unsubscribeGameOver();
-				unsubscribeRematchOffer();
-				if (ws.readyState === WebSocket.OPEN) {
-					ws.close();
-				}
-			};
+		return () => {
+			unsubscribeStarted();
+			unsubscribeOpponentConnected();
+			unsubscribeIsUnlimited();
+			unsubscribeWhiteTime();
+			unsubscribeBlackTime();
+			unsubscribeGameOver();
+			unsubscribeRematchOffer();
 		};
+	});
+
+	onDestroy(() => {
+		if (gameState) {
+			gameState.close();
+		}
 	});
 </script>
 
@@ -94,7 +90,7 @@
 				{:else if !started}
 					<p>Opponent joined. Game starting soon...</p>
 				{:else}
-					<div class="mx-auto grid w-4/5 grid-cols-2 gap-y-2">
+					<div class="col-auto mx-auto grid w-4/5 gap-y-2">
 						{#if !isUnlimited}
 							<div>
 								My Time: <span

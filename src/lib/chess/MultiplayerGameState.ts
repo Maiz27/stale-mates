@@ -2,14 +2,15 @@ import { get, writable, type Writable } from 'svelte/store';
 import { GameState } from './GameState';
 import type { Color } from 'chessground/types';
 import type { ChessMove, GameOver, TimeControl } from './types';
+import { WebSocketManager } from './WebSocketManager';
 
 export interface MultiplayerGameStateOptions {
 	player: Color;
-	websocket: WebSocket;
+	roomId: string;
 }
 
 export class MultiplayerGameState extends GameState {
-	private ws: WebSocket;
+	private wsManager: WebSocketManager;
 	private timer: number | null = null;
 	private lastMoveTime: number | null = null;
 	opponentConnected: Writable<boolean> = writable(false);
@@ -18,10 +19,31 @@ export class MultiplayerGameState extends GameState {
 	blackTime: Writable<number> = writable(0);
 	rematchOffer: Writable<boolean> = writable(false);
 
-	constructor({ player, websocket }: MultiplayerGameStateOptions) {
+	constructor({ player, roomId }: MultiplayerGameStateOptions) {
 		super('pvp', player);
-		this.ws = websocket;
-		this.setupWebSocketListeners();
+		const wsUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${roomId}&color=${player}`;
+		this.wsManager = new WebSocketManager(wsUrl);
+		this.setupMessageHandlers();
+	}
+
+	private setupMessageHandlers() {
+		this.wsManager.addMessageHandler('opponentMove', (data) => this.handleOpponentMove(data.move));
+		this.wsManager.addMessageHandler('opponentJoined', () => this.handleOpponentJoined());
+		this.wsManager.addMessageHandler('gameStart', (data) => this.handleGameStart(data.timeControl));
+		this.wsManager.addMessageHandler('gameOver', (data) => this.handleGameOver(data));
+		this.wsManager.addMessageHandler('gameState', (data) => this.handleGameState(data));
+		this.wsManager.addMessageHandler('rematchOffer', () => this.rematchOffer.set(true));
+	}
+
+	private handleOpponentJoined() {
+		this.opponentConnected.set(true);
+	}
+
+	private handleGameStart(timeControl: TimeControl) {
+		this.endGame();
+		this.initializeTimer(timeControl);
+		this.started.set(true);
+		this.updateGameState();
 	}
 
 	endGame() {
@@ -32,48 +54,13 @@ export class MultiplayerGameState extends GameState {
 	makeMove(move: ChessMove): boolean {
 		const result = super.makeMove(move);
 		if (result) {
-			this.ws.send(
-				JSON.stringify({
-					type: 'move',
-					move: { from: move.from, to: move.to, promotion: move.promotion }
-				})
-			);
+			this.wsManager.sendMessage({
+				type: 'move',
+				move: { from: move.from, to: move.to, promotion: move.promotion }
+			});
 			this.updateTimer();
 		}
 		return result;
-	}
-
-	private setupWebSocketListeners() {
-		this.ws.onmessage = (event) => {
-			const data = JSON.parse(event.data);
-			this.handleWebSocketMessage(data);
-		};
-	}
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private handleWebSocketMessage(data: any) {
-		switch (data.type) {
-			case 'opponentMove':
-				this.handleOpponentMove(data.move);
-				break;
-			case 'opponentJoined':
-				this.opponentConnected.set(true);
-				break;
-			case 'gameStart':
-				this.endGame();
-				this.initializeTimer(data.timeControl);
-				this.started.set(true);
-				break;
-			case 'gameOver':
-				this.handleGameOver(data);
-				break;
-			case 'gameState':
-				this.handleGameState(data);
-				break;
-			case 'rematchOffer':
-				this.rematchOffer.set(true);
-				break;
-		}
 	}
 
 	private handleOpponentMove(move: ChessMove) {
@@ -144,13 +131,11 @@ export class MultiplayerGameState extends GameState {
 		const gameOver: GameOver = { isOver: true, winner };
 		this.gameOver.set(gameOver);
 
-		this.ws.send(
-			JSON.stringify({
-				type: 'gameOver',
-				reason: 'timeout',
-				winner
-			})
-		);
+		this.wsManager.sendMessage({
+			type: 'gameOver',
+			reason: 'timeout',
+			winner
+		});
 
 		this.updateGameState();
 
@@ -178,11 +163,11 @@ export class MultiplayerGameState extends GameState {
 	}
 
 	offerRematch() {
-		this.ws.send(JSON.stringify({ type: 'offerRematch' }));
+		this.wsManager.sendMessage({ type: 'offerRematch' });
 	}
 
 	acceptRematch() {
-		this.ws.send(JSON.stringify({ type: 'acceptRematch' }));
+		this.wsManager.sendMessage({ type: 'acceptRematch' });
 	}
 
 	setDifficulty(): void {
@@ -200,5 +185,9 @@ export class MultiplayerGameState extends GameState {
 	async getHint(): Promise<ChessMove | null> {
 		console.log('Hints are not available in multiplayer mode');
 		return null;
+	}
+
+	close() {
+		this.wsManager.close();
 	}
 }

@@ -2,13 +2,7 @@
 import WebSocket from 'ws';
 import { Chess } from 'chess.js';
 import { nanoid } from 'nanoid';
-import { Player, TimeControl, TimeOption, Color } from './types';
-
-type GameMessage =
-	| { type: 'move'; playerId: string; move: { from: string; to: string; promotion?: string } }
-	| { type: 'offerRematch'; playerId: string }
-	| { type: 'acceptRematch'; playerId: string }
-	| { type: 'gameOver'; reason: 'timeout'; winner: Color };
+import { Player, TimeControl, TimeOption, Color, GameMessage } from './types';
 
 export class GameRoom {
 	id: string;
