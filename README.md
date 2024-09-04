@@ -1,6 +1,6 @@
 # Statemates: A Full-Stack Chess Platform
 
-Statemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Statemates Now](https://stale-mates.vercel.app/)
+Statemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Statemates Now](https://stalemates.magedfaiz.xyz/)
 
 ![Portfolio Website Overview](https://drive.google.com/thumbnail?id=1I961hNzXzdUrqmRhsIfNhdCVqUU0tKBt&sz=w1024&t=1681358800&mime=image/png)
 
