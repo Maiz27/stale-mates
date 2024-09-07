@@ -1,3 +1,7 @@
+export const PLAYER_ID_EXPIRATION = 4 * 60 * 60 * 1000; // 4 hours
+
+export const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
 export const MOVE_AUDIOS_PATHS = {
 	normal: '/audio/move-self.mp3',
 	capture: '/audio/capture.mp3',
@@ -7,8 +11,6 @@ export const MOVE_AUDIOS_PATHS = {
 	'game-start': '/audio/game-start.mp3',
 	'game-end': '/audio/game-end.mp3'
 };
-
-export const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export const DIFFICULTY_OPTIONS = [
 	{ value: 1, label: 'Beginner' },

@@ -39,7 +39,12 @@
 	onMount(() => {
 		gameState = new MultiplayerGameState({ player: playerColor, roomId: id! });
 
-		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
+		const unsubscribeStarted = gameState.started.subscribe((value) => {
+			started = value;
+			if (started) {
+				opponentConnected = true; // Set opponent as connected when the game starts
+			}
+		});
 		const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
 			(value) => (opponentConnected = value)
 		);
@@ -87,8 +92,6 @@
 			{#if gameState}
 				{#if !opponentConnected}
 					<p>Waiting for opponent to join...</p>
-				{:else if !started}
-					<p>Opponent joined. Game starting soon...</p>
 				{:else}
 					<div class="col-auto mx-auto grid w-4/5 gap-y-2">
 						{#if !isUnlimited}
@@ -129,7 +132,7 @@
 			{/if}
 		</div>
 	</section>
-	{#if gameState && opponentConnected}
+	{#if gameState && (opponentConnected || started)}
 		<ChessBoard {gameState} {playerColor} />
 	{/if}
 </div>

@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { writable, type Writable } from 'svelte/store';
-
 type MessageHandler = (data: any) => void;
 
 export class WebSocketManager {
 	private ws: WebSocket;
 	private messageHandlers: Map<string, MessageHandler> = new Map();
-	connected: Writable<boolean> = writable(false);
+	private closeHandler: (() => void) | null = null;
 
 	constructor(url: string) {
 		this.ws = new WebSocket(url);
@@ -15,14 +13,9 @@ export class WebSocketManager {
 	}
 
 	private setupEventListeners() {
-		this.ws.onopen = () => {
-			console.log('WebSocket connection established');
-			this.connected.set(true);
-		};
-
 		this.ws.onmessage = (event) => {
 			const data = JSON.parse(event.data);
-			console.log('Received message:', data);
+			console.log('ws message', data);
 			const handler = this.messageHandlers.get(data.type);
 			if (handler) {
 				handler(data);
@@ -37,7 +30,9 @@ export class WebSocketManager {
 
 		this.ws.onclose = () => {
 			console.log('WebSocket connection closed');
-			this.connected.set(false);
+			if (this.closeHandler) {
+				this.closeHandler();
+			}
 		};
 	}
 
@@ -49,13 +44,15 @@ export class WebSocketManager {
 		}
 	}
 
-	addMessageHandler(type: string, handler: MessageHandler) {
+	addMessageHandler(type: string, handler: (data: any) => void) {
 		this.messageHandlers.set(type, handler);
 	}
 
 	close() {
-		if (this.ws.readyState === WebSocket.OPEN) {
-			this.ws.close();
-		}
+		this.ws.close();
+	}
+
+	onClose(handler: () => void) {
+		this.closeHandler = handler;
 	}
 }

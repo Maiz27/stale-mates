@@ -14,9 +14,11 @@ export interface AIGameStateOptions {
 
 export class AIGameState extends GameState {
 	private engine: Stockfish;
+	private difficulty: number;
 
 	constructor({ player, difficulty, debug = false }: AIGameStateOptions) {
 		super('pve', player);
+		this.difficulty = difficulty;
 		this.engine = initializeEngine(this.handleEngineMessage.bind(this), difficulty, debug);
 	}
 
@@ -54,6 +56,7 @@ export class AIGameState extends GameState {
 	}
 
 	setDifficulty(difficulty: number) {
+		this.difficulty = difficulty;
 		this.engine.setDifficulty(difficulty);
 	}
 
@@ -64,9 +67,11 @@ export class AIGameState extends GameState {
 
 	private triggerAiMove() {
 		if (this.player !== get(this.turn)) {
+			// Delay the AI move for better UX on lower difficulty levels
+			const delay = this.difficulty < 10 ? 500 : 0;
 			setTimeout(() => {
 				this.engine.go();
-			}, 500);
+			}, delay);
 		}
 	}
 

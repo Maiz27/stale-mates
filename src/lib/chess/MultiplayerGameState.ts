@@ -2,7 +2,9 @@ import { get, writable, type Writable } from 'svelte/store';
 import { GameState } from './GameState';
 import type { Color } from 'chessground/types';
 import type { ChessMove, GameOver, TimeControl } from './types';
-import { WebSocketManager } from './WebSocketManager';
+import { WebSocketManager } from '../websocket/WebSocketManager';
+import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
+import { PLAYER_ID_EXPIRATION } from '$lib/constants';
 
 export interface MultiplayerGameStateOptions {
 	player: Color;
@@ -13,35 +15,68 @@ export class MultiplayerGameState extends GameState {
 	private wsManager: WebSocketManager;
 	private timer: number | null = null;
 	private lastMoveTime: number | null = null;
+
 	opponentConnected: Writable<boolean> = writable(false);
 	isUnlimited: Writable<boolean> = writable(true);
 	whiteTime: Writable<number> = writable(0);
 	blackTime: Writable<number> = writable(0);
 	rematchOffer: Writable<boolean> = writable(false);
+	roomId: string;
 
 	constructor({ player, roomId }: MultiplayerGameStateOptions) {
 		super('pvp', player);
-		const wsUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${roomId}&color=${player}`;
+		this.roomId = roomId;
+		const playerId = GetItemFromCookies(`${this.roomId}-playerId`);
+		const wsUrl = this.constructWebSocketUrl(player, roomId, playerId);
 		this.wsManager = new WebSocketManager(wsUrl);
 		this.setupMessageHandlers();
 	}
 
+	private constructWebSocketUrl(player: Color, roomId: string, playerId: string | null): string {
+		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${roomId}&color=${player}`;
+		return playerId ? `${baseUrl}&playerId=${playerId}` : baseUrl;
+	}
+
 	private setupMessageHandlers() {
+		this.wsManager.addMessageHandler('connected', (data) => this.handleConnected(data.playerId));
 		this.wsManager.addMessageHandler('opponentMove', (data) => this.handleOpponentMove(data.move));
 		this.wsManager.addMessageHandler('opponentJoined', () => this.handleOpponentJoined());
-		this.wsManager.addMessageHandler('gameStart', (data) => this.handleGameStart(data.timeControl));
+		this.wsManager.addMessageHandler('opponentReconnected', () => this.handleOpponentReconnected());
+		this.wsManager.addMessageHandler('gameStart', (data) => this.handleGameStart(data));
 		this.wsManager.addMessageHandler('gameOver', (data) => this.handleGameOver(data));
 		this.wsManager.addMessageHandler('gameState', (data) => this.handleGameState(data));
 		this.wsManager.addMessageHandler('rematchOffer', () => this.rematchOffer.set(true));
+		this.wsManager.addMessageHandler('rematchAccepted', () => this.handleRematchAccepted());
+	}
+
+	private handleRematchAccepted() {
+		this.rematchOffer.set(false);
+
+		this.endGame();
+		this.newGame();
+	}
+
+	private handleOpponentReconnected() {
+		this.opponentConnected.set(true);
+	}
+
+	private handleConnected(playerId: string) {
+		AddItemToCookies({
+			key: `${this.roomId}-playerId`,
+			value: playerId,
+			expiration: PLAYER_ID_EXPIRATION
+		});
 	}
 
 	private handleOpponentJoined() {
 		this.opponentConnected.set(true);
 	}
 
-	private handleGameStart(timeControl: TimeControl) {
+	private handleGameStart(data: { fen: string; turn: Color; timeControl: TimeControl }) {
 		this.endGame();
-		this.initializeTimer(timeControl);
+		this.chess.load(data.fen);
+		this.turn.set(data.turn);
+		this.initializeTimer(data.timeControl);
 		this.started.set(true);
 		this.updateGameState();
 	}
@@ -84,9 +119,7 @@ export class MultiplayerGameState extends GameState {
 
 	private startTimer() {
 		this.lastMoveTime = Date.now();
-		this.timer = window.setInterval(() => {
-			this.updateRemainingTime();
-		}, 1000);
+		this.timer = window.setInterval(() => this.updateRemainingTime(), 1000);
 	}
 
 	private stopTimer() {
@@ -102,10 +135,14 @@ export class MultiplayerGameState extends GameState {
 		const now = Date.now();
 		if (this.lastMoveTime) {
 			const elapsedTime = (now - this.lastMoveTime) / 1000;
-			const currentPlayerTime = this.chess.turn() === 'w' ? this.whiteTime : this.blackTime;
-			currentPlayerTime.update((time) => Math.max(0, time - elapsedTime));
+			this.updatePlayerTime(elapsedTime);
 		}
 		this.lastMoveTime = now;
+	}
+
+	private updatePlayerTime(elapsedTime: number) {
+		const currentPlayerTime = this.chess.turn() === 'w' ? this.whiteTime : this.blackTime;
+		currentPlayerTime.update((time) => Math.max(0, time - elapsedTime));
 	}
 
 	private updateRemainingTime() {
@@ -127,25 +164,27 @@ export class MultiplayerGameState extends GameState {
 		const winner = loser === 'w' ? 'black' : 'white';
 
 		this.audioCue.set('game-end');
+		this.setGameOver(winner);
+		this.notifyGameOverDueToTimeout(winner);
+		this.updateGameState();
+	}
 
+	private setGameOver(winner: Color) {
 		const gameOver: GameOver = { isOver: true, winner };
 		this.gameOver.set(gameOver);
+	}
 
+	private notifyGameOverDueToTimeout(winner: Color) {
 		this.wsManager.sendMessage({
 			type: 'gameOver',
 			reason: 'timeout',
 			winner
 		});
-
-		this.updateGameState();
-
-		console.log(`Game over. ${winner} wins on time.`);
 	}
 
 	private handleGameOver(data: { winner?: Color; reason?: string }) {
 		this.stopTimer();
-		const gameOver: GameOver = { isOver: true, winner: data.winner! };
-		this.gameOver.set(gameOver);
+		this.setGameOver(data.winner!);
 		this.audioCue.set('game-end');
 		this.updateGameState();
 	}
@@ -156,10 +195,14 @@ export class MultiplayerGameState extends GameState {
 		whiteTime?: number;
 		blackTime?: number;
 	}) {
+		this.chess.load(data.fen);
 		this.fen.set(data.fen);
 		this.turn.set(data.turn);
 		if (data.whiteTime !== undefined) this.whiteTime.set(data.whiteTime);
 		if (data.blackTime !== undefined) this.blackTime.set(data.blackTime);
+		this.started.set(true);
+		this.opponentConnected.set(true);
+		this.updateGameState();
 	}
 
 	offerRematch() {
@@ -171,19 +214,19 @@ export class MultiplayerGameState extends GameState {
 	}
 
 	setDifficulty(): void {
-		console.log('Difficulty settings are not applicable in multiplayer mode');
+		console.warn('Difficulty settings are not applicable in multiplayer mode');
 	}
 
 	updateSettings(): void {
-		console.log('Some settings may not apply in multiplayer mode');
+		console.warn('Some settings may not apply in multiplayer mode');
 	}
 
 	undoMove(): void {
-		console.log('Undo is not available in multiplayer mode');
+		console.warn('Undo is not available in multiplayer mode');
 	}
 
 	async getHint(): Promise<ChessMove | null> {
-		console.log('Hints are not available in multiplayer mode');
+		console.warn('Hints are not available in multiplayer mode');
 		return null;
 	}
 

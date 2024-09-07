@@ -5,20 +5,17 @@ import { nanoid } from 'nanoid';
 import { Player, TimeControl, TimeOption, Color, GameMessage } from './types';
 
 export class GameRoom {
-	id: string;
-	players: Player[];
-	chess: Chess;
-	currentTurn: Color;
-	gameTimer?: NodeJS.Timeout;
-	rematchOffers: Set<string> = new Set();
-	timeControl: TimeControl;
-	lastMoveTime?: number;
+	id: string = nanoid();
+	players: Player[] = [];
+	gameStarted: boolean = false;
+	private chess: Chess = new Chess();
+	private currentFen: string = this.chess.fen();
+	private currentTurn: Color = 'white';
+	private rematchOffers: Set<string> = new Set();
+	private timeControl: TimeControl;
+	private lastMoveTime?: number;
 
 	constructor({ time = 0 }: { time: TimeOption }) {
-		this.id = nanoid();
-		this.players = [];
-		this.chess = new Chess();
-		this.currentTurn = 'white';
 		this.timeControl = this.convertTimeOption(time);
 	}
 
@@ -28,25 +25,44 @@ export class GameRoom {
 		}
 		const playerId = nanoid();
 		const timeRemaining = this.timeControl.isUnlimited ? null : this.timeControl.initial;
-		this.players.push({ id: playerId, color, ws, timeRemaining });
+		const player = { id: playerId, color, ws, timeRemaining, connected: true };
+		this.players.push(player);
 
-		// Notify the existing player (if any) that an opponent has joined
+		this.notifyPlayersOfJoin(playerId);
+
 		if (this.players.length === 2) {
-			this.players.forEach((player) => {
-				this.sendToPlayer(player, { type: 'opponentJoined' });
-			});
+			this.startGame();
 		}
 
 		return playerId;
 	}
 
 	removePlayer(playerId: string) {
-		this.players = this.players.filter((p) => p.id !== playerId);
+		const playerIndex = this.players.findIndex((p) => p.id === playerId);
+		if (playerIndex !== -1) {
+			this.players[playerIndex].connected = false;
+			this.players[playerIndex].ws = null;
+		}
 		this.broadcastGameState();
 	}
 
+	reconnectPlayer(playerId: string, ws: WebSocket): boolean {
+		const player = this.findPlayerById(playerId);
+		if (!player) {
+			return false;
+		}
+
+		player.ws = ws;
+		player.connected = true;
+
+		this.sendToPlayer(player, { type: 'gameState', ...this.getCurrentGameState() });
+		this.notifyOpponentOfReconnection(playerId);
+
+		return true;
+	}
+
 	handleMessage(playerId: string, message: GameMessage) {
-		const player = this.players.find((p) => p.id === playerId);
+		const player = this.findPlayerById(playerId);
 		if (!player) return;
 
 		switch (message.type) {
@@ -67,32 +83,26 @@ export class GameRoom {
 		}
 	}
 
-	checkGameStart(): boolean {
-		if (this.players.length !== 2) return false;
-
-		this.chess = new Chess();
-		this.broadcastGameState();
-
-		this.players.forEach((player) => {
-			this.sendToPlayer(player, { type: 'opponentJoined' });
-			this.sendToPlayer(player, { type: 'gameStart', timeControl: this.timeControl });
-		});
-
-		return true;
-	}
-
 	private handleMove(player: Player, move: { from: string; to: string; promotion?: string }) {
 		if (player.color !== this.currentTurn) return;
 
 		const success = this.chess.move(move);
 		if (success) {
-			this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
-			this.broadcastMove(player.id, move);
-			if (!this.timeControl.isUnlimited) {
-				this.updatePlayerTime(player);
-			}
-			this.checkGameEnd();
+			this.updateGameStateAfterMove(player.id, move);
 		}
+	}
+
+	private updateGameStateAfterMove(
+		playerId: string,
+		move: { from: string; to: string; promotion?: string }
+	) {
+		this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
+		this.currentFen = this.chess.fen();
+		this.broadcastMove(playerId, move);
+		if (!this.timeControl.isUnlimited) {
+			this.updatePlayerTime(this.findPlayerById(playerId)!);
+		}
+		this.checkGameEnd();
 	}
 
 	private updatePlayerTime(player: Player) {
@@ -100,10 +110,9 @@ export class GameRoom {
 
 		const now = Date.now();
 		if (this.lastMoveTime) {
-			const timeTaken = (now - this.lastMoveTime) / 1000; // Convert to seconds
+			const timeTaken = (now - this.lastMoveTime) / 1000;
 			player.timeRemaining -= timeTaken;
 
-			// Apply increment only if player's time is below the low time threshold
 			if (player.timeRemaining <= this.timeControl.lowTimeThreshold) {
 				player.timeRemaining += this.timeControl.increment;
 			}
@@ -134,53 +143,123 @@ export class GameRoom {
 	private checkRematchAccepted() {
 		if (this.rematchOffers.size === 2) {
 			this.restartGame();
+
+			this.players.forEach((player) => {
+				this.sendToPlayer(player, { type: 'rematchAccepted' });
+			});
 		}
 	}
 
 	private restartGame() {
 		this.chess.reset();
 		this.currentTurn = 'white';
+		this.currentFen = this.chess.fen();
 		this.rematchOffers.clear();
-		this.players.forEach((player) => {
-			if (player.timeRemaining !== null) {
-				player.timeRemaining = this.timeControl.initial;
-			}
-		});
+		this.resetPlayerTimes();
 		this.lastMoveTime = undefined;
-
-		this.players.forEach((player) => {
-			this.sendToPlayer(player, {
-				type: 'gameStart',
-				timeControl: this.timeControl
-			});
-		});
-
-		this.broadcastGameState();
 	}
 
 	private checkGameEnd() {
 		if (this.chess.isGameOver()) {
-			let winner: Color | undefined;
-			let reason: string;
-			if (this.chess.isCheckmate()) {
-				winner = this.currentTurn === 'white' ? 'black' : 'white';
-				reason = 'checkmate';
-			} else {
-				reason = 'draw';
-			}
+			this.gameStarted = false;
+			const { winner, reason } = this.determineGameOutcome();
 			this.broadcastGameOver(winner, reason);
 		}
 	}
 
-	private broadcastMove(senderId: string, move: { from: string; to: string; promotion?: string }) {
-		const moveMessage = {
-			type: 'opponentMove',
-			move: move
-		};
+	private determineGameOutcome(): { winner?: Color; reason: string } {
+		if (this.chess.isCheckmate()) {
+			return { winner: this.currentTurn === 'white' ? 'black' : 'white', reason: 'checkmate' };
+		}
 
+		return { reason: 'draw' };
+	}
+
+	private broadcastMove(senderId: string, move: { from: string; to: string; promotion?: string }) {
+		const moveMessage = { type: 'opponentMove', move: move };
+		this.broadcastToOtherPlayers(senderId, moveMessage);
+	}
+
+	private broadcastGameOver(winner?: Color, reason?: string) {
+		const gameOverMessage = { type: 'gameOver', winner, reason };
+		this.broadcastToAllPlayers(gameOverMessage);
+	}
+
+	private broadcastRematchOffer(offerId: string) {
+		const rematchMessage = { type: 'rematchOffer', offerId: offerId };
+		this.broadcastToOtherPlayers(offerId, rematchMessage);
+	}
+
+	private broadcastToAllPlayers(message: any) {
+		this.players.forEach((player) => this.sendToPlayer(player, message));
+	}
+
+	private broadcastToOtherPlayers(senderId: string, message: any) {
 		this.players.forEach((player) => {
 			if (player.id !== senderId) {
-				this.sendToPlayer(player, moveMessage);
+				this.sendToPlayer(player, message);
+			}
+		});
+	}
+
+	private sendToPlayer(player: Player, message: any) {
+		if (player.connected && player.ws) {
+			player.ws.send(JSON.stringify(message));
+		}
+	}
+
+	private convertTimeOption(time: TimeOption): TimeControl {
+		const timeControls: Record<TimeOption, TimeControl> = {
+			0: { initial: 0, lowTimeThreshold: 0, increment: 0, isUnlimited: true },
+			1: { initial: 60, lowTimeThreshold: 10, increment: 3, isUnlimited: false },
+			3: { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false },
+			10: { initial: 600, lowTimeThreshold: 60, increment: 5, isUnlimited: false }
+		};
+
+		const timeControl = timeControls[time];
+		if (!timeControl) {
+			throw new Error('Invalid time option');
+		}
+		return timeControl;
+	}
+
+	private notifyPlayersOfJoin(newPlayerId: string) {
+		this.players.forEach((player) => {
+			if (this.players.length === 2) {
+				this.sendToPlayer(player, { type: 'opponentJoined' });
+			} else if (player.id !== newPlayerId) {
+				this.sendToPlayer(player, { type: 'opponentJoined' });
+			}
+		});
+	}
+
+	private startGame() {
+		this.gameStarted = true;
+		this.players.forEach((player) => {
+			this.sendToPlayer(player, {
+				type: 'gameStart',
+				timeControl: this.timeControl,
+				fen: this.chess.fen(),
+				turn: this.currentTurn
+			});
+		});
+	}
+
+	private notifyOpponentOfReconnection(reconnectedPlayerId: string) {
+		const otherPlayer = this.players.find((p) => p.id !== reconnectedPlayerId);
+		if (otherPlayer && otherPlayer.connected) {
+			this.sendToPlayer(otherPlayer, { type: 'opponentReconnected' });
+		}
+	}
+
+	private findPlayerById(playerId: string): Player | undefined {
+		return this.players.find((p) => p.id === playerId);
+	}
+
+	private resetPlayerTimes() {
+		this.players.forEach((player) => {
+			if (player.timeRemaining !== null) {
+				player.timeRemaining = this.timeControl.initial;
 			}
 		});
 	}
@@ -188,54 +267,18 @@ export class GameRoom {
 	private broadcastGameState() {
 		const stateMessage = {
 			type: 'gameState',
-			fen: this.chess.fen(),
+			...this.getCurrentGameState()
+		};
+		this.broadcastToAllPlayers(stateMessage);
+	}
+
+	private getCurrentGameState() {
+		return {
+			started: this.gameStarted,
+			fen: this.currentFen,
 			turn: this.currentTurn,
 			whiteTime: this.players.find((p) => p.color === 'white')?.timeRemaining,
 			blackTime: this.players.find((p) => p.color === 'black')?.timeRemaining
 		};
-
-		this.players.forEach((player) => this.sendToPlayer(player, stateMessage));
-	}
-
-	private broadcastGameOver(winner?: Color, reason?: string) {
-		const gameOverMessage = {
-			type: 'gameOver',
-			winner,
-			reason
-		};
-
-		this.players.forEach((player) => this.sendToPlayer(player, gameOverMessage));
-	}
-
-	private broadcastRematchOffer(offerId: string) {
-		const rematchMessage = {
-			type: 'rematchOffer',
-			offerId: offerId
-		};
-
-		this.players.forEach((player) => {
-			if (player.id !== offerId) {
-				this.sendToPlayer(player, rematchMessage);
-			}
-		});
-	}
-
-	private sendToPlayer(player: Player, message: any) {
-		player.ws.send(JSON.stringify(message));
-	}
-
-	private convertTimeOption(time: TimeOption): TimeControl {
-		switch (time) {
-			case 0:
-				return { initial: 0, lowTimeThreshold: 0, increment: 0, isUnlimited: true };
-			case 1:
-				return { initial: 60, lowTimeThreshold: 10, increment: 3, isUnlimited: false };
-			case 3:
-				return { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false };
-			case 10:
-				return { initial: 600, lowTimeThreshold: 60, increment: 5, isUnlimited: false };
-			default:
-				throw new Error('Invalid time option');
-		}
 	}
 }
