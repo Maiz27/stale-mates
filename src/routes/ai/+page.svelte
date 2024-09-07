@@ -4,11 +4,12 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
-	import { getDifficultyLabel } from '$lib/utils';
-	import type { ChessMove, GameOver } from '$lib/chess/types';
-	import type { Color } from 'chessground/types';
+	import EndGameDrawer from '$lib/components/controls/EndGameDrawer.svelte';
 	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
 	import { AIGameState } from '$lib/chess/AIGameState';
+	import type { ChessMove, GameOver } from '$lib/chess/types';
+	import { getDifficultyLabel } from '$lib/utils';
+	import type { Color } from 'chessground/types';
 
 	let gameState: AIGameState = new AIGameState({
 		player: $settingsStore.color || 'white',
@@ -91,10 +92,12 @@
 		</div>
 
 		<div class="flex gap-2">
-			{#if started}
-				<Button on:click={endGame}>{gameOver.isOver ? 'Reset Game' : 'End Game'}</Button>
-			{:else}
+			{#if !started}
 				<Button on:click={startNewGame}>Start New Game</Button>
+			{:else if gameOver.isOver}
+				<Button on:click={endGame}>Reset Game</Button>
+			{:else}
+				<EndGameDrawer onConfirm={endGame} />
 			{/if}
 			<Button
 				on:click={getHint}
