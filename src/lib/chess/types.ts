@@ -27,7 +27,7 @@ export type MoveType =
 // duplicate at api/src/lib/types.ts
 export type TimeControl = {
 	initial: number; // in seconds
-	lowTimeThreshold: number;
-	increment: number; // in seconds
+	lowTimeThreshold?: number;
+	increment?: number; // in seconds
 	isUnlimited: boolean;
 };

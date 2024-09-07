@@ -39,12 +39,7 @@
 	onMount(() => {
 		gameState = new MultiplayerGameState({ player: playerColor, roomId: id! });
 
-		const unsubscribeStarted = gameState.started.subscribe((value) => {
-			started = value;
-			if (started) {
-				opponentConnected = true; // Set opponent as connected when the game starts
-			}
-		});
+		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
 		const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
 			(value) => (opponentConnected = value)
 		);
@@ -93,7 +88,7 @@
 				{#if !opponentConnected}
 					<p>Waiting for opponent to join...</p>
 				{:else}
-					<div class="col-auto mx-auto grid w-4/5 gap-y-2">
+					<div class="mx-auto grid w-4/5 grid-flow-row place-items-center gap-y-2 md:grid-flow-col">
 						{#if !isUnlimited}
 							<div>
 								My Time: <span

@@ -55,7 +55,11 @@ export class GameRoom {
 		player.ws = ws;
 		player.connected = true;
 
-		this.sendToPlayer(player, { type: 'gameState', ...this.getCurrentGameState() });
+		this.sendToPlayer(player, {
+			type: 'gameState',
+			...this.getCurrentGameState(),
+			timeControl: this.timeControl
+		});
 		this.notifyOpponentOfReconnection(playerId);
 
 		return true;
@@ -145,7 +149,12 @@ export class GameRoom {
 			this.restartGame();
 
 			this.players.forEach((player) => {
-				this.sendToPlayer(player, { type: 'rematchAccepted' });
+				this.sendToPlayer(player, {
+					type: 'rematchAccepted',
+					timeControl: this.timeControl,
+					fen: this.chess.fen(),
+					turn: this.currentTurn
+				});
 			});
 		}
 	}
@@ -156,7 +165,11 @@ export class GameRoom {
 		this.currentFen = this.chess.fen();
 		this.rematchOffers.clear();
 		this.resetPlayerTimes();
-		this.lastMoveTime = undefined;
+		this.lastMoveTime = Date.now(); // Reset the last move time
+		this.gameStarted = true;
+
+		// Broadcast the new game state to all players
+		this.broadcastGameState();
 	}
 
 	private checkGameEnd() {
@@ -267,7 +280,8 @@ export class GameRoom {
 	private broadcastGameState() {
 		const stateMessage = {
 			type: 'gameState',
-			...this.getCurrentGameState()
+			...this.getCurrentGameState(),
+			timeControl: this.timeControl
 		};
 		this.broadcastToAllPlayers(stateMessage);
 	}
