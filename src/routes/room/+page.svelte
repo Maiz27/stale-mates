@@ -87,10 +87,8 @@
 			{#if gameState}
 				{#if !opponentConnected}
 					<p>Waiting for opponent to join...</p>
-				{:else if !started}
-					<p>Opponent joined. Game starting soon...</p>
 				{:else}
-					<div class="col-auto mx-auto grid w-4/5 gap-y-2">
+					<div class="mx-auto grid w-4/5 grid-flow-row place-items-center gap-y-2 md:grid-flow-col">
 						{#if !isUnlimited}
 							<div>
 								My Time: <span
@@ -129,7 +127,7 @@
 			{/if}
 		</div>
 	</section>
-	{#if gameState && opponentConnected}
+	{#if gameState && (opponentConnected || started)}
 		<ChessBoard {gameState} {playerColor} />
 	{/if}
 </div>

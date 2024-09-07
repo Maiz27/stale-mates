@@ -5,8 +5,9 @@ export type Color = 'white' | 'black';
 export type Player = {
 	id: string;
 	color: Color;
-	ws: WebSocket;
+	ws: WebSocket | null;
 	timeRemaining: number | null;
+	connected: boolean;
 };
 
 export type TimeOption = 0 | 1 | 3 | 10;

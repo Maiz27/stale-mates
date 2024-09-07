@@ -15,6 +15,7 @@
 	let playerLink = '';
 	let color: Color | 'random' = 'white';
 	let time = 0;
+	let errorMessage = '';
 
 	let loading = false;
 
@@ -28,6 +29,7 @@
 		if (loading) return;
 
 		loading = true;
+		errorMessage = '';
 		try {
 			const response = await fetch(`${import.meta.env.VITE_API_URL}/game/create`, {
 				method: 'POST',
@@ -48,10 +50,21 @@
 			playerLink = `${window.location.origin}/room?id=${id}&color=${playerColor}`;
 		} catch (error) {
 			console.error('Error creating game:', error);
+			errorMessage = 'Failed to create game. Please try again.';
 		} finally {
 			loading = false;
 		}
 	}
+
+	function resetState() {
+		opponentLink = '';
+		playerLink = '';
+		color = 'white';
+		time = 0;
+		errorMessage = '';
+	}
+
+	$: open || resetState();
 
 	const handleColorChange = (event: CustomEvent) => {
 		color = event.detail.value;
@@ -108,6 +121,9 @@
 						</div>
 					{/if}
 				</div>
+				{#if errorMessage}
+					<p class="text-sm text-red-500">{errorMessage}</p>
+				{/if}
 				{#if opponentLink}
 					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
 				{:else}
@@ -156,6 +172,9 @@
 						</div>
 					{/if}
 				</div>
+				{#if errorMessage}
+					<p class="text-sm text-red-500">{errorMessage}</p>
+				{/if}
 				{#if opponentLink}
 					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
 				{:else}
