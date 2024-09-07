@@ -4,6 +4,7 @@ import { STARTING_FEN } from '$lib/constants';
 
 interface SearchParams {
 	moveTime: number;
+	moveDelay: number;
 	depth: number;
 }
 
@@ -31,7 +32,7 @@ export class Stockfish extends Engine {
 		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
 		this.ponder = { from: '', to: '' };
-		this.searchParams = { moveTime: 1000, depth: 5 };
+		this.searchParams = { moveTime: 1000, depth: 5, moveDelay: 400 };
 		this.debug = debug;
 		this.initialize();
 	}
@@ -104,7 +105,7 @@ export class Stockfish extends Engine {
 	 *    At lower difficulties, more alternatives are considered, making play more varied.
 	 *    At higher difficulties, fewer alternatives are considered, focusing on the best moves.
 	 *
-	 * 4. Move Time (100-3500 ms): Increases non-linearly with difficulty.
+	 * 4. Move Time (100-1800 ms): Increases non-linearly with difficulty.
 	 *    Determines how long the engine thinks about each move.
 	 *    Longer times at higher difficulties allow for deeper, more accurate analysis.
 	 *
@@ -112,11 +113,15 @@ export class Stockfish extends Engine {
 	 *    Determines how many moves ahead the engine calculates.
 	 *    Greater depth at higher difficulties results in stronger, more strategic play.
 	 *
+	 * 6. Move Delay (400-0 ms): Decreases linearly with difficulty.
+	 *    Adds a delay before the engine makes its move, ensuring a more engaging user experience.
+	 *    Shorter delays at higher difficulties balance out the longer move times.
+	 *
 	 * The new mappings ensure a smoother progression of difficulty:
-	 * - Beginner and Casual levels have negative contempt, favoring drawish play.
-	 * - Intermediate level has slightly negative contempt, balancing between drawish and aggressive play.
-	 * - Advanced to Grandmaster levels have increasingly positive contempt, favoring more aggressive play.
-	 * This progression aims to provide a more natural increase in difficulty and aggressiveness.
+	 * - Beginner and Casual levels have longer delays and shorter move times for quick, varied play.
+	 * - Intermediate to Expert levels balance move time and delay for a natural progression.
+	 * - Master and Grandmaster levels have longer move times but shorter delays for deep analysis and quicker responses.
+	 * This progression aims to provide a more natural increase in difficulty while maintaining engagement.
 	 */
 	setDifficulty(level: number): void {
 		this.difficulty = level;
@@ -125,16 +130,17 @@ export class Stockfish extends Engine {
 		const moveTime = this.mapLevelToMoveTime(level);
 		const depth = this.mapLevelToDepth(level);
 		const multiPV = this.mapLevelToMultiPV(level);
+		const moveDelay = this.mapLevelToMoveDelay(level);
 
 		this.log(
-			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}`,
+			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}, Move Delay ${moveDelay}`,
 			'info'
 		);
 		this.worker.postMessage(`setoption name Skill Level value ${skillLevel}`);
 		this.worker.postMessage(`setoption name Contempt value ${contempt}`);
 		this.worker.postMessage(`setoption name MultiPV value ${multiPV}`);
 
-		this.searchParams = { moveTime, depth };
+		this.searchParams = { moveTime, depth, moveDelay };
 	}
 
 	setPosition(fen: string): void {
@@ -153,9 +159,12 @@ export class Stockfish extends Engine {
 			return;
 		}
 		this.setState(EngineState.Searching);
-		const { moveTime, depth } = this.searchParams;
-		this.log(`Sending go command to Stockfish with depth: ${depth}, movetime: ${moveTime}`);
-		this.worker.postMessage(`go depth ${depth} movetime ${moveTime}`);
+		const { moveTime, depth, moveDelay } = this.searchParams;
+		this.log(`Delaying move by ${moveDelay}ms`);
+		setTimeout(() => {
+			this.log(`Sending go command to Stockfish with depth: ${depth}, movetime: ${moveTime}`);
+			this.worker.postMessage(`go depth ${depth} movetime ${moveTime}`);
+		}, moveDelay);
 	}
 
 	getBestMove(): ChessMove {
@@ -186,7 +195,7 @@ export class Stockfish extends Engine {
 	 *    - Minimum depth of 8 for lower difficulties.
 	 *    - Maximum depth of 15 for higher difficulties.
 	 * 4. Sets a move time that scales with difficulty:
-	 *    - Minimum move time of 1000ms for lower difficulties.
+	 *    - Minimum move time of 500ms for lower difficulties.
 	 *    - Maximum move time of 3500ms for higher difficulties.
 	 * 5. Uses MultiPV to consider multiple lines, ensuring varied hints:
 	 *    - Higher MultiPV at lower difficulties for more varied suggestions.
@@ -209,8 +218,8 @@ export class Stockfish extends Engine {
 			// Scale depth based on difficulty (8 to 15)
 			const hintDepth = Math.min(15, Math.max(8, Math.floor(7 + this.difficulty / 2)));
 
-			// Scale move time based on difficulty (1000ms to 3500ms)
-			const hintTime = Math.min(3500, Math.max(1000, 1000 + this.difficulty * 125));
+			// Scale move time based on difficulty (1000ms to 2000ms)
+			const hintTime = Math.min(2000, Math.max(1000, 1000 + this.difficulty * 125));
 
 			// Vary MultiPV based on difficulty (5 to 1)
 			const multiPV = Math.max(1, Math.min(5, 6 - Math.floor(this.difficulty / 4)));
@@ -263,14 +272,25 @@ export class Stockfish extends Engine {
 	}
 
 	/**
-	 * Maps the difficulty level (1-20) to a move time (100-3500 ms).
+	 * Maps the difficulty level (1-20) to a move time (100-1800 ms).
 	 * Uses a power function with exponent 1.5 for a more balanced time progression.
 	 *
 	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding move time in milliseconds (100-3500)
+	 * @returns The corresponding move time in milliseconds (100-1800)
 	 */
 	private mapLevelToMoveTime(level: number): number {
-		return Math.round(100 + Math.pow((level - 1) / 19, 1.5) * 3400);
+		return Math.round(100 + Math.pow((level - 1) / 19, 1.5) * 1700);
+	}
+
+	/**
+	 * Maps the difficulty level (1-20) to a move delay (400-0 ms).
+	 * Uses a linear function to provide a smooth decrease in delay.
+	 *
+	 * @param level - The input difficulty level (1-20)
+	 * @returns The corresponding move delay in milliseconds (400-0)
+	 */
+	private mapLevelToMoveDelay(level: number): number {
+		return Math.round(400 - ((level - 1) / 19) * 400);
 	}
 
 	/**
