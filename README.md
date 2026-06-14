@@ -65,8 +65,8 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ### Prerequisites
 
-- Node.js (v14 or later)
-- npm or Bun
+- Node.js (v18.18.0 or later)
+- Bun
 
 ### Installation
 
@@ -80,12 +80,6 @@ Follow these instructions to get Stalemates up and running on your local machine
 2. **Install dependencies:**
 
    ```bash
-   npm i
-   ```
-
-   Or with Bun:
-
-   ```bash
    bun i
    ```
 
@@ -95,13 +89,6 @@ Follow these instructions to get Stalemates up and running on your local machine
    - Copy `api/.env.example` to `api/.env`
 
 4. **Install API dependencies:**
-
-   ```bash
-   cd api
-   npm i
-   ```
-
-   Or with Bun:
 
    ```bash
    cd api
@@ -127,9 +114,9 @@ The `package.json` includes several scripts for common tasks:
 		"test:unit": "vitest",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
-		"api": "cd api && npm run dev",
-		"api:build": "cd api && npm run build",
-		"dev:all": "concurrently \"npm run dev\" \"npm run api\""
+		"api": "cd api && bun run dev",
+		"api:build": "cd api && bun run build",
+		"dev:all": "concurrently \"bun run dev\" \"bun run api\""
 	}
 }
 ```
@@ -145,12 +132,6 @@ The `package.json` includes several scripts for common tasks:
 - `dev:all`: Runs both the frontend and backend concurrently for development.
 
 To run both the frontend and backend concurrently:
-
-```bash
-npm run dev:all
-```
-
-Or with Bun:
 
 ```bash
 bun run dev:all

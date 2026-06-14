@@ -45,8 +45,8 @@ Follow these instructions to set up the Stalemates API on your local machine for
 
 ### Prerequisites
 
-- Node.js (v14 or later)
-- npm or Bun
+- Node.js (v18.18.0 or later)
+- Bun
 
 ### Installation
 
@@ -60,12 +60,6 @@ Follow these instructions to set up the Stalemates API on your local machine for
 2. Install dependencies:
 
    ```bash
-   npm install
-   ```
-
-   Or with Bun:
-
-   ```bash
    bun install
    ```
 
@@ -75,10 +69,6 @@ Follow these instructions to set up the Stalemates API on your local machine for
    - Update the variables in `.env` as needed
 
 4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-   Or with Bun:
    ```bash
    bun run dev
    ```
