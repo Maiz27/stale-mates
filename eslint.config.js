@@ -33,6 +33,6 @@ export default [
 		}
 	},
 	{
-		ignores: ['build/', '.svelte-kit/', 'dist/', 'static/', '.vercel/']
+		ignores: ['build/', '.svelte-kit/', 'dist/', 'static/stockfish.js', '.vercel/']
 	}
 ];

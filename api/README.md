@@ -45,7 +45,7 @@ Follow these instructions to set up the Stalemates API on your local machine for
 
 ### Prerequisites
 
-- Node.js (v14 or later)
+- Node.js (v18.18.0 or later)
 - Bun
 
 ### Installation

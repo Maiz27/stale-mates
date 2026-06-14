@@ -65,7 +65,7 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ### Prerequisites
 
-- Node.js (v14 or later)
+- Node.js (v18.18.0 or later)
 - Bun
 
 ### Installation
