@@ -1,10 +1,10 @@
-# Statemates API: Backend for the Chess Platform
+# Stalemates API: Backend for the Chess Platform
 
-This is the backend API for Statemates, a full-stack chess platform. It handles game logic, real-time communication, and serves as the server-side component of the Statemates project.
+This is the backend API for Stalemates, a full-stack chess platform. It handles game logic, real-time communication, and serves as the server-side component of the Stalemates project.
 
 ## Table of Contents
 
-- [Statemates API: Backend for the Chess Platform](#statemates-api-backend-for-the-chess-platform)
+- [Stalemates API: Backend for the Chess Platform](#stalemates-api-backend-for-the-chess-platform)
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Features](#features)
@@ -20,7 +20,7 @@ This is the backend API for Statemates, a full-stack chess platform. It handles 
 
 ## Introduction
 
-The Statemates API provides the backend functionality for the Statemates chess platform. It manages game states, handles player moves, and facilitates real-time communication between players.
+The Stalemates API provides the backend functionality for the Stalemates chess platform. It manages game states, handles player moves, and facilitates real-time communication between players.
 
 ## Features
 
@@ -41,7 +41,7 @@ The Statemates API provides the backend functionality for the Statemates chess p
 
 ## Getting Started
 
-Follow these instructions to set up the Statemates API on your local machine for development and testing purposes.
+Follow these instructions to set up the Stalemates API on your local machine for development and testing purposes.
 
 ### Prerequisites
 
@@ -53,8 +53,8 @@ Follow these instructions to set up the Statemates API on your local machine for
 1. Clone the repository (if you haven't already):
 
    ```bash
-   git clone https://github.com/Maiz27/statemates.git
-   cd statemates/api
+   git clone https://github.com/Maiz27/stale-mates.git
+   cd stale-mates/api
    ```
 
 2. Install dependencies:
@@ -85,7 +85,7 @@ Follow these instructions to set up the Statemates API on your local machine for
 
 ## API Overview
 
-The Statemates API is built around the concept of game rooms, managed by the `GameRoom` class. Here's a high-level overview of how it works:
+The Stalemates API is built around the concept of game rooms, managed by the `GameRoom` class. Here's a high-level overview of how it works:
 
 1. **Game Creation**: When a new game is created, a `GameRoom` instance is instantiated. This class manages the game state, players, and time control.
 

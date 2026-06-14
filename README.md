@@ -1,12 +1,12 @@
-# Statemates: A Full-Stack Chess Platform
+# Stalemates: A Full-Stack Chess Platform
 
-Statemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Statemates Now](https://stalemates.magedfaiz.xyz/)
+Stalemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Stalemates Now](https://stalemates.magedfaiz.xyz/)
 
 ![Portfolio Website Overview](https://drive.google.com/thumbnail?id=1KQZ-_uU-5ii0VdVfKHqHwvgC8G5luN5X&sz=w1024&t=1681358800&mime=image/png)
 
 ## Table of Contents
 
-- [Statemates: A Full-Stack Chess Platform](#statemates-a-full-stack-chess-platform)
+- [Stalemates: A Full-Stack Chess Platform](#stalemates-a-full-stack-chess-platform)
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Features](#features)
@@ -25,7 +25,7 @@ Statemates is an interactive chess platform where users can play against AI or o
 
 ## Introduction
 
-Statemates was born out of a passion for chess and a desire to explore the capabilities of SvelteKit and WebSocket technology in creating a seamless gaming experience. You can read a detailed breakdown of the project's development journey [here](https://www.magedfaiz.xyz/projects/stalemates).
+Stalemates was born out of a passion for chess and a desire to explore the capabilities of SvelteKit and WebSocket technology in creating a seamless gaming experience. You can read a detailed breakdown of the project's development journey [here](https://www.magedfaiz.xyz/projects/stalemates).
 
 ## Features
 
@@ -61,7 +61,7 @@ Statemates was born out of a passion for chess and a desire to explore the capab
 
 ## Getting Started
 
-Follow these instructions to get Statemates up and running on your local machine for development and testing purposes.
+Follow these instructions to get Stalemates up and running on your local machine for development and testing purposes.
 
 ### Prerequisites
 
@@ -73,8 +73,8 @@ Follow these instructions to get Statemates up and running on your local machine
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/Maiz27/statemates.git
-   cd statemates
+   git clone https://github.com/Maiz27/stale-mates.git
+   cd stale-mates
    ```
 
 2. **Install dependencies:**
