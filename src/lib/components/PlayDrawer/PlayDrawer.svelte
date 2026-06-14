@@ -64,7 +64,7 @@
 		errorMessage = '';
 	}
 
-	$: open || resetState();
+	$: if (!open) resetState();
 
 	const handleColorChange = (event: CustomEvent) => {
 		color = event.detail.value;

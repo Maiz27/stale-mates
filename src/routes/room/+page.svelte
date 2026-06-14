@@ -47,10 +47,12 @@
 			(value) => (isUnlimited = value)
 		);
 		const unsubscribeWhiteTime = gameState.whiteTime.subscribe((value) => {
-			playerColor === 'white' ? (myTime = value) : (opponentTime = value);
+			if (playerColor === 'white') myTime = value;
+			else opponentTime = value;
 		});
 		const unsubscribeBlackTime = gameState.blackTime.subscribe((value) => {
-			playerColor === 'black' ? (myTime = value) : (opponentTime = value);
+			if (playerColor === 'black') myTime = value;
+			else opponentTime = value;
 		});
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => {
 			gameOver = value.isOver;

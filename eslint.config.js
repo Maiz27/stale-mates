@@ -25,6 +25,11 @@ export default [
 			parserOptions: {
 				parser: ts.parser
 			}
+		},
+		rules: {
+			// $$Props/$$Events/$$Slots are Svelte's magic type names: consumed by the
+			// compiler and svelte-check for typing, but never referenced in the script body.
+			'@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^\\$\\$' }]
 		}
 	},
 	{
