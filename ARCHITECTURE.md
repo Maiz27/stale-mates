@@ -34,9 +34,11 @@ GameState  (src/lib/chess/GameState.ts)
 (`src/lib/components/chessBoard/ChessBoard.svelte`) consume these stores and, in places,
 drive the game by calling methods *through* the board via `bind:this`.
 
-The multiplayer backend (`api/`) keeps its own authoritative-ish `chess.js` per `GameRoom`,
-but today delegates several outcome decisions to the client — see
-`docs/server-authority-plan.md`.
+The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` and is now
+**authoritative for outcomes and clocks**: game-over (and its reason) comes only from the rules
+(`outcome.ts`) or the server's flag-fall watchdog (`clock.ts`), and the client interpolates a
+server clock snapshot rather than declaring timeouts itself. The remaining authority gap is
+seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.md`.
 
 ### Known structural smells (why the refactors below exist)
 - **Liskov violation:** `MultiplayerGameState` stubs ~4/5 of `GameState`'s abstract/engine

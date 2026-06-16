@@ -16,6 +16,7 @@ export class WebSocketManager {
 	private messageHandlers: Map<string, MessageHandler> = new Map();
 	private urlProvider: () => string;
 	private statusHandler: StatusHandler | null = null;
+	private currentStatus: ConnectionStatus = 'connecting';
 
 	private intentionallyClosed = false;
 	private reconnectAttempts = 0;
@@ -89,15 +90,18 @@ export class WebSocketManager {
 	}
 
 	private setStatus(status: ConnectionStatus) {
+		this.currentStatus = status;
 		this.statusHandler?.(status);
 	}
 
-	sendMessage(message: any) {
+	/** Returns true if the frame was sent, false if the socket wasn't open. */
+	sendMessage(message: any): boolean {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.ws.send(JSON.stringify(message));
-		} else {
-			console.error('WebSocket is not open. ReadyState:', this.ws?.readyState);
+			return true;
 		}
+		console.error('WebSocket is not open. ReadyState:', this.ws?.readyState);
+		return false;
 	}
 
 	addMessageHandler(type: string, handler: MessageHandler) {
@@ -106,6 +110,9 @@ export class WebSocketManager {
 
 	onStatus(handler: StatusHandler) {
 		this.statusHandler = handler;
+		// Replay the current status so a subscriber that registered after the
+		// socket already opened doesn't miss it.
+		handler(this.currentStatus);
 	}
 
 	close() {

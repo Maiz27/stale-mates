@@ -60,6 +60,13 @@ export function handlePlayerMessage(gameId: string, playerId: string, message: s
 		return;
 	}
 
+	// JSON.parse can legitimately yield null/number/string; handleMessage reads
+	// `message.type`, which would throw on a non-object. Drop those frames.
+	if (typeof parsed !== 'object' || parsed === null) {
+		console.error('Dropping non-object player message frame');
+		return;
+	}
+
 	room.handleMessage(playerId, parsed);
 }
 

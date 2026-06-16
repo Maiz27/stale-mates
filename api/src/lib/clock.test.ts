@@ -36,7 +36,7 @@ describe('clockAfterMove', () => {
 		expect(clockAfterMove(60_000, 1000, 3000, 3500)).toBe(60_000 - 2500 + 3000);
 	});
 
-	it('awards no increment when no turn was in progress', () => {
+	it('awards the increment but deducts no elapsed time when no turn was in progress', () => {
 		expect(clockAfterMove(60_000, null, 3000, 3500)).toBe(63_000);
 	});
 

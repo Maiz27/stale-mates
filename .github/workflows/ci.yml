@@ -5,6 +5,10 @@ on:
     branches: ['**']
   pull_request:
 
+# Least privilege: this workflow only reads the repo to lint/typecheck/test.
+permissions:
+  contents: read
+
 jobs:
   frontend:
     name: Frontend (lint, check, unit tests)
@@ -12,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # The project standardises on Bun (see package.json scripts) and Vercel
       # deploys with Bun. npm install fails here on the svelte-chessground peer
@@ -47,6 +53,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

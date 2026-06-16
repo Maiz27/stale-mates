@@ -31,16 +31,20 @@ Lives in `api/src/lib/GameRoom.ts` (the `GameRoom` class); the registry of all r
 is the `Map<string, GameRoom>` in `api/src/lib/game.ts`.
 
 ### Seat / color
-A `color` is a side of the board, `'white' | 'black'`. Today there is no first-class
-"seat" object — a color is just a slot a `Player` claims. The color is **chosen by
-the client** via a URL query param and is not validated server-side (a known
-authority gap; see ADR 0002 and the audit's C3/F2).
+A `color` is a side of the board, `'white' | 'black'`. There is no first-class "seat"
+object yet — a color is a slot a `Player` claims. The color is still **requested by the
+client** via a URL query param, but the server now **validates it** (`GameRoom.addPlayer`
+rejects an out-of-domain color and rejects a second player requesting an already-taken
+color, so the two players can't both be white). Full seat-token assignment remains a gap
+(see ADR 0002, plan Steps 4–5, audit C3/F3).
 `Color` type: `api/src/lib/types.ts` and `src/lib/chess/types.ts`. Color is read off
-the WS URL in `api/src/lib/websocket.ts` (`parseConnectionParams`).
+the WS URL in `api/src/lib/websocket.ts` (`parseConnectionParams`) and validated in
+`GameRoom.addPlayer`.
 
 ### Player / playerId
-A connected participant in a room. A `Player` holds `{ id, color, ws, timeRemaining,
-connected }`. The `playerId` is a server-minted `nanoid` returned in the `connected`
+A connected participant in a room. A `Player` holds `{ id, color, ws, connected }`
+(clocks now live on the room, not the player — see Clock below). The `playerId` is a
+server-minted `nanoid` returned in the `connected`
 message; it doubles as the **reconnect credential** (the client stores it in a
 JS-readable cookie and replays it on the WS URL — another authority gap, see ADR 0002).
 `Player` type: `api/src/lib/types.ts`. Created in `GameRoom.addPlayer`
@@ -59,16 +63,17 @@ game has started. The server's authoritative snapshot is built by
 - **Time control** — the time settings for a game: `{ initial, lowTimeThreshold,
   increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes;
   `0` = unlimited) by `GameRoom.convertTimeOption`.
-- **Clock** — a player's remaining time (`timeRemaining`, seconds), ticked down as
-  they think.
-- **Increment** — seconds added to a player's clock around their move (Fischer-style).
-- **lowTimeThreshold** — the remaining-time level below which the UI flags "low time"
-  (and, in the current buggy server logic, where increment is applied).
+- **Clock** — a player's remaining time. The server holds it authoritatively in
+  **milliseconds** (`GameRoom.clocksMs` + `turnStartedAt`) and flags time-outs with a
+  single per-room watchdog; the pure math lives in `api/src/lib/clock.ts`.
+- **Increment** — seconds added to a player's clock after their move (Fischer-style).
+- **lowTimeThreshold** — the remaining-time level below which the UI flags "low time".
 `TimeControl` / `TimeOption` types: `api/src/lib/types.ts` and `src/lib/chess/types.ts`
-(the two `TimeControl` definitions have **drifted** — server fields required, client
-optional; see audit M1). Server clock logic: `GameRoom.updatePlayerTime`. Client clock:
-`MultiplayerGameState` (`startTimer`/`updateRemainingTime`). Clocks are currently
-client-authoritative — see ADR 0002.
+(now a **single canonical** definition with all fields required; the earlier drift in
+audit M1 is resolved). The server broadcasts a `ClockSnapshot` (`whiteMs`, `blackMs`,
+`running`, `serverTime`); the client interpolates it for **display only** in
+`MultiplayerGameState` (`applyClockSnapshot`/`renderClock`) and never declares a timeout.
+Clocks are server-authoritative — see ADR 0002.
 
 ### Engine / Stockfish / difficulty / hint
 - **Engine / Stockfish** — the chess AI, run as a Web Worker in the browser for AI
@@ -95,10 +100,11 @@ The end of a game, carried as `GameOver { isOver, winner, reason? }`. `winner` i
 `Color`, `'draw'`, or `null`. The `reason` (`GameOverReason`) is one of:
 `checkmate`, `stalemate`, `threefold` (threefold repetition), `insufficient`
 (insufficient material), `fiftyMove`, `draw`, `timeout`, `resignation`.
-`GameOver` / `GameOverReason` types: `src/lib/chess/types.ts`. Detection:
-`GameState.checkGameOver` (client) and `GameRoom.checkGameEnd` /
-`determineGameOutcome` (server). Note the server currently also accepts a
-**client-supplied** `timeout` winner verbatim — the core issue ADR 0002 addresses.
+`GameOver` / `GameOverReason` types: `src/lib/chess/types.ts`. Detection is now
+**server-authoritative** for multiplayer: `GameRoom` ends the game only via the rules
+(`gameOutcome` in `api/src/lib/outcome.ts`) or its flag-fall watchdog (`onFlagFall`),
+and broadcasts the winner/reason. The client-supplied `timeout` message has been removed
+(audit F1). Client-side detection (`GameState.checkGameOver`) still drives AI mode.
 
 ### Rematch
 A post-game restart of the same room with the same players and time control. Both
@@ -115,13 +121,16 @@ The frontend's game-logic inheritance hierarchy:
 - **`AIGameState`** (`src/lib/chess/AIGameState.ts`) — adds a `Stockfish` engine,
   `difficulty`, `getHint`, undo, and AI move triggering for **AI mode**.
 - **`MultiplayerGameState`** (`src/lib/chess/MultiplayerGameState.ts`) — adds a
-  `WebSocketManager`, client-side clocks, opponent/rematch handling, and disables
-  AI-only features (undo/hint/difficulty are no-ops) for **multiplayer mode**.
+  `WebSocketManager`, server-clock interpolation (display only), opponent/rematch
+  handling, and disables AI-only features (undo/hint/difficulty are no-ops) for
+  **multiplayer mode**.
 
 ### WebSocketManager
 The frontend's thin wrapper around the browser `WebSocket` for multiplayer
 (`src/lib/websocket/WebSocketManager.ts`). It opens one socket, dispatches inbound
 messages by `type` to registered handlers, and sends outbound messages.
-It currently opens a single connection and never retries (`onClose` is wired but no
-reconnect/backoff exists), despite the server supporting reconnect — see audit H2.
-The server-side counterpart is the connection plumbing in `api/src/lib/websocket.ts`.
+It **reconnects automatically** with exponential backoff + jitter (stopping on an
+intentional close or a 1008 rejection), resolves its URL lazily so a reconnect re-sends
+the `playerId` for the server to rebind the seat, and exposes connection status via
+`onStatus` (audit H2 fixed). The server-side counterpart is the connection plumbing in
+`api/src/lib/websocket.ts`.

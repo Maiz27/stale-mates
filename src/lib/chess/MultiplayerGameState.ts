@@ -43,8 +43,12 @@ export class MultiplayerGameState extends GameState {
 	}
 
 	private constructWebSocketUrl(player: Color, roomId: string, playerId: string | null): string {
-		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${roomId}&color=${player}`;
-		return playerId ? `${baseUrl}&playerId=${playerId}` : baseUrl;
+		// Encode values that originate from the page URL / cookies so stray special
+		// characters can't break or inject into the query string.
+		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${encodeURIComponent(
+			roomId
+		)}&color=${player}`;
+		return playerId ? `${baseUrl}&playerId=${encodeURIComponent(playerId)}` : baseUrl;
 	}
 
 	private setupMessageHandlers() {
@@ -69,10 +73,18 @@ export class MultiplayerGameState extends GameState {
 		if (result) {
 			// Optimistic local apply already happened in super.makeMove; just tell
 			// the server. The authoritative clock comes back via a `clock` snapshot.
-			this.wsManager.sendMessage({
+			const sent = this.wsManager.sendMessage({
 				type: 'move',
 				move: { from: move.from, to: move.to, promotion: move.promotion }
 			});
+			if (!sent) {
+				// The socket isn't open, so the server will never see this move.
+				// Roll back the optimistic apply; reconnect will resync from server truth.
+				this.chess.undo();
+				this.moveHistory.update((history) => history.slice(0, -1));
+				this.updateGameState();
+				return false;
+			}
 		}
 		return result;
 	}

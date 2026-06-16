@@ -80,10 +80,15 @@
 		goto(playerLink);
 	};
 
-	const copyLink = () => {
-		navigator.clipboard?.writeText(opponentLink);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
+	const copyLink = async () => {
+		if (!navigator.clipboard) return;
+		try {
+			await navigator.clipboard.writeText(opponentLink);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Clipboard write was blocked/denied — don't show a false success.
+		}
 	};
 </script>
 

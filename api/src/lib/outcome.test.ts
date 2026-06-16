@@ -27,4 +27,11 @@ describe('gameOutcome', () => {
 		const chess = new Chess('7k/8/6K1/8/8/8/8/8 w - - 0 1');
 		expect(gameOutcome(chess)).toEqual({ reason: 'insufficient' });
 	});
+
+	it('reports the fifty-move rule (halfmove clock at 100), not a generic draw', () => {
+		// Pawn on the board keeps it from being "insufficient material"; the
+		// halfmove clock at 100 makes it a fifty-move-rule draw.
+		const chess = new Chess('4k3/8/8/8/8/8/4P3/4K3 w - - 100 60');
+		expect(gameOutcome(chess)).toEqual({ reason: 'fiftyMove' });
+	});
 });

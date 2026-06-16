@@ -144,8 +144,10 @@ export abstract class GameState {
 		} else if (this.chess.isInsufficientMaterial()) {
 			reason = 'insufficient';
 		} else {
-			// Covers the fifty-move rule and any remaining draw conditions.
-			reason = 'draw';
+			// Distinguish the fifty-move rule via the FEN halfmove clock (>= 100 ply)
+			// rather than upgrading chess.js; any other draw stays generic.
+			const halfmoveClock = Number(this.chess.fen().split(' ')[4]);
+			reason = Number.isFinite(halfmoveClock) && halfmoveClock >= 100 ? 'fiftyMove' : 'draw';
 		}
 
 		this.gameOver.set({ isOver: true, winner, reason });

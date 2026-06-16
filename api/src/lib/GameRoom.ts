@@ -33,6 +33,11 @@ export class GameRoom {
 		if (this.players.length >= 2) {
 			throw new Error('Game room is full');
 		}
+		// Validate the requested color is a real seat (it arrives unchecked from the
+		// WS URL) before anything is stored, so an invalid value can't break invariants.
+		if (color !== 'white' && color !== 'black') {
+			throw new Error('Invalid color');
+		}
 		// Enforce distinct seats server-side: the two players cannot hold the same
 		// color (audit F2 — color was previously trusted from the URL unchecked,
 		// so both clients could request white). The connection is rejected; a

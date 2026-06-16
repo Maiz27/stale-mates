@@ -87,6 +87,7 @@ export class AIGameState extends GameState {
 	}
 
 	private triggerAiMove() {
+		if (get(this.gameOver).isOver) return;
 		if (this.player !== get(this.turn)) {
 			// Capture the generation for the search we're about to request so a
 			// stale bestmove (e.g. after an undo) can be detected and ignored.
@@ -97,6 +98,9 @@ export class AIGameState extends GameState {
 
 	private handleEngineMessage(message: string) {
 		if (!message.includes('bestmove')) return;
+
+		// Don't apply a bestmove to a game that has already ended.
+		if (get(this.gameOver).isOver) return;
 
 		// Ignore stale results: if the engine's generation advanced (undo/newGame/stop
 		// bumped it) the bestmove belongs to a cancelled search.

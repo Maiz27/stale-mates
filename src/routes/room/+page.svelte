@@ -11,7 +11,8 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 
 	const id = $page.url.searchParams.get('id');
-	const playerColor = ($page.url.searchParams.get('color') as Color) || 'white';
+	// Validate the color param ('red' &c. must not slip through); default to white.
+	const playerColor: Color = $page.url.searchParams.get('color') === 'black' ? 'black' : 'white';
 	const opponentColor: Color = playerColor === 'white' ? 'black' : 'white';
 
 	let gameState: MultiplayerGameState;
@@ -47,10 +48,15 @@
 		opponentOfferedRematch = false;
 	}
 
-	function copyInvite() {
-		navigator.clipboard?.writeText(opponentLink);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
+	async function copyInvite() {
+		if (!navigator.clipboard) return;
+		try {
+			await navigator.clipboard.writeText(opponentLink);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Clipboard write was blocked/denied — don't show a false success.
+		}
 	}
 
 	const resign = () => chessboardComponent?.resign();

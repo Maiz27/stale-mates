@@ -20,6 +20,11 @@ export function gameOutcome(chess: Chess): { winner?: Color; reason: GameOverRea
 	if (chess.isThreefoldRepetition()) return { reason: 'threefold' };
 	if (chess.isInsufficientMaterial()) return { reason: 'insufficient' };
 
-	// Fifty-move rule and any remaining draw conditions.
+	// Fifty-move rule: detect via the FEN halfmove clock (>= 100 ply) rather than
+	// upgrading chess.js for isDrawByFiftyMoves(). Any other draw falls through.
+	const halfmoveClock = Number(chess.fen().split(' ')[4]);
+	if (Number.isFinite(halfmoveClock) && halfmoveClock >= 100) {
+		return { reason: 'fiftyMove' };
+	}
 	return { reason: 'draw' };
 }

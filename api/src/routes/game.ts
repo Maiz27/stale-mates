@@ -14,8 +14,14 @@ GameRouter.post('/create', (req, res) => {
 	const rawTime = req.body.time;
 	const time = Number(rawTime);
 
-	// Reject missing/blank/non-numeric values (Number('') === 0 would slip through otherwise)
-	if (rawTime === undefined || rawTime === null || rawTime === '' || !Number.isInteger(time)) {
+	// Reject missing/blank/non-numeric values. Number('') and Number('   ') are
+	// both 0, which would otherwise slip through as a valid "unlimited" game.
+	if (
+		rawTime === undefined ||
+		rawTime === null ||
+		(typeof rawTime === 'string' && rawTime.trim() === '') ||
+		!Number.isInteger(time)
+	) {
 		return res.status(400).json({ error: 'Invalid time option' });
 	}
 

@@ -23,6 +23,7 @@ export class Stockfish {
 	private currentFen: string = STARTING_FEN;
 	private debug: boolean;
 	private searchGeneration: number = 0;
+	private pendingGo: ReturnType<typeof setTimeout> | null = null;
 
 	/**
 	 * Creates a new Stockfish instance.
@@ -157,10 +158,19 @@ export class Stockfish {
 	 * block new commands. Does NOT increment the search generation.
 	 */
 	private reset(): void {
+		// Cancel a queued (delayed) go so it can't post a stale search command.
+		this.clearPendingGo();
 		if (this.state === EngineState.Searching) {
 			this.worker.postMessage('stop');
 		}
 		this.setState(EngineState.Waiting);
+	}
+
+	private clearPendingGo(): void {
+		if (this.pendingGo) {
+			clearTimeout(this.pendingGo);
+			this.pendingGo = null;
+		}
 	}
 
 	setPosition(fen: string): void {
@@ -181,7 +191,9 @@ export class Stockfish {
 		this.setState(EngineState.Searching);
 		const { moveTime, depth, moveDelay } = this.searchParams;
 		this.log(`Delaying move by ${moveDelay}ms`);
-		setTimeout(() => {
+		this.clearPendingGo();
+		this.pendingGo = setTimeout(() => {
+			this.pendingGo = null;
 			this.log(`Sending go command to Stockfish with depth: ${depth}, movetime: ${moveTime}`);
 			this.worker.postMessage(`go depth ${depth} movetime ${moveTime}`);
 		}, moveDelay);
@@ -194,6 +206,7 @@ export class Stockfish {
 	 */
 	stop(): void {
 		this.log('Stockfish: Stopping current search', 'info');
+		this.clearPendingGo();
 		this.worker.postMessage('stop');
 		this.setState(EngineState.Waiting);
 		this.searchGeneration++;
@@ -205,6 +218,7 @@ export class Stockfish {
 
 	terminate(): void {
 		this.log('Stockfish: Terminating worker', 'info');
+		this.clearPendingGo();
 		this.messageCallback = null;
 		this.worker.terminate();
 	}
@@ -219,6 +233,7 @@ export class Stockfish {
 
 	newGame(): void {
 		this.log('Stockfish: Starting new game');
+		this.clearPendingGo();
 		this.setState(EngineState.Waiting);
 		this.searchGeneration++;
 		this.worker.postMessage('ucinewgame');

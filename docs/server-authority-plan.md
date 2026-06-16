@@ -81,7 +81,7 @@ Use **lazy, monotonic, computed-on-read clocks** plus **one cheap watchdog timer
 
 Model per room (replacing the per-move-only logic at `api/src/lib/GameRoom.ts:112-130`):
 
-```
+```text
 // Authoritative clock state (server)
 timeControl: TimeControl                 // unchanged source: convertTimeOption()
 clocks: { white: number; black: number } // remaining MILLISECONDS (store ms, not s)
@@ -121,7 +121,7 @@ The client's local `chess.js` stays only for *rendering legal-move hints and opt
 
 ### 3.4 Authoritative move flow
 
-```
+```text
 client: user drags piece
   -> optimistic local apply (existing GameState.makeMove, src/lib/chess/GameState.ts:98-111)
   -> send {type:'move', from,to,promotion}        (no winner, no clocks, no FEN)
