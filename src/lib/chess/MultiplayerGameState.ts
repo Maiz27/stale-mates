@@ -2,7 +2,7 @@ import { writable, type Writable } from 'svelte/store';
 import { GameState } from './GameState';
 import type { Color } from 'chessground/types';
 import type { ChessMove, ClockSnapshot, GameOver, GameOverReason, TimeControl } from './types';
-import { WebSocketManager } from '../websocket/WebSocketManager';
+import { WebSocketManager, type ConnectionStatus } from '../websocket/WebSocketManager';
 import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
 import { PLAYER_ID_EXPIRATION } from '$lib/constants';
 
@@ -22,6 +22,7 @@ export class MultiplayerGameState extends GameState {
 	private serverOffset = 0; // serverTime - local Date.now(), to align the snapshot
 
 	opponentConnected: Writable<boolean> = writable(false);
+	connectionStatus: Writable<ConnectionStatus> = writable('connecting');
 	isUnlimited: Writable<boolean> = writable(true);
 	whiteTime: Writable<number> = writable(0);
 	blackTime: Writable<number> = writable(0);
@@ -31,9 +32,13 @@ export class MultiplayerGameState extends GameState {
 	constructor({ player, roomId }: MultiplayerGameStateOptions) {
 		super('pvp', player);
 		this.roomId = roomId;
-		const playerId = GetItemFromCookies(`${this.roomId}-playerId`);
-		const wsUrl = this.constructWebSocketUrl(player, roomId, playerId);
-		this.wsManager = new WebSocketManager(wsUrl);
+		// Resolve the URL lazily so a reconnect re-reads the playerId cookie that
+		// the first `connected` message stored — the server then rebinds our seat
+		// instead of treating us as a brand-new (rejected) join.
+		this.wsManager = new WebSocketManager(() =>
+			this.constructWebSocketUrl(player, roomId, GetItemFromCookies(`${this.roomId}-playerId`))
+		);
+		this.wsManager.onStatus((status) => this.connectionStatus.set(status));
 		this.setupMessageHandlers();
 	}
 

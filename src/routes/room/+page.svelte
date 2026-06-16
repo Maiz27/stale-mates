@@ -18,6 +18,7 @@
 	let chessboardComponent: ChessBoard;
 	let started = false;
 	let opponentConnected = false;
+	let reconnecting = false;
 	let gameOver = false;
 	let rematchOffered = false;
 	let opponentOfferedRematch = false;
@@ -86,10 +87,14 @@
 			opponentOfferedRematch = value;
 		});
 		const unsubscribeSanHistory = gameState.sanHistory.subscribe((value) => (sanHistory = value));
+		const unsubscribeConnectionStatus = gameState.connectionStatus.subscribe(
+			(value) => (reconnecting = value === 'reconnecting')
+		);
 
 		return () => {
 			unsubscribeStarted();
 			unsubscribeOpponentConnected();
+			unsubscribeConnectionStatus();
 			unsubscribeIsUnlimited();
 			unsubscribeWhiteTime();
 			unsubscribeBlackTime();
@@ -118,6 +123,16 @@
 	<section class="mx-auto grid w-full max-w-3xl place-items-center gap-4">
 		<div class="w-full space-y-4 text-center">
 			<h1 class="text-3xl font-black leading-tight md:text-4xl">Play Friend: Friendly Duel</h1>
+
+			{#if reconnecting}
+				<p
+					role="status"
+					aria-live="polite"
+					class="font-semibold text-amber-600 motion-safe:animate-pulse dark:text-amber-400"
+				>
+					Connection lost — reconnecting…
+				</p>
+			{/if}
 
 			{#if !id}
 				<div class="space-y-3">
