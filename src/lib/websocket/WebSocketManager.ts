@@ -1,8 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { ClientMessage, ServerMessage, ServerMessageOf, ServerMessageType } from '$lib/chess/protocol';
 
-type MessageHandler = (data: any) => void;
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 type StatusHandler = (status: ConnectionStatus) => void;
+/** A handler bound to one server message type, receiving that exact variant. */
+type ServerMessageHandler<T extends ServerMessageType> = (data: ServerMessageOf<T>) => void;
 
 /**
  * Manages a single game WebSocket with automatic reconnect (exponential backoff
@@ -13,7 +14,9 @@ type StatusHandler = (status: ConnectionStatus) => void;
  */
 export class WebSocketManager {
 	private ws: WebSocket | null = null;
-	private messageHandlers: Map<string, MessageHandler> = new Map();
+	// Stored type-erased; `addMessageHandler` is the type-safe door in, and the
+	// dispatch below only ever hands a handler the variant matching its key.
+	private messageHandlers: Map<ServerMessageType, (data: ServerMessage) => void> = new Map();
 	private urlProvider: () => string;
 	private statusHandler: StatusHandler | null = null;
 	private currentStatus: ConnectionStatus = 'connecting';
@@ -44,7 +47,7 @@ export class WebSocketManager {
 		};
 
 		this.ws.onmessage = (event) => {
-			const data = JSON.parse(event.data);
+			const data = JSON.parse(event.data) as ServerMessage;
 			const handler = this.messageHandlers.get(data.type);
 			if (handler) {
 				handler(data);
@@ -95,7 +98,7 @@ export class WebSocketManager {
 	}
 
 	/** Returns true if the frame was sent, false if the socket wasn't open. */
-	sendMessage(message: any): boolean {
+	sendMessage(message: ClientMessage): boolean {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.ws.send(JSON.stringify(message));
 			return true;
@@ -104,8 +107,9 @@ export class WebSocketManager {
 		return false;
 	}
 
-	addMessageHandler(type: string, handler: MessageHandler) {
-		this.messageHandlers.set(type, handler);
+	addMessageHandler<T extends ServerMessageType>(type: T, handler: ServerMessageHandler<T>) {
+		// Safe: dispatch only invokes this handler for messages whose `type === T`.
+		this.messageHandlers.set(type, handler as (data: ServerMessage) => void);
 	}
 
 	onStatus(handler: StatusHandler) {
