@@ -13,28 +13,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      # The project standardises on Bun (see package.json scripts) and Vercel
+      # deploys with Bun. npm install fails here on the svelte-chessground peer
+      # dependency (it wants svelte@3 while the app is on svelte@4); Bun resolves
+      # it the same way the deploy does.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: npm install
+        run: bun install
 
       - name: Sync SvelteKit
-        run: npx svelte-kit sync
+        run: bunx svelte-kit sync
 
-      # NOTE: We run eslint + svelte-check directly rather than the `lint`
-      # npm script, because that script also runs `prettier --check .`, which
-      # can fail on pre-existing formatting unrelated to these changes.
+      # eslint + svelte-check are run directly rather than the `lint` npm script,
+      # because that script also runs `prettier --check .`, which can fail on
+      # pre-existing formatting unrelated to these changes.
       - name: Lint
-        run: npx eslint .
+        run: bunx eslint .
 
       - name: Type-check (svelte-check)
-        run: npx svelte-check --tsconfig ./tsconfig.json
+        run: bunx svelte-check --tsconfig ./tsconfig.json
 
       - name: Unit tests
-        run: npx vitest run
+        run: bunx vitest run
 
   api:
     name: API (type-check, unit tests)
@@ -46,16 +48,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: npm install
+        run: bun install
 
       - name: Type-check
-        run: npx tsc --noEmit
+        run: bunx tsc --noEmit
 
       - name: Unit tests
-        run: npx vitest run
+        run: bunx vitest run
