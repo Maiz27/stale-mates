@@ -1,0 +1,15 @@
+node_modules
+dist
+.svelte-kit
+build
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+.git
+.gitignore
+.DS_Store
+Dockerfile
+.dockerignore
+fly.toml

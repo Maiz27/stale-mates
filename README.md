@@ -19,6 +19,12 @@ Stalemates is an interactive chess platform where users can play against AI or o
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
   - [Scripts](#scripts)
+  - [Deployment](#deployment)
+    - [Two-Target Split](#two-target-split)
+    - [Why the Backend Can't Be Serverless](#why-the-backend-cant-be-serverless)
+    - [Environment Variables](#environment-variables)
+    - [Deploying the Frontend (Vercel)](#deploying-the-frontend-vercel)
+    - [Deploying the Backend (Fly.io / Docker)](#deploying-the-backend-flyio--docker)
   - [Contributing](#contributing)
   - [License](#license)
     - [Third-Party Licenses](#third-party-licenses)
@@ -136,6 +142,65 @@ To run both the frontend and backend concurrently:
 ```bash
 bun run dev:all
 ```
+
+## Deployment
+
+Stalemates ships as **two separate deployment targets** that must be deployed independently.
+
+### Two-Target Split
+
+| Target | Code | Host | How |
+| --- | --- | --- | --- |
+| Frontend | repo root (SvelteKit) | Vercel | `adapter-vercel` |
+| Backend | `api/` (Express + `ws`) | A stateful host such as [Fly.io](https://fly.io) | `api/Dockerfile` |
+
+The frontend is a stateless SvelteKit app and deploys cleanly to Vercel's serverless platform. The backend is a long-lived, single-instance Express + WebSocket server and must run on a host that keeps a persistent process alive.
+
+### Why the Backend Can't Be Serverless
+
+The backend stores active game rooms in an **in-memory `Map`** inside a single long-lived process. Serverless platforms (including Vercel) spin up short-lived, horizontally-scaled instances with no shared memory and no persistent WebSocket connections, so game state would be lost or split across instances. The backend therefore runs as **exactly one always-on instance**. The provided `api/fly.toml` enforces this with `auto_stop_machines = false` and `min_machines_running = 1`.
+
+### Environment Variables
+
+**Frontend (Vercel project env):**
+
+- `VITE_API_URL` — HTTPS base URL of the deployed backend (e.g. `https://stalemates-api.fly.dev`)
+- `VITE_API_WS_URL` — WebSocket base URL of the deployed backend (e.g. `wss://stalemates-api.fly.dev`)
+
+**Backend (Fly secrets / container env):**
+
+- `ORIGIN` — the deployed frontend origin, used for CORS (e.g. `https://stalemates.magedfaiz.xyz`)
+- `PORT` — port the server listens on (defaults to `3000`)
+
+### Deploying the Frontend (Vercel)
+
+Connect the repository to a Vercel project, set `VITE_API_URL` and `VITE_API_WS_URL` in the project's environment variables, and deploy. `adapter-vercel` handles the build.
+
+### Deploying the Backend (Fly.io / Docker)
+
+The backend deploys from `api/Dockerfile` (multi-stage: `tsc` build, production-only runtime). A `HEALTHCHECK` hitting `/health` is built in.
+
+Using Fly.io (config in `api/fly.toml`, app name `stalemates-api`):
+
+```bash
+cd api
+fly launch --copy-config --no-deploy   # first time only; reuses fly.toml
+fly secrets set ORIGIN=https://stalemates.magedfaiz.xyz
+fly deploy
+```
+
+Or build and run the container directly with Docker:
+
+```bash
+cd api
+docker build -t stalemates-api .
+docker run -p 3000:3000 \
+  -e ORIGIN=https://stalemates.magedfaiz.xyz \
+  -e PORT=3000 \
+  stalemates-api
+```
+
+The health endpoint is available at `GET /health` and returns `{ "status": "ok", "rooms": <count> }`.
 
 ## Contributing
 

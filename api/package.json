@@ -6,7 +6,9 @@
 	"scripts": {
 		"start": "node dist/index.js",
 		"dev": "nodemon src/index.ts",
-		"build": "tsc"
+		"build": "tsc",
+		"test": "vitest run",
+		"test:unit": "vitest run"
 	},
 	"dependencies": {
 		"@types/cors": "^2.8.17",
@@ -23,6 +25,7 @@
 		"@types/ws": "^8.5.12",
 		"nodemon": "^3.1.4",
 		"ts-node": "^10.9.2",
-		"typescript": "^5.5.4"
+		"typescript": "^5.5.4",
+		"vitest": "^1.6.0"
 	}
 }

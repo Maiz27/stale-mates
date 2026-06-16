@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (lint, check, unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Sync SvelteKit
+        run: npx svelte-kit sync
+
+      # NOTE: We run eslint + svelte-check directly rather than the `lint`
+      # npm script, because that script also runs `prettier --check .`, which
+      # can fail on pre-existing formatting unrelated to these changes.
+      - name: Lint
+        run: npx eslint .
+
+      - name: Type-check (svelte-check)
+        run: npx svelte-check --tsconfig ./tsconfig.json
+
+      - name: Unit tests
+        run: npx vitest run
+
+  api:
+    name: API (type-check, unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
