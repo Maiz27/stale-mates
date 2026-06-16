@@ -196,7 +196,7 @@
 	})();
 </script>
 
-<section class="relative mx-auto md:w-1/2 2xl:w-1/3">
+<section class="relative mx-auto aspect-square w-full max-w-2xl">
 	{#if gameOver.isOver}
 		<div
 			role="status"
