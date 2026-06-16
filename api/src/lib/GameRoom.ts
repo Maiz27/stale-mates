@@ -33,6 +33,13 @@ export class GameRoom {
 		if (this.players.length >= 2) {
 			throw new Error('Game room is full');
 		}
+		// Enforce distinct seats server-side: the two players cannot hold the same
+		// color (audit F2 — color was previously trusted from the URL unchecked,
+		// so both clients could request white). The connection is rejected; a
+		// legitimate opposite-color join is unaffected.
+		if (this.players.some((p) => p.color === color)) {
+			throw new Error('Color already taken');
+		}
 		const playerId = nanoid();
 		const player: Player = { id: playerId, color, ws, connected: true };
 		this.players.push(player);
