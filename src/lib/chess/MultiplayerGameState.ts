@@ -80,7 +80,7 @@ export class MultiplayerGameState extends GameState {
 			if (!sent) {
 				// The socket isn't open, so the server will never see this move.
 				// Roll back the optimistic apply; reconnect will resync from server truth.
-				this.chess.undo();
+				this.core.undo();
 				this.moveHistory.update((history) => history.slice(0, -1));
 				this.updateGameState();
 				return false;
@@ -136,7 +136,7 @@ export class MultiplayerGameState extends GameState {
 	private handleRematchAccepted(data: { fen: string; turn: Color; timeControl: TimeControl; clock?: ClockSnapshot }) {
 		this.rematchOffer.set(false);
 		this.gameOver.set({ isOver: false, winner: null });
-		this.chess.load(data.fen);
+		this.core.load(data.fen);
 		this.turn.set(data.turn);
 		this.moveHistory.set([]);
 		this.initializeClock(data.timeControl, data.clock);
@@ -167,7 +167,7 @@ export class MultiplayerGameState extends GameState {
 		timeControl: TimeControl;
 		clock?: ClockSnapshot;
 	}) {
-		this.chess.load(data.fen);
+		this.core.load(data.fen);
 		this.turn.set(data.turn);
 		this.initializeClock(data.timeControl, data.clock);
 		this.started.set(true);
@@ -260,7 +260,7 @@ export class MultiplayerGameState extends GameState {
 		clock?: ClockSnapshot;
 		timeControl?: TimeControl;
 	}) {
-		this.chess.load(data.fen);
+		this.core.load(data.fen);
 		this.fen.set(data.fen);
 		this.turn.set(data.turn);
 		if (data.timeControl) {

@@ -1,22 +1,23 @@
 import { writable, type Writable } from 'svelte/store';
-import { Chess, type Move, type Square } from 'chess.js';
-import { getCheckState, toDestinations } from './utils';
+import type { Move, Square } from 'chess.js';
+import { ChessCore } from './ChessCore';
+import { AudioCue } from './AudioCue';
 import type { GameSettings } from '$lib/stores/gameSettings';
-import { STARTING_FEN, MOVE_AUDIOS_PATHS } from '../constants';
+import { STARTING_FEN } from '../constants';
 import type {
 	CheckState,
 	ChessMove,
 	GameMode,
 	GameOver,
-	GameOverReason,
 	PromotionMove,
 	MoveType
 } from './types';
 import type { Color } from 'chessground/types';
 
 export abstract class GameState {
-	protected chess: Chess;
-	private audioFiles: Record<MoveType, HTMLAudioElement> = {} as Record<MoveType, HTMLAudioElement>;
+	/** Pure rules. Subclasses read/load it (fen/turn/undo) but never touch chess.js directly. */
+	protected core: ChessCore;
+	private audio: AudioCue;
 	mode: GameMode;
 	player: Color;
 	moveHistory: Writable<ChessMove[]> = writable([]);
@@ -32,19 +33,13 @@ export abstract class GameState {
 	hint: Writable<ChessMove | null> = writable(null);
 
 	constructor(mode: GameMode, player: Color, fen: string = STARTING_FEN) {
-		this.chess = new Chess(fen);
+		this.core = new ChessCore(fen);
 		this.mode = mode;
 		this.player = player;
 		this.fen = writable(fen);
-		this.turn = writable(this.chess.turn() === 'w' ? 'white' : 'black');
+		this.turn = writable(this.core.turn());
 		this.updateDestinations();
-
-		// Initialize audio files
-		Object.entries(MOVE_AUDIOS_PATHS).forEach(([key, path]) => {
-			this.audioFiles[key as MoveType] = new Audio(path);
-			this.audioFiles[key as MoveType].load();
-			this.audioFiles[key as MoveType].volume = 0.9;
-		});
+		this.audio = new AudioCue();
 	}
 
 	abstract setDifficulty(difficulty: number): void;
@@ -58,29 +53,18 @@ export abstract class GameState {
 	 * Subclasses should override and call `super.destroy()` after their own teardown.
 	 */
 	destroy(): void {
-		Object.keys(this.audioFiles).forEach((key) => {
-			const audio = this.audioFiles[key as MoveType];
-			if (audio) {
-				try {
-					audio.pause();
-					audio.src = '';
-				} catch {
-					// best-effort cleanup; ignore failures
-				}
-			}
-			delete this.audioFiles[key as MoveType];
-		});
+		this.audio.destroy();
 	}
 
 	newGame() {
-		this.chess.reset();
+		this.core.reset();
 		this.updateGameState();
 		this.started.set(true);
 		this.audioCue.set('game-start');
 	}
 
 	endGame() {
-		this.chess.reset();
+		this.core.reset();
 		this.updateGameState();
 		this.started.set(false);
 		this.gameOver.set({ isOver: false, winner: null });
@@ -96,16 +80,12 @@ export abstract class GameState {
 	}
 
 	makeMove({ from, to, promotion }: ChessMove): boolean {
-		try {
-			const move = this.chess.move({ from, to, promotion });
-			if (move) {
-				this.moveHistory.update((history) => [...history, { from, to, promotion }]);
-				this.updateGameState();
-				this.determineMoveType(move);
-				return true;
-			}
-		} catch (error) {
-			console.error('Invalid move:', { from, to, promotion }, error);
+		const move = this.core.move({ from, to, promotion });
+		if (move) {
+			this.moveHistory.update((history) => [...history, { from, to, promotion }]);
+			this.updateGameState();
+			this.determineMoveType(move);
+			return true;
 		}
 		return false;
 	}
@@ -115,76 +95,34 @@ export abstract class GameState {
 	}
 
 	protected updateGameState() {
-		this.fen.set(this.chess.fen());
-		this.turn.set(this.chess.turn() === 'w' ? 'white' : 'black');
-		this.sanHistory.set(this.chess.history());
+		this.fen.set(this.core.fen());
+		this.turn.set(this.core.turn());
+		this.sanHistory.set(this.core.history());
 		this.updateDestinations();
-		this.checkState.set(getCheckState(this.chess));
+		this.checkState.set(this.core.checkState());
 		this.checkGameOver();
 	}
 
 	protected updateDestinations() {
-		this.destinations.set(toDestinations(this.chess));
+		this.destinations.set(this.core.destinations());
 	}
 
 	protected checkGameOver() {
-		if (!this.chess.isGameOver()) return;
-
-		let winner: Color | 'draw' = 'draw';
-		let reason: GameOverReason = 'draw';
-
-		if (this.chess.isCheckmate()) {
+		const outcome = this.core.outcome();
+		if (!outcome) return;
+		if (outcome.reason === 'checkmate') {
 			this.audioCue.set('game-end');
-			winner = this.chess.turn() === 'w' ? 'black' : 'white';
-			reason = 'checkmate';
-		} else if (this.chess.isStalemate()) {
-			reason = 'stalemate';
-		} else if (this.chess.isThreefoldRepetition()) {
-			reason = 'threefold';
-		} else if (this.chess.isInsufficientMaterial()) {
-			reason = 'insufficient';
-		} else {
-			// Distinguish the fifty-move rule via the FEN halfmove clock (>= 100 ply)
-			// rather than upgrading chess.js; any other draw stays generic.
-			const halfmoveClock = Number(this.chess.fen().split(' ')[4]);
-			reason = Number.isFinite(halfmoveClock) && halfmoveClock >= 100 ? 'fiftyMove' : 'draw';
 		}
-
-		this.gameOver.set({ isOver: true, winner, reason });
+		this.gameOver.set(outcome);
 	}
 
 	protected isPromotionMove(from: string, to: string): boolean {
-		const move = this.chess.move({ from, to, promotion: 'q' });
-		if (move) {
-			this.chess.undo();
-			return move.flags.includes('p');
-		}
-		return false;
+		return this.core.isPromotion(from, to);
 	}
 
 	protected determineMoveType(move: Move) {
-		let moveType: MoveType = 'normal';
-		if (move.captured) {
-			moveType = 'capture';
-		} else if (move.flags.includes('k') || move.flags.includes('q')) {
-			moveType = 'castle';
-		} else if (move.flags.includes('p')) {
-			moveType = 'promote';
-		}
-		if (this.chess.isCheck()) {
-			moveType = 'check';
-		}
+		const moveType = this.core.moveType(move);
 		this.audioCue.set(moveType);
-		this.playMoveAudio(moveType);
-	}
-
-	protected async playMoveAudio(moveType: MoveType) {
-		if (this.audioFiles[moveType]) {
-			try {
-				await this.audioFiles[moveType].play();
-			} catch (error) {
-				console.error('Audio playback failed:', error);
-			}
-		}
+		this.audio.play(moveType);
 	}
 }

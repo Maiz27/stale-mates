@@ -27,7 +27,7 @@ export class AIGameState extends GameState {
 		super.newGame();
 		this.engine.stop();
 		this.engine.newGame();
-		this.engine.setPosition(this.chess.fen());
+		this.engine.setPosition(this.core.fen());
 		if (this.player === 'black') {
 			this.triggerAiMove();
 		}
@@ -36,7 +36,7 @@ export class AIGameState extends GameState {
 	makeMove(move: ChessMove): boolean {
 		const result = super.makeMove(move);
 		if (result) {
-			this.engine.setPosition(this.chess.fen());
+			this.engine.setPosition(this.core.fen());
 			this.triggerAiMove();
 		}
 		return result;
@@ -44,11 +44,11 @@ export class AIGameState extends GameState {
 
 	undoMove() {
 		this.engine.stop();
-		this.chess.undo();
-		this.chess.undo();
+		this.core.undo();
+		this.core.undo();
 		this.moveHistory.update((history) => history.slice(0, -2));
 		this.updateGameState();
-		this.engine.setPosition(this.chess.fen());
+		this.engine.setPosition(this.core.fen());
 	}
 
 	async getHint(): Promise<ChessMove | null> {
