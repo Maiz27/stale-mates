@@ -11,28 +11,37 @@ biggest single refactor).
 > **Status (remediation branch):** #3 (pure clock) ✅ done server-side (`api/src/lib/clock.ts`);
 > #4 (dead `Engine` base) ✅ done; #6 (shared domain-core) 🟡 partial — `gameOutcome()` +
 > unified `TimeControl`/`ClockSnapshot`/`GameOverReason`, but not yet a single copied `protocol.ts`;
-> the latent draw-reason bug ✅ fixed. #1/#2/#5 (composition / store consolidation / presentational
-> board) remain **deferred** — high-regression-risk internal restructuring that needs interactive
-> browser verification.
+> the latent draw-reason bug ✅ fixed. **Phase 2.1 complete:** #1 (composition) ✅ — a pure
+> `ChessCore` + `AudioCue` are composed by a concrete `GameModel` base the two modes extend with
+> *only* mode-specific behaviour (no more `console.warn` stubs); #2 (store consolidation) ✅ —
+> the ~18 per-field `Writable`s collapsed into one `Readable<GameView>` the model exposes via
+> `subscribe` (`$gameState`), with a player-relative `clock` (`myClock`/`opponentClock`); #5
+> (presentational board) ✅ — `ChessBoard` is now props-in (`view`/`playerColor`/`boardFlipped`)
+> / events-out (`move`/`promotion`), the `bind:this` command routing is gone, and result text
+> moved to a pure, unit-tested `formatResult()`. Behaviour is preserved (svelte-check 0/0,
+> eslint, 28 unit tests, `vite build` all green); the remaining audit item is the deferred
+> seat-token work (`docs/server-authority-plan.md`, issue #10).
 
 ---
 
 ## Current shape (as-built)
 
-The game logic is organized around a class hierarchy:
+The game logic is organized around a thin shared base plus two mode classes:
 
 ```
-GameState  (src/lib/chess/GameState.ts)
+GameModel  (src/lib/chess/GameModel.ts)   — composes ChessCore + AudioCue, owns one Readable<GameView>
    ├── AIGameState          (src/lib/chess/AIGameState.ts)        — play vs Stockfish
    └── MultiplayerGameState (src/lib/chess/MultiplayerGameState.ts) — play vs a remote peer
 ```
 
-`GameState` owns *everything*: the `chess.js` instance and rules, ~18 per-field Svelte
-`Writable` stores (board/turn/clocks/check/game-over/…), seven `Audio` cue objects, and
-(in the AI subclass) a Stockfish web-worker. The two route pages (`src/routes/ai/+page.svelte`,
-`src/routes/room/+page.svelte`) and the board component
-(`src/lib/components/chessBoard/ChessBoard.svelte`) consume these stores and, in places,
-drive the game by calling methods *through* the board via `bind:this`.
+`GameModel` *composes* the pure rules (`ChessCore`) and the seven-cue `AudioCue`, and projects
+all state into a **single `Readable<GameView>`** (`fen`/`turn`/`clock`/`check`/`game-over`/…)
+that it exposes via `subscribe`. The two modes `extend` it and add only mode-specific behaviour
+(Stockfish + hints/undo for AI; the `WebSocketManager` + server clock/rematch for MP) — neither
+stubs methods it doesn't support. The route pages (`src/routes/ai/+page.svelte`,
+`src/routes/room/+page.svelte`) subscribe once to the view (`$gameState` / one `subscribe`) and
+call game methods *directly*; the board (`src/lib/components/chessBoard/ChessBoard.svelte`) is a
+presentational component — `view` in, `move`/`promotion` events out.
 
 The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` and is now
 **authoritative for outcomes and clocks**: game-over (and its reason) comes only from the rules
@@ -40,18 +49,19 @@ The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` a
 server clock snapshot rather than declaring timeouts itself. The remaining authority gap is
 seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.md`.
 
-### Known structural smells (why the refactors below exist)
-- **Liskov violation:** `MultiplayerGameState` stubs ~4/5 of `GameState`'s abstract/engine
-  methods with `console.warn` — multiplayer is *not* a kind of AI-capable game; inheritance
-  is the wrong relationship.
-- **Store ceremony:** every consumer manually `subscribe`s, copies into a local, and
-  `unsubscribe`s for ~18 separate stores. High boilerplate, easy to get wrong.
+### Known structural smells (most now resolved — kept for history)
+- ~~**Liskov violation:** `MultiplayerGameState` stubs ~4/5 of `GameState`'s abstract/engine
+  methods with `console.warn`.~~ **Resolved** — `GameModel` declares no AI-specific abstract
+  methods; each mode adds only what it supports.
+- ~~**Store ceremony:** every consumer manually `subscribe`s … for ~18 separate stores.~~
+  **Resolved** — one `Readable<GameView>`; consumers read `$gameState` / a single `subscribe`.
 - **Time/units drift:** clock math mixes seconds and `Date.now()` milliseconds across client
-  and server; `TimeControl` is defined twice and has already drifted (`AUDIT.md` M1).
-- **Engine seam is stringly-typed:** callers parse raw UCI `bestmove` strings; a dead `Engine`
-  base class shadows `Stockfish` with an incompatible `go()` signature.
-- **Inverted control:** pages reach *into* the board (`newGame/resign/...`) instead of the
-  board being a pure presentational component (props in / events out).
+  and server; `TimeControl` is defined twice and has already drifted (`AUDIT.md` M1). *(Server
+  clock authority landed (#3); a single shared `protocol.ts` is still outstanding (#6).)*
+- ~~**Engine seam is stringly-typed** … a dead `Engine` base class shadows `Stockfish`.~~
+  Dead `Engine` base **removed** (#4); UCI parsing still lives in the `Stockfish` adapter.
+- ~~**Inverted control:** pages reach *into* the board (`newGame/resign/...`).~~ **Resolved** —
+  the board is presentational (props in / events out); pages call the game model directly.
 
 ---
 

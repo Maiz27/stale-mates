@@ -1,5 +1,6 @@
 import type { PieceSymbol, Square } from 'chess.js';
 import type { Color } from 'chessground/types';
+import type { ConnectionStatus } from '../websocket/WebSocketManager';
 
 export type GameMode = 'pve' | 'pvp';
 
@@ -55,4 +56,34 @@ export type ClockSnapshot = {
 	blackMs: number;
 	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
 	serverTime: number; // Date.now() on the server when the snapshot was taken
+};
+
+// Player-relative clock for display. The game modes resolve white/black into
+// "mine" vs "the opponent's" so consumers never branch on player color.
+export type ClockView = {
+	isUnlimited: boolean;
+	myClock: number; // seconds
+	opponentClock: number; // seconds
+};
+
+// The single immutable view-model every consumer renders from. Replaces the
+// ~18 per-field Svelte stores the game modes used to expose: the modes patch
+// this object and expose themselves as a `Readable<GameView>`. Multiplayer-only
+// fields carry harmless defaults in single-player mode (the AI page ignores them).
+export type GameView = {
+	fen: string;
+	turn: Color;
+	started: boolean;
+	checkState: CheckState;
+	gameOver: GameOver;
+	destinations: Map<Square, Square[]>;
+	promotionMove: PromotionMove;
+	hint: ChessMove | null;
+	moveHistory: ChessMove[];
+	sanHistory: string[];
+	// Multiplayer-only.
+	opponentConnected: boolean;
+	connectionStatus: ConnectionStatus;
+	rematchOffer: boolean;
+	clock: ClockView;
 };

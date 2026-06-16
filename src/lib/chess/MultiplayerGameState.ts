@@ -1,8 +1,7 @@
-import { writable, type Writable } from 'svelte/store';
-import { GameState } from './GameState';
+import { GameModel } from './GameModel';
 import type { Color } from 'chessground/types';
-import type { ChessMove, ClockSnapshot, GameOver, GameOverReason, TimeControl } from './types';
-import { WebSocketManager, type ConnectionStatus } from '../websocket/WebSocketManager';
+import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './types';
+import { WebSocketManager } from '../websocket/WebSocketManager';
 import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
 import { PLAYER_ID_EXPIRATION } from '$lib/constants';
 
@@ -11,7 +10,7 @@ export interface MultiplayerGameStateOptions {
 	roomId: string;
 }
 
-export class MultiplayerGameState extends GameState {
+export class MultiplayerGameState extends GameModel {
 	private wsManager: WebSocketManager;
 
 	// Display-only clock interpolation. The SERVER is authoritative for time and
@@ -20,13 +19,8 @@ export class MultiplayerGameState extends GameState {
 	private clockSnapshot: ClockSnapshot | null = null;
 	private clockTick: number | null = null;
 	private serverOffset = 0; // serverTime - local Date.now(), to align the snapshot
+	private unlimited = true; // mirrors the active time control for clock patches
 
-	opponentConnected: Writable<boolean> = writable(false);
-	connectionStatus: Writable<ConnectionStatus> = writable('connecting');
-	isUnlimited: Writable<boolean> = writable(true);
-	whiteTime: Writable<number> = writable(0);
-	blackTime: Writable<number> = writable(0);
-	rematchOffer: Writable<boolean> = writable(false);
 	roomId: string;
 
 	constructor({ player, roomId }: MultiplayerGameStateOptions) {
@@ -38,7 +32,7 @@ export class MultiplayerGameState extends GameState {
 		this.wsManager = new WebSocketManager(() =>
 			this.constructWebSocketUrl(player, roomId, GetItemFromCookies(`${this.roomId}-playerId`))
 		);
-		this.wsManager.onStatus((status) => this.connectionStatus.set(status));
+		this.wsManager.onStatus((status) => this.patch({ connectionStatus: status }));
 		this.setupMessageHandlers();
 	}
 
@@ -60,12 +54,8 @@ export class MultiplayerGameState extends GameState {
 		this.wsManager.addMessageHandler('clock', (data) => this.applyClockSnapshot(data.clock));
 		this.wsManager.addMessageHandler('gameOver', (data) => this.handleGameOver(data));
 		this.wsManager.addMessageHandler('gameState', (data) => this.handleGameState(data));
-		this.wsManager.addMessageHandler('rematchOffer', () => this.rematchOffer.set(true));
+		this.wsManager.addMessageHandler('rematchOffer', () => this.patch({ rematchOffer: true }));
 		this.wsManager.addMessageHandler('rematchAccepted', (data) => this.handleRematchAccepted(data));
-	}
-
-	newGame() {
-		super.newGame();
 	}
 
 	makeMove(move: ChessMove): boolean {
@@ -81,7 +71,7 @@ export class MultiplayerGameState extends GameState {
 				// The socket isn't open, so the server will never see this move.
 				// Roll back the optimistic apply; reconnect will resync from server truth.
 				this.core.undo();
-				this.moveHistory.update((history) => history.slice(0, -1));
+				this.patch({ moveHistory: this.snapshot().moveHistory.slice(0, -1) });
 				this.updateGameState();
 				return false;
 			}
@@ -92,23 +82,6 @@ export class MultiplayerGameState extends GameState {
 	endGame() {
 		super.endGame();
 		this.stopClockTick();
-	}
-
-	setDifficulty(): void {
-		console.warn('Difficulty settings are not applicable in multiplayer mode');
-	}
-
-	updateSettings(): void {
-		console.warn('Some settings may not apply in multiplayer mode');
-	}
-
-	undoMove(): void {
-		console.warn('Undo is not available in multiplayer mode');
-	}
-
-	async getHint(): Promise<ChessMove | null> {
-		console.warn('Hints are not available in multiplayer mode');
-		return null;
 	}
 
 	offerRematch() {
@@ -133,20 +106,21 @@ export class MultiplayerGameState extends GameState {
 		super.destroy();
 	}
 
-	private handleRematchAccepted(data: { fen: string; turn: Color; timeControl: TimeControl; clock?: ClockSnapshot }) {
-		this.rematchOffer.set(false);
-		this.gameOver.set({ isOver: false, winner: null });
+	private handleRematchAccepted(data: {
+		fen: string;
+		turn: Color;
+		timeControl: TimeControl;
+		clock?: ClockSnapshot;
+	}) {
+		this.patch({ rematchOffer: false, gameOver: { isOver: false, winner: null } });
 		this.core.load(data.fen);
-		this.turn.set(data.turn);
-		this.moveHistory.set([]);
+		this.patch({ turn: data.turn, moveHistory: [], started: true });
 		this.initializeClock(data.timeControl, data.clock);
-		this.started.set(true);
-		this.audioCue.set('game-start');
 		this.updateGameState();
 	}
 
 	private handleOpponentReconnected() {
-		this.opponentConnected.set(true);
+		this.patch({ opponentConnected: true });
 	}
 
 	private handleConnected(playerId: string) {
@@ -158,7 +132,7 @@ export class MultiplayerGameState extends GameState {
 	}
 
 	private handleOpponentJoined() {
-		this.opponentConnected.set(true);
+		this.patch({ opponentConnected: true });
 	}
 
 	private handleGameStart(data: {
@@ -168,27 +142,27 @@ export class MultiplayerGameState extends GameState {
 		clock?: ClockSnapshot;
 	}) {
 		this.core.load(data.fen);
-		this.turn.set(data.turn);
+		this.patch({ turn: data.turn, started: true });
 		this.initializeClock(data.timeControl, data.clock);
-		this.started.set(true);
 		this.updateGameState();
 	}
 
 	private handleOpponentMove(move: ChessMove) {
+		// Apply locally only; bypass our own `makeMove` so we don't echo it back.
 		super.makeMove(move);
 	}
 
 	private initializeClock(timeControl: TimeControl, clock?: ClockSnapshot) {
-		this.isUnlimited.set(timeControl.isUnlimited);
+		this.unlimited = timeControl.isUnlimited;
 		if (timeControl.isUnlimited) {
 			this.stopClockTick();
+			this.patch({ clock: { isUnlimited: true, myClock: 0, opponentClock: 0 } });
 			return;
 		}
 		if (clock) {
 			this.applyClockSnapshot(clock);
 		} else {
-			this.whiteTime.set(timeControl.initial);
-			this.blackTime.set(timeControl.initial);
+			this.setClock(timeControl.initial, timeControl.initial);
 		}
 	}
 
@@ -211,8 +185,18 @@ export class MultiplayerGameState extends GameState {
 		const blackMs = snap.running === 'black' ? snap.blackMs - elapsed : snap.blackMs;
 
 		// Display only — clamp at zero and NEVER declare game-over here.
-		this.whiteTime.set(Math.max(0, whiteMs / 1000));
-		this.blackTime.set(Math.max(0, blackMs / 1000));
+		this.setClock(Math.max(0, whiteMs / 1000), Math.max(0, blackMs / 1000));
+	}
+
+	/** Project white/black seconds into the player-relative clock view. */
+	private setClock(whiteSeconds: number, blackSeconds: number) {
+		this.patch({
+			clock: {
+				isUnlimited: this.unlimited,
+				myClock: this.player === 'white' ? whiteSeconds : blackSeconds,
+				opponentClock: this.player === 'white' ? blackSeconds : whiteSeconds
+			}
+		});
 	}
 
 	private startClockTick() {
@@ -231,11 +215,6 @@ export class MultiplayerGameState extends GameState {
 		}
 	}
 
-	private setGameOver(winner: Color | 'draw' | null, reason?: GameOverReason) {
-		const gameOver: GameOver = { isOver: true, winner, reason };
-		this.gameOver.set(gameOver);
-	}
-
 	private handleGameOver(data: {
 		winner?: Color | 'draw' | null;
 		reason?: GameOverReason;
@@ -248,8 +227,7 @@ export class MultiplayerGameState extends GameState {
 			this.renderClock();
 		}
 		this.stopClockTick();
-		this.setGameOver(data.winner ?? null, data.reason);
-		this.audioCue.set('game-end');
+		this.patch({ gameOver: { isOver: true, winner: data.winner ?? null, reason: data.reason } });
 		this.updateGameState();
 	}
 
@@ -261,15 +239,13 @@ export class MultiplayerGameState extends GameState {
 		timeControl?: TimeControl;
 	}) {
 		this.core.load(data.fen);
-		this.fen.set(data.fen);
-		this.turn.set(data.turn);
+		this.patch({ turn: data.turn });
 		if (data.timeControl) {
 			this.initializeClock(data.timeControl, data.clock);
 		} else if (data.clock) {
 			this.applyClockSnapshot(data.clock);
 		}
-		this.started.set(data.started);
-		this.opponentConnected.set(true);
+		this.patch({ started: data.started, opponentConnected: true });
 		this.updateGameState();
 	}
 }

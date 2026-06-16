@@ -1,74 +1,61 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { createEventDispatcher } from 'svelte';
 	import { Chessground } from 'svelte-chessground';
 	import PromotionModal from './PromotionModal.svelte';
 	import type { Config } from 'chessground/config';
 	import type { Color } from 'chessground/types';
-	import type { PromotionMove, GameOver } from '$lib/chess/types';
+	import type { GameView } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
-	import type { GameSettings } from '$lib/stores/gameSettings';
-	import type { AIGameState } from '$lib/chess/AIGameState';
-	import type { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
+	import { formatResult } from '$lib/chess/formatResult';
 
+	// Presentational: props in, events out. The board renders a `GameView` and
+	// emits the player's intent (`move`, `promotion`); the page owns the game
+	// state and applies those events. The board never mutates game state itself.
+	export let view: GameView;
 	export let playerColor: Color;
-	export let gameState: AIGameState | MultiplayerGameState;
+	export let boardFlipped = false;
+
+	const dispatch = createEventDispatcher<{
+		move: { from: string; to: string };
+		promotion: { from: string; to: string; piece: string };
+	}>();
 
 	let chessground: Chessground;
-	let config: Config;
 	let promotionModalOpen = false;
-	let boardFlipped = false;
 
 	$: orientation = (
 		boardFlipped ? (playerColor === 'white' ? 'black' : 'white') : playerColor
 	) as Color;
 
-	$: fen = '';
-	$: turn = 'white' as Color;
-	$: destinations = new Map();
-	$: checkState = { inCheck: false };
-	$: gameOver = { isOver: false, winner: null } as GameOver;
-	$: started = false;
-	$: promotionMove = null as PromotionMove;
-	$: hint = null as { from: string; to: string } | null;
+	// Local display FEN. Authoritative position comes from `view.fen`, but during
+	// a drag (and while the promotion modal is open) chessground's `change` event
+	// keeps this in sync with what's on the board so a reactive config rebuild
+	// doesn't snap a piece back. We only re-adopt `view.fen` when it genuinely
+	// advances to a new position — tracked via `appliedViewFen`.
+	let displayFen = view.fen;
+	let appliedViewFen = view.fen;
+	$: if (view.fen !== appliedViewFen) {
+		displayFen = view.fen;
+		appliedViewFen = view.fen;
+	}
 
-	onMount(() => {
-		// Subscribe to game state changes
-		const unsubscribeFen = gameState.fen.subscribe((value) => (fen = value));
-		const unsubscribeTurn = gameState.turn.subscribe((value) => (turn = value));
-		const unsubscribeCheckState = gameState.checkState.subscribe((value) => (checkState = value));
-		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
-		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-		const unsubscribeDestinations = gameState.destinations.subscribe(
-			(value) => (destinations = value)
-		);
-		const unsubscribePromotionMove = gameState.promotionMove.subscribe((value) => {
-			promotionMove = value;
-			if (value) {
-				promotionModalOpen = true;
-			}
-		});
-		const unsubscribeHint = gameState.hint.subscribe((value) => {
-			hint = value;
-			updateHintShape();
-		});
+	// Open the promotion modal as soon as a promotion choice is pending.
+	$: if (view.promotionMove) {
+		promotionModalOpen = true;
+	}
 
-		return () => {
-			unsubscribeFen();
-			unsubscribeTurn();
-			unsubscribeDestinations();
-			unsubscribeCheckState();
-			unsubscribeGameOver();
-			unsubscribeStarted();
-			unsubscribePromotionMove();
-			unsubscribeHint();
-		};
-	});
+	// Mirror hint arrows onto the board whenever the hint changes.
+	let lastHint = view.hint;
+	$: if (view.hint !== lastHint) {
+		lastHint = view.hint;
+		updateHintShape();
+	}
 
 	$: config = {
-		fen,
+		fen: displayFen,
 		orientation,
-		turnColor: turn,
-		check: checkState.inCheck,
+		turnColor: view.turn,
+		check: view.checkState.inCheck,
 		highlight: {
 			lastMove: true,
 			check: true
@@ -80,14 +67,15 @@
 			move: handleMove,
 			change: () => {
 				if (chessground) {
-					fen = chessground.getFen();
+					displayFen = chessground.getFen();
 				}
 			}
 		},
 		movable: {
 			// Lock input while a promotion choice is pending so a second drag can't fire a move.
-			color: started && turn === playerColor && !promotionMove ? playerColor : undefined,
-			dests: destinations,
+			color:
+				view.started && view.turn === playerColor && !view.promotionMove ? playerColor : undefined,
+			dests: view.destinations,
 			free: false,
 			showDests: true
 		},
@@ -102,14 +90,14 @@
 				yellow: { key: 'yellow', color: '#e68f00', opacity: 1, lineWidth: 10 }
 			}
 		}
-	};
+	} satisfies Config;
 
 	function updateHintShape() {
-		if (chessground && hint) {
+		if (chessground && view.hint) {
 			const shapes = [
 				{
-					orig: hint.from,
-					dest: hint.to,
+					orig: view.hint.from,
+					dest: view.hint.to,
 					brush: 'green'
 				}
 			] as DrawShape[];
@@ -120,84 +108,21 @@
 	}
 
 	function handleMove(from: string, to: string) {
-		gameState.handlePlayerMove({ from, to });
-		gameState.clearHint();
+		dispatch('move', { from, to });
 	}
 
 	function handlePromotion(event: CustomEvent) {
 		const piece = event.detail.piece;
-		if (promotionMove) {
-			const success = gameState.makeMove({ ...promotionMove, promotion: piece });
-			if (success) {
-				gameState.promotionMove.set(null);
-				if (chessground) {
-					chessground.set({ fen: fen });
-				}
-			}
+		if (view.promotionMove) {
+			dispatch('promotion', { from: view.promotionMove.from, to: view.promotionMove.to, piece });
 		}
 	}
 
-	export function newGame() {
-		gameState.newGame();
-	}
-
-	export function endGame() {
-		gameState.endGame();
-	}
-
-	export async function getHint() {
-		return await gameState.getHint();
-	}
-
-	export function undoMove() {
-		gameState.undoMove();
-	}
-
-	export function setDifficulty(difficulty: number) {
-		gameState.setDifficulty(difficulty);
-	}
-
-	export function updateSettings(settings: GameSettings) {
-		gameState.updateSettings(settings);
-		if (!started) {
-			playerColor = settings.color!;
-		}
-	}
-
-	export function flipBoard() {
-		boardFlipped = !boardFlipped;
-	}
-
-	export function resign() {
-		gameState.resign();
-	}
-
-	const REASON_LABELS: Record<string, string> = {
-		checkmate: 'Checkmate',
-		stalemate: 'Stalemate',
-		threefold: 'Draw by repetition',
-		insufficient: 'Draw — insufficient material',
-		fiftyMove: 'Draw — fifty-move rule',
-		draw: 'Draw',
-		timeout: 'Timeout',
-		resignation: 'Resignation'
-	};
-
-	$: resultText = (() => {
-		if (!gameOver.isOver) return '';
-		const reason = gameOver.reason ? (REASON_LABELS[gameOver.reason] ?? '') : '';
-		if (gameOver.winner === 'draw') {
-			return reason && gameOver.reason !== 'draw' ? `Game Over: ${reason}` : 'Game Over: Draw';
-		}
-		const winner = gameOver.winner === 'white' ? 'White' : 'Black';
-		return reason
-			? `Game Over: ${winner} wins by ${reason.toLowerCase()}`
-			: `Game Over: ${winner} wins!`;
-	})();
+	$: resultText = formatResult(view.gameOver);
 </script>
 
 <section class="relative mx-auto aspect-square w-full max-w-2xl">
-	{#if gameOver.isOver}
+	{#if view.gameOver.isOver}
 		<div
 			role="status"
 			aria-live="polite"
@@ -207,7 +132,7 @@
 		</div>
 	{/if}
 	<Chessground bind:this={chessground} {config} {orientation} />
-	{#if promotionMove}
+	{#if view.promotionMove}
 		<PromotionModal bind:open={promotionModalOpen} on:promotion={handlePromotion} />
 	{/if}
 </section>

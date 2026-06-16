@@ -6,6 +6,7 @@
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { Color } from 'chessground/types';
+	import type { GameView } from '$lib/chess/types';
 	import { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
 	import { formatTime } from '$lib/utils';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -15,37 +16,43 @@
 	const playerColor: Color = $page.url.searchParams.get('color') === 'black' ? 'black' : 'white';
 	const opponentColor: Color = playerColor === 'white' ? 'black' : 'white';
 
-	let gameState: MultiplayerGameState;
-	let chessboardComponent: ChessBoard;
-	let started = false;
-	let opponentConnected = false;
-	let reconnecting = false;
-	let gameOver = false;
-	let rematchOffered = false;
-	let opponentOfferedRematch = false;
-	let copied = false;
+	let gameState: MultiplayerGameState | undefined;
+	let view: GameView | undefined;
+	let boardFlipped = false;
+	let rematchOffered = false; // local: whether *I* have offered a rematch
 
-	let isUnlimited = true;
-	let myTime = 0;
-	let opponentTime = 0;
-	let sanHistory: string[] = [];
+	// Everything the page renders is projected from the single view-model.
+	$: started = view?.started ?? false;
+	$: opponentConnected = view?.opponentConnected ?? false;
+	$: reconnecting = view?.connectionStatus === 'reconnecting';
+	$: gameOver = view?.gameOver.isOver ?? false;
+	$: opponentOfferedRematch = view?.rematchOffer ?? false;
+	$: isUnlimited = view?.clock.isUnlimited ?? true;
+	$: myTime = view?.clock.myClock ?? 0;
+	$: opponentTime = view?.clock.opponentClock ?? 0;
+	$: sanHistory = view?.sanHistory ?? [];
+
+	// Clear *my* stale offer once, on the transition into game-over, so the next
+	// game-over starts from "Offer Rematch" rather than a leftover "Offered".
+	let wasGameOver = false;
+	$: {
+		if (gameOver && !wasGameOver) rematchOffered = false;
+		wasGameOver = gameOver;
+	}
+
+	let copied = false;
 
 	// Link to share with the opponent so they join as the other color.
 	$: opponentLink = id ? `${$page.url.origin}/room?id=${id}&color=${opponentColor}` : '';
 
 	function offerRematch() {
-		gameState.offerRematch();
+		gameState?.offerRematch();
 		rematchOffered = true;
 	}
 
 	function acceptRematch() {
-		gameState.acceptRematch();
-		resetRematchState();
-	}
-
-	function resetRematchState() {
+		gameState?.acceptRematch();
 		rematchOffered = false;
-		opponentOfferedRematch = false;
 	}
 
 	async function copyInvite() {
@@ -59,61 +66,21 @@
 		}
 	}
 
-	const resign = () => chessboardComponent?.resign();
-	const flipBoard = () => chessboardComponent?.flipBoard();
+	const resign = () => gameState?.resign();
+	const flipBoard = () => (boardFlipped = !boardFlipped);
 	const leave = () => goto('/');
 
 	onMount(() => {
 		if (!id) return; // invalid room — handled in markup
 
 		gameState = new MultiplayerGameState({ player: playerColor, roomId: id });
+		const unsubscribe = gameState.subscribe((value) => (view = value));
 
-		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-		const unsubscribeOpponentConnected = gameState.opponentConnected.subscribe(
-			(value) => (opponentConnected = value)
-		);
-		const unsubscribeIsUnlimited = gameState.isUnlimited.subscribe(
-			(value) => (isUnlimited = value)
-		);
-		const unsubscribeWhiteTime = gameState.whiteTime.subscribe((value) => {
-			if (playerColor === 'white') myTime = value;
-			else opponentTime = value;
-		});
-		const unsubscribeBlackTime = gameState.blackTime.subscribe((value) => {
-			if (playerColor === 'black') myTime = value;
-			else opponentTime = value;
-		});
-		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => {
-			gameOver = value.isOver;
-			if (gameOver) {
-				resetRematchState();
-			}
-		});
-		const unsubscribeRematchOffer = gameState.rematchOffer.subscribe((value) => {
-			opponentOfferedRematch = value;
-		});
-		const unsubscribeSanHistory = gameState.sanHistory.subscribe((value) => (sanHistory = value));
-		const unsubscribeConnectionStatus = gameState.connectionStatus.subscribe(
-			(value) => (reconnecting = value === 'reconnecting')
-		);
-
-		return () => {
-			unsubscribeStarted();
-			unsubscribeOpponentConnected();
-			unsubscribeConnectionStatus();
-			unsubscribeIsUnlimited();
-			unsubscribeWhiteTime();
-			unsubscribeBlackTime();
-			unsubscribeGameOver();
-			unsubscribeRematchOffer();
-			unsubscribeSanHistory();
-		};
+		return () => unsubscribe();
 	});
 
 	onDestroy(() => {
-		if (gameState) {
-			gameState.destroy();
-		}
+		gameState?.destroy();
 	});
 </script>
 
@@ -221,9 +188,15 @@
 		</div>
 	</section>
 
-	{#if gameState && (opponentConnected || started)}
+	{#if gameState && view && (opponentConnected || started)}
 		<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
-			<ChessBoard bind:this={chessboardComponent} {gameState} {playerColor} />
+			<ChessBoard
+				{view}
+				{playerColor}
+				{boardFlipped}
+				on:move={(e) => gameState?.handlePlayerMove(e.detail)}
+				on:promotion={(e) => gameState?.completePromotion(e.detail)}
+			/>
 			<MoveList moves={sanHistory} />
 		</div>
 	{/if}

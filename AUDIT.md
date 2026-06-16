@@ -44,7 +44,7 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 | H1  | **No persistence / single instance** — in-memory `Map`; restart loses all games; can't scale horizontally. Acceptable for a hobby project _if documented_.                                            | `api/src/lib/game.ts:5`                 | 🟡     |
 | H2  | **Client reconnect missing despite server support** — `WebSocketManager` opens one socket and never retries; `onClose` never wired, though `reconnectPlayer` + `playerId` cookie exist server-side.   | `src/lib/websocket/WebSocketManager.ts` | ✅     |
 | H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`       | ✅     |
-| H4  | **Memory leaks** — each `GameState` creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                           | `GameState.ts`, `api/src/lib/game.ts`   | 🟡     |
+| H4  | **Memory leaks** — each game creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                           | `AudioCue.ts`, `GameModel.ts`, `api/src/lib/game.ts`   | 🟡     |
 | H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                   | 🟡     |
 | H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                      | 🟡     |
 | H7  | **SEO/social** — no Open Graph/Twitter cards, no per-page `<title>`, no web manifest despite a full PWA icon set in `static/`.                                                                        | `+layout.svelte`, `app.html`            | ✅     |
@@ -105,13 +105,15 @@ server-authority design doc.
   mirrored both sides. Full copied-`protocol.ts` module deferred (arch #6).
 - **M2 ✅** — AI no longer desyncs on a mid-game color change.
 - **arch #4 ✅** — dead `Engine` base class deleted; double UCI init fixed.
+- **arch #1/#2/#5 ✅ (Phase 2.1)** — `GameState` inheritance replaced by a concrete `GameModel`
+  base composing a pure `ChessCore` + `AudioCue` (no more `console.warn` stubs in MP); the ~18
+  per-field stores collapsed into one `Readable<GameView>` (player-relative `clock`); `ChessBoard`
+  is presentational (props in / `move`+`promotion` events out), `bind:this` command routing gone,
+  result text extracted to a pure unit-tested `formatResult()`. Behaviour-preserving:
+  svelte-check 0/0, eslint, 28 unit tests, `vite build` all green.
 
 **Deliberately deferred (need two-browser end-to-end verification not available in this session):**
 
 - **C3(F3) + server-authority plan Steps 4–5** — seat tokens, `Sec-WebSocket-Protocol`/ticket
   transport, HttpOnly creator cookie, server-side color assignment. The riskiest, most user-visible
   change; tracked in issue #10. Join URL/`?color=` scheme unchanged for now.
-- **Frontend composition refactor (ARCHITECTURE.md #1/#2/#5)** — replace the `GameState` inheritance
-  with composition over a pure `ChessCore`, collapse the ~18 per-field stores into one
-  `Readable<GameView>`, make `ChessBoard` purely presentational. High-regression-risk internal
-  restructuring with no user-facing change; needs interactive verification.

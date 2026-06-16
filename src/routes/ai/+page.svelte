@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
@@ -8,74 +8,31 @@
 	import EndGameDrawer from '$lib/components/controls/EndGameDrawer.svelte';
 	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
 	import { AIGameState } from '$lib/chess/AIGameState';
-	import type { ChessMove, GameOver } from '$lib/chess/types';
 	import { getDifficultyLabel } from '$lib/utils';
-	import type { Color } from 'chessground/types';
 
-	let gameState: AIGameState = new AIGameState({
+	// The game state is itself a `Readable<GameView>` — `$gameState` is the view.
+	const gameState = new AIGameState({
 		player: $settingsStore.color || 'white',
 		difficulty: $settingsStore.difficulty,
 		debug: false
 	});
-	let chessboardComponent: ChessBoard;
 
-	let started = false;
-	let gameOver = { isOver: false, winner: null as Color | 'draw' | null } as GameOver;
-	let moveHistory = [] as ChessMove[];
-	let sanHistory = [] as string[];
-
-	onMount(() => {
-		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
-		const unsubscribeStarted = gameState.started.subscribe((value) => (started = value));
-		const unsubscribeMoveHistory = gameState.moveHistory.subscribe(
-			(value) => (moveHistory = value)
-		);
-		const unsubscribeSanHistory = gameState.sanHistory.subscribe((value) => (sanHistory = value));
-
-		return () => {
-			unsubscribeGameOver();
-			unsubscribeStarted();
-			unsubscribeMoveHistory();
-			unsubscribeSanHistory();
-		};
-	});
+	let boardFlipped = false;
 
 	// Tear down the Stockfish worker and audio elements when leaving the page.
 	onDestroy(() => {
 		gameState.destroy();
 	});
 
-	const resign = () => chessboardComponent?.resign();
-	const flipBoard = () => chessboardComponent?.flipBoard();
-
-	const startNewGame = () => {
-		if (chessboardComponent) {
-			chessboardComponent.newGame();
-		}
-	};
-
-	const endGame = () => {
-		if (chessboardComponent) {
-			chessboardComponent.endGame();
-		}
-	};
-
-	const getHint = async () => {
-		if (chessboardComponent) {
-			await chessboardComponent.getHint();
-		}
-	};
-
-	const undoMove = () => {
-		if (chessboardComponent) {
-			chessboardComponent.undoMove();
-		}
-	};
+	const startNewGame = () => gameState.newGame();
+	const endGame = () => gameState.endGame();
+	const getHint = () => gameState.getHint();
+	const undoMove = () => gameState.undoMove();
+	const resign = () => gameState.resign();
+	const flipBoard = () => (boardFlipped = !boardFlipped);
 
 	const handleSettingsUpdate = (newSettings: GameSettings) => {
-		if (chessboardComponent) {
-			chessboardComponent.updateSettings(newSettings);
-		}
+		gameState.updateSettings(newSettings);
 	};
 </script>
 
@@ -112,9 +69,9 @@
 		</div>
 
 		<div class="flex gap-2">
-			{#if !started}
+			{#if !$gameState.started}
 				<Button on:click={startNewGame}>Start New Game</Button>
-			{:else if gameOver.isOver}
+			{:else if $gameState.gameOver.isOver}
 				<Button on:click={endGame}>Reset Game</Button>
 			{:else}
 				<EndGameDrawer onConfirm={endGame} />
@@ -122,7 +79,7 @@
 			<Button
 				on:click={getHint}
 				variant="outline"
-				disabled={!started || !$settingsStore.hints || gameOver.isOver}
+				disabled={!$gameState.started || !$settingsStore.hints || $gameState.gameOver.isOver}
 				title="Get Hint"
 			>
 				<Icon icon="radix-icons:question-mark" />
@@ -130,7 +87,10 @@
 			<Button
 				on:click={undoMove}
 				variant="outline"
-				disabled={!started || !$settingsStore.undo || moveHistory.length < 2 || gameOver.isOver}
+				disabled={!$gameState.started ||
+					!$settingsStore.undo ||
+					$gameState.moveHistory.length < 2 ||
+					$gameState.gameOver.isOver}
 				title="Undo Move"
 			>
 				<Icon icon="radix-icons:thick-arrow-left" />
@@ -138,14 +98,14 @@
 			<Button on:click={flipBoard} variant="outline" title="Flip Board" aria-label="Flip board">
 				<Icon icon="radix-icons:loop" />
 			</Button>
-			{#if started && !gameOver.isOver}
+			{#if $gameState.started && !$gameState.gameOver.isOver}
 				<Button on:click={resign} variant="outline" title="Resign" aria-label="Resign game">
 					<Icon icon="radix-icons:flag" />
 				</Button>
 			{/if}
 			<PlayAiDrawer
 				isSave={true}
-				isGameStarted={started && !gameOver.isOver}
+				isGameStarted={$gameState.started && !$gameState.gameOver.isOver}
 				onSettingsUpdate={handleSettingsUpdate}
 			/>
 		</div>
@@ -153,10 +113,12 @@
 
 	<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
 		<ChessBoard
-			bind:this={chessboardComponent}
-			{gameState}
+			{boardFlipped}
+			view={$gameState}
 			playerColor={$settingsStore.color || 'white'}
+			on:move={(e) => gameState.handlePlayerMove(e.detail)}
+			on:promotion={(e) => gameState.completePromotion(e.detail)}
 		/>
-		<MoveList moves={sanHistory} />
+		<MoveList moves={$gameState.sanHistory} />
 	</div>
 </div>
