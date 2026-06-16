@@ -3,7 +3,15 @@ import { Chess, type Move, type Square } from 'chess.js';
 import { getCheckState, toDestinations } from './utils';
 import type { GameSettings } from '$lib/stores/gameSettings';
 import { STARTING_FEN, MOVE_AUDIOS_PATHS } from '../constants';
-import type { CheckState, ChessMove, GameMode, GameOver, PromotionMove, MoveType } from './types';
+import type {
+	CheckState,
+	ChessMove,
+	GameMode,
+	GameOver,
+	GameOverReason,
+	PromotionMove,
+	MoveType
+} from './types';
 import type { Color } from 'chessground/types';
 
 export abstract class GameState {
@@ -12,6 +20,7 @@ export abstract class GameState {
 	mode: GameMode;
 	player: Color;
 	moveHistory: Writable<ChessMove[]> = writable([]);
+	sanHistory: Writable<string[]> = writable([]);
 	audioCue: Writable<MoveType> = writable('normal');
 	started: Writable<boolean> = writable(false);
 	promotionMove: Writable<PromotionMove> = writable(null);
@@ -42,6 +51,26 @@ export abstract class GameState {
 	abstract updateSettings(settings: GameSettings): void;
 	abstract undoMove(): void;
 	abstract getHint(): Promise<ChessMove | null>;
+	abstract resign(): void;
+
+	/**
+	 * Best-effort cleanup so the per-instance HTMLAudioElements can be GC'd.
+	 * Subclasses should override and call `super.destroy()` after their own teardown.
+	 */
+	destroy(): void {
+		Object.keys(this.audioFiles).forEach((key) => {
+			const audio = this.audioFiles[key as MoveType];
+			if (audio) {
+				try {
+					audio.pause();
+					audio.src = '';
+				} catch {
+					// best-effort cleanup; ignore failures
+				}
+			}
+			delete this.audioFiles[key as MoveType];
+		});
+	}
 
 	newGame() {
 		this.chess.reset();
@@ -88,6 +117,7 @@ export abstract class GameState {
 	protected updateGameState() {
 		this.fen.set(this.chess.fen());
 		this.turn.set(this.chess.turn() === 'w' ? 'white' : 'black');
+		this.sanHistory.set(this.chess.history());
 		this.updateDestinations();
 		this.checkState.set(getCheckState(this.chess));
 		this.checkGameOver();
@@ -98,14 +128,27 @@ export abstract class GameState {
 	}
 
 	protected checkGameOver() {
-		if (this.chess.isGameOver()) {
-			let winner: Color | 'draw' = 'draw';
-			if (this.chess.isCheckmate()) {
-				this.audioCue.set('game-end');
-				winner = this.chess.turn() === 'w' ? 'black' : 'white';
-			}
-			this.gameOver.set({ isOver: true, winner });
+		if (!this.chess.isGameOver()) return;
+
+		let winner: Color | 'draw' = 'draw';
+		let reason: GameOverReason = 'draw';
+
+		if (this.chess.isCheckmate()) {
+			this.audioCue.set('game-end');
+			winner = this.chess.turn() === 'w' ? 'black' : 'white';
+			reason = 'checkmate';
+		} else if (this.chess.isStalemate()) {
+			reason = 'stalemate';
+		} else if (this.chess.isThreefoldRepetition()) {
+			reason = 'threefold';
+		} else if (this.chess.isInsufficientMaterial()) {
+			reason = 'insufficient';
+		} else {
+			// Covers the fifty-move rule and any remaining draw conditions.
+			reason = 'draw';
 		}
+
+		this.gameOver.set({ isOver: true, winner, reason });
 	}
 
 	protected isPromotionMove(from: string, to: string): boolean {

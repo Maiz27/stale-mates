@@ -28,4 +28,8 @@ export class Engine {
 		console.log(`Sending go command to Stockfish with depth: ${depth}`);
 		this.worker.postMessage(`go depth ${depth}`);
 	}
+
+	terminate() {
+		this.worker.terminate();
+	}
 }

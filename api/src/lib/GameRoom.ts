@@ -74,10 +74,17 @@ export class GameRoom {
 				this.handleMove(player, message.move);
 				break;
 			case 'offerRematch':
-				this.handleRematchOffer(playerId);
+				if (this.canRematch()) {
+					this.handleRematchOffer(playerId);
+				}
 				break;
 			case 'acceptRematch':
-				this.handleRematchAccept(playerId);
+				if (this.canRematch()) {
+					this.handleRematchAccept(playerId);
+				}
+				break;
+			case 'resign':
+				this.handleResign(player);
 				break;
 			case 'gameOver':
 				if (message.reason === 'timeout') {
@@ -90,10 +97,45 @@ export class GameRoom {
 	private handleMove(player: Player, move: { from: string; to: string; promotion?: string }) {
 		if (player.color !== this.currentTurn) return;
 
-		const success = this.chess.move(move);
-		if (success) {
-			this.updateGameStateAfterMove(player.id, move);
+		if (!move || typeof move.from !== 'string' || typeof move.to !== 'string') {
+			this.resyncPlayer(player);
+			return;
 		}
+
+		let success;
+		try {
+			// chess.js (beta) throws on illegal moves
+			success = this.chess.move(move);
+		} catch (error) {
+			console.error('Ignoring illegal move:', error);
+			this.resyncPlayer(player);
+			return;
+		}
+
+		if (!success) {
+			this.resyncPlayer(player);
+			return;
+		}
+
+		this.updateGameStateAfterMove(player.id, move);
+	}
+
+	private handleResign(player: Player) {
+		const opponentColor: Color = player.color === 'white' ? 'black' : 'white';
+		this.gameStarted = false;
+		this.broadcastGameOver(opponentColor, 'resignation');
+	}
+
+	private canRematch(): boolean {
+		return this.chess.isGameOver() || (!this.gameStarted && this.players.length === 2);
+	}
+
+	private resyncPlayer(player: Player) {
+		this.sendToPlayer(player, {
+			type: 'gameState',
+			...this.getCurrentGameState(),
+			timeControl: this.timeControl
+		});
 	}
 
 	private updateGameStateAfterMove(

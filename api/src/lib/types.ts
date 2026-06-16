@@ -24,4 +24,5 @@ export type GameMessage =
 	| { type: 'move'; playerId: string; move: { from: string; to: string; promotion?: string } }
 	| { type: 'offerRematch'; playerId: string }
 	| { type: 'acceptRematch'; playerId: string }
+	| { type: 'resign'; playerId?: string }
 	| { type: 'gameOver'; reason: 'timeout'; winner: Color };

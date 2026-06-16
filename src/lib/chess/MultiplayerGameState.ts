@@ -1,7 +1,7 @@
 import { get, writable, type Writable } from 'svelte/store';
 import { GameState } from './GameState';
 import type { Color } from 'chessground/types';
-import type { ChessMove, GameOver, TimeControl } from './types';
+import type { ChessMove, GameOver, GameOverReason, TimeControl } from './types';
 import { WebSocketManager } from '../websocket/WebSocketManager';
 import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
 import { PLAYER_ID_EXPIRATION } from '$lib/constants';
@@ -102,8 +102,17 @@ export class MultiplayerGameState extends GameState {
 		this.wsManager.sendMessage({ type: 'acceptRematch' });
 	}
 
+	resign() {
+		this.wsManager.sendMessage({ type: 'resign' });
+	}
+
 	close() {
 		this.wsManager.close();
+	}
+
+	destroy() {
+		this.close();
+		super.destroy();
 	}
 
 	private handleRematchAccepted() {
@@ -216,13 +225,13 @@ export class MultiplayerGameState extends GameState {
 		const winner = loser === 'w' ? 'black' : 'white';
 
 		this.audioCue.set('game-end');
-		this.setGameOver(winner);
+		this.setGameOver(winner, 'timeout');
 		this.notifyGameOverDueToTimeout(winner);
 		this.updateGameState();
 	}
 
-	private setGameOver(winner: Color) {
-		const gameOver: GameOver = { isOver: true, winner };
+	private setGameOver(winner: Color, reason?: GameOverReason) {
+		const gameOver: GameOver = { isOver: true, winner, reason };
 		this.gameOver.set(gameOver);
 	}
 
@@ -234,9 +243,9 @@ export class MultiplayerGameState extends GameState {
 		});
 	}
 
-	private handleGameOver(data: { winner?: Color; reason?: string }) {
+	private handleGameOver(data: { winner?: Color; reason?: GameOverReason }) {
 		this.stopTimer();
-		this.setGameOver(data.winner!);
+		this.setGameOver(data.winner!, data.reason);
 		this.audioCue.set('game-end');
 		this.updateGameState();
 	}

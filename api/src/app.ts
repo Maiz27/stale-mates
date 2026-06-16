@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { GameRouter } from './routes/game';
+import { getRoomCount } from './lib/game';
 
 const app = express();
 
@@ -14,6 +15,10 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
 	res.send('Hello World!');
+});
+
+app.get('/health', (req, res) => {
+	res.json({ status: 'ok', rooms: getRoomCount() });
 });
 
 app.use('/game', GameRouter);

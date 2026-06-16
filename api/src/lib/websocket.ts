@@ -22,8 +22,7 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
 		return;
 	}
 
-	console.log(`New connection attempt for game ${params.id}`);
-	console.log(`Color: ${params.color}, PlayerId: ${params.playerId}`);
+	console.log(`New connection attempt for game ${params.id} (color: ${params.color})`);
 
 	try {
 		const activePlayerId = handlePlayerConnection(ws, params);

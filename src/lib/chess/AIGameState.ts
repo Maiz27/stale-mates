@@ -15,6 +15,7 @@ export interface AIGameStateOptions {
 export class AIGameState extends GameState {
 	private engine: Stockfish;
 	private difficulty: number;
+	private requestedSearchGeneration: number = 0;
 
 	constructor({ player, difficulty, debug = false }: AIGameStateOptions) {
 		super('pve', player);
@@ -24,6 +25,7 @@ export class AIGameState extends GameState {
 
 	newGame() {
 		super.newGame();
+		this.engine.stop();
 		this.engine.newGame();
 		this.engine.setPosition(this.chess.fen());
 		if (this.player === 'black') {
@@ -41,6 +43,7 @@ export class AIGameState extends GameState {
 	}
 
 	undoMove() {
+		this.engine.stop();
 		this.chess.undo();
 		this.chess.undo();
 		this.moveHistory.update((history) => history.slice(0, -2));
@@ -49,7 +52,7 @@ export class AIGameState extends GameState {
 	}
 
 	async getHint(): Promise<ChessMove | null> {
-		if (!this.started || this.player !== get(this.turn)) return null;
+		if (!get(this.started) || this.player !== get(this.turn)) return null;
 		const hintMove = await this.engine.getHint(this.player === 'white' ? 'w' : 'b');
 		this.hint.set(hintMove);
 		return hintMove;
@@ -65,19 +68,41 @@ export class AIGameState extends GameState {
 		this.setDifficulty(settings.difficulty);
 	}
 
+	resign() {
+		this.engine.stop();
+		const winner: Color = this.player === 'white' ? 'black' : 'white';
+		this.gameOver.set({ isOver: true, winner, reason: 'resignation' });
+		this.audioCue.set('game-end');
+	}
+
+	destroy() {
+		this.engine.terminate();
+		super.destroy();
+	}
+
 	private triggerAiMove() {
 		if (this.player !== get(this.turn)) {
+			// Capture the generation for the search we're about to request so a
+			// stale bestmove (e.g. after an undo) can be detected and ignored.
+			this.requestedSearchGeneration = this.engine.getSearchGeneration();
 			this.engine.go();
 		}
 	}
 
 	private handleEngineMessage(message: string) {
-		if (message.includes('bestmove')) {
-			const { from, to } = this.engine.getBestMove();
-			if (get(this.turn) !== this.player) {
-				const move = this.isPromotionMove(from, to) ? { from, to, promotion: 'q' } : { from, to };
-				this.makeMove(move);
-			}
-		}
+		if (!message.includes('bestmove')) return;
+
+		// Ignore stale results: if the engine's generation advanced (undo/newGame/stop
+		// bumped it) the bestmove belongs to a cancelled search.
+		if (this.engine.getSearchGeneration() !== this.requestedSearchGeneration) return;
+		if (get(this.turn) === this.player) return;
+
+		const { from, to, promotion } = this.engine.getBestMove();
+		if (!from || !to) return;
+
+		const move: ChessMove = this.isPromotionMove(from, to)
+			? { from, to, promotion: promotion || 'q' }
+			: { from, to };
+		this.makeMove(move);
 	}
 }

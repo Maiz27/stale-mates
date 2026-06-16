@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
+	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
 	import EndGameDrawer from '$lib/components/controls/EndGameDrawer.svelte';
 	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
@@ -18,9 +19,10 @@
 	});
 	let chessboardComponent: ChessBoard;
 
-	$: started = false;
-	$: gameOver = { isOver: false, winner: null as Color | 'draw' | null } as GameOver;
-	$: moveHistory = [] as ChessMove[];
+	let started = false;
+	let gameOver = { isOver: false, winner: null as Color | 'draw' | null } as GameOver;
+	let moveHistory = [] as ChessMove[];
+	let sanHistory = [] as string[];
 
 	onMount(() => {
 		const unsubscribeGameOver = gameState.gameOver.subscribe((value) => (gameOver = value));
@@ -28,13 +30,23 @@
 		const unsubscribeMoveHistory = gameState.moveHistory.subscribe(
 			(value) => (moveHistory = value)
 		);
+		const unsubscribeSanHistory = gameState.sanHistory.subscribe((value) => (sanHistory = value));
 
 		return () => {
 			unsubscribeGameOver();
 			unsubscribeStarted();
 			unsubscribeMoveHistory();
+			unsubscribeSanHistory();
 		};
 	});
+
+	// Tear down the Stockfish worker and audio elements when leaving the page.
+	onDestroy(() => {
+		gameState.destroy();
+	});
+
+	const resign = () => chessboardComponent?.resign();
+	const flipBoard = () => chessboardComponent?.flipBoard();
 
 	const startNewGame = () => {
 		if (chessboardComponent) {
@@ -66,6 +78,14 @@
 		}
 	};
 </script>
+
+<svelte:head>
+	<title>Play AI · Stale Mates</title>
+	<meta
+		name="description"
+		content="Play chess against an adaptive Stockfish AI with adjustable difficulty, hints, and takebacks."
+	/>
+</svelte:head>
 
 <div class="mt-4 space-y-8 p-6">
 	<section class="grid place-items-center gap-4">
@@ -115,6 +135,14 @@
 			>
 				<Icon icon="radix-icons:thick-arrow-left" />
 			</Button>
+			<Button on:click={flipBoard} variant="outline" title="Flip Board" aria-label="Flip board">
+				<Icon icon="radix-icons:loop" />
+			</Button>
+			{#if started && !gameOver.isOver}
+				<Button on:click={resign} variant="outline" title="Resign" aria-label="Resign game">
+					<Icon icon="radix-icons:flag" />
+				</Button>
+			{/if}
 			<PlayAiDrawer
 				isSave={true}
 				isGameStarted={started && !gameOver.isOver}
@@ -123,9 +151,12 @@
 		</div>
 	</section>
 
-	<ChessBoard
-		bind:this={chessboardComponent}
-		{gameState}
-		playerColor={$settingsStore.color || 'white'}
-	/>
+	<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
+		<ChessBoard
+			bind:this={chessboardComponent}
+			{gameState}
+			playerColor={$settingsStore.color || 'white'}
+		/>
+		<MoveList moves={sanHistory} />
+	</div>
 </div>

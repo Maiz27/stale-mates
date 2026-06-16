@@ -16,6 +16,11 @@
 	let chessground: Chessground;
 	let config: Config;
 	let promotionModalOpen = false;
+	let boardFlipped = false;
+
+	$: orientation = (
+		boardFlipped ? (playerColor === 'white' ? 'black' : 'white') : playerColor
+	) as Color;
 
 	$: fen = '';
 	$: turn = 'white' as Color;
@@ -61,7 +66,7 @@
 
 	$: config = {
 		fen,
-		orientation: playerColor,
+		orientation,
 		turnColor: turn,
 		check: checkState.inCheck,
 		highlight: {
@@ -80,7 +85,8 @@
 			}
 		},
 		movable: {
-			color: started && turn === playerColor ? playerColor : undefined,
+			// Lock input while a promotion choice is pending so a second drag can't fire a move.
+			color: started && turn === playerColor && !promotionMove ? playerColor : undefined,
 			dests: destinations,
 			free: false,
 			showDests: true
@@ -157,21 +163,50 @@
 			playerColor = settings.color!;
 		}
 	}
+
+	export function flipBoard() {
+		boardFlipped = !boardFlipped;
+	}
+
+	export function resign() {
+		gameState.resign();
+	}
+
+	const REASON_LABELS: Record<string, string> = {
+		checkmate: 'Checkmate',
+		stalemate: 'Stalemate',
+		threefold: 'Draw by repetition',
+		insufficient: 'Draw — insufficient material',
+		fiftyMove: 'Draw — fifty-move rule',
+		draw: 'Draw',
+		timeout: 'Timeout',
+		resignation: 'Resignation'
+	};
+
+	$: resultText = (() => {
+		if (!gameOver.isOver) return '';
+		const reason = gameOver.reason ? (REASON_LABELS[gameOver.reason] ?? '') : '';
+		if (gameOver.winner === 'draw') {
+			return reason && gameOver.reason !== 'draw' ? `Game Over: ${reason}` : 'Game Over: Draw';
+		}
+		const winner = gameOver.winner === 'white' ? 'White' : 'Black';
+		return reason
+			? `Game Over: ${winner} wins by ${reason.toLowerCase()}`
+			: `Game Over: ${winner} wins!`;
+	})();
 </script>
 
 <section class="relative mx-auto md:w-1/2 2xl:w-1/3">
 	{#if gameOver.isOver}
 		<div
+			role="status"
+			aria-live="polite"
 			class="absolute left-0 right-0 top-0 z-10 bg-gray-800 bg-opacity-80 py-2 text-center text-white"
 		>
-			{#if gameOver.winner === 'draw'}
-				Game Over: Draw
-			{:else}
-				Game Over: {gameOver.winner} wins!
-			{/if}
+			{resultText}
 		</div>
 	{/if}
-	<Chessground bind:this={chessground} {config} orientation={playerColor} />
+	<Chessground bind:this={chessground} {config} {orientation} />
 	{#if promotionMove}
 		<PromotionModal bind:open={promotionModalOpen} on:promotion={handlePromotion} />
 	{/if}

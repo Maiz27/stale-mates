@@ -21,6 +21,7 @@ export class Stockfish extends Engine {
 	private messageCallback: ((message: string) => void) | null = null;
 	private currentFen: string = STARTING_FEN;
 	private debug: boolean;
+	private searchGeneration: number = 0;
 
 	/**
 	 * Creates a new Stockfish instance.
@@ -80,10 +81,16 @@ export class Stockfish extends Engine {
 	}
 
 	private parseMove(move: string): ChessMove {
-		return {
+		const parsed: ChessMove = {
 			from: move.slice(0, 2),
 			to: move.slice(2, 4)
 		};
+		// UCI long algebraic notation appends the promotion piece at index 4 (e.g. "e7e8q").
+		const promotion = move.charAt(4);
+		if (promotion) {
+			parsed.promotion = promotion;
+		}
+		return parsed;
 	}
 
 	/**
@@ -143,10 +150,22 @@ export class Stockfish extends Engine {
 		this.searchParams = { moveTime, depth, moveDelay };
 	}
 
+	/**
+	 * Internal best-effort reset: cancels any in-flight search and returns the
+	 * engine to the Waiting state so a stale/stuck search cannot permanently
+	 * block new commands. Does NOT increment the search generation.
+	 */
+	private reset(): void {
+		if (this.state === EngineState.Searching) {
+			this.worker.postMessage('stop');
+		}
+		this.setState(EngineState.Waiting);
+	}
+
 	setPosition(fen: string): void {
 		if (this.state !== EngineState.Waiting) {
-			this.log('Engine is not ready to accept a new position', 'warn');
-			return;
+			this.log('Engine busy; resetting before accepting a new position', 'warn');
+			this.reset();
 		}
 		this.currentFen = fen;
 		this.log(`Sending position to Stockfish: ${fen}`);
@@ -155,8 +174,8 @@ export class Stockfish extends Engine {
 
 	go(): void {
 		if (this.state !== EngineState.Waiting) {
-			this.log('Engine is not ready to start searching', 'warn');
-			return;
+			this.log('Engine busy; resetting before starting a new search', 'warn');
+			this.reset();
 		}
 		this.setState(EngineState.Searching);
 		const { moveTime, depth, moveDelay } = this.searchParams;
@@ -165,6 +184,28 @@ export class Stockfish extends Engine {
 			this.log(`Sending go command to Stockfish with depth: ${depth}, movetime: ${moveTime}`);
 			this.worker.postMessage(`go depth ${depth} movetime ${moveTime}`);
 		}, moveDelay);
+	}
+
+	/**
+	 * Cancels any in-flight search, returns the engine to the Waiting state,
+	 * and bumps the search generation so any pending bestmove can be ignored
+	 * by callers tracking the generation.
+	 */
+	stop(): void {
+		this.log('Stockfish: Stopping current search', 'info');
+		this.worker.postMessage('stop');
+		this.setState(EngineState.Waiting);
+		this.searchGeneration++;
+	}
+
+	getSearchGeneration(): number {
+		return this.searchGeneration;
+	}
+
+	terminate(): void {
+		this.log('Stockfish: Terminating worker', 'info');
+		this.messageCallback = null;
+		this.worker.terminate();
 	}
 
 	getBestMove(): ChessMove {
@@ -178,6 +219,7 @@ export class Stockfish extends Engine {
 	newGame(): void {
 		this.log('Stockfish: Starting new game');
 		this.setState(EngineState.Waiting);
+		this.searchGeneration++;
 		this.worker.postMessage('ucinewgame');
 		this.worker.postMessage('setoption name Clear Hash');
 		this.log('Stockfish: Sent ucinewgame and Clear Hash commands');

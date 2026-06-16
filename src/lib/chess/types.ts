@@ -5,7 +5,21 @@ export type GameMode = 'pve' | 'pvp';
 
 export type PromotionMove = { from: string; to: string } | null;
 
-export type GameOver = { isOver: boolean; winner: Color | 'draw' | null };
+export type GameOverReason =
+	| 'checkmate'
+	| 'stalemate'
+	| 'threefold'
+	| 'insufficient'
+	| 'fiftyMove'
+	| 'draw'
+	| 'timeout'
+	| 'resignation';
+
+export type GameOver = {
+	isOver: boolean;
+	winner: Color | 'draw' | null;
+	reason?: GameOverReason;
+};
 
 export type CheckState = { inCheck: boolean; kingSquare?: string; attackingSquares?: string[] };
 

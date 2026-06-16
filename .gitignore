@@ -27,3 +27,4 @@ vite.config.ts.timestamp-*
 
 # api
 api/dist
+api/.svelte-kit

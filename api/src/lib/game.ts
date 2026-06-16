@@ -50,9 +50,21 @@ export function reconnectPlayerToGame(gameId: string, playerId: string, ws: WebS
 
 export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
 	const room = getGameRoom(gameId);
-	if (room) {
-		room.handleMessage(playerId, JSON.parse(message));
+	if (!room) return;
+
+	let parsed;
+	try {
+		parsed = JSON.parse(message);
+	} catch (error) {
+		console.error('Error parsing player message, dropping frame:', error);
+		return;
 	}
+
+	room.handleMessage(playerId, parsed);
+}
+
+export function getRoomCount() {
+	return gameRooms.size;
 }
 
 export function checkGameStart(gameId: string): boolean {

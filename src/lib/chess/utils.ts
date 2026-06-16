@@ -27,7 +27,7 @@ export function isPromotionMove(
 	dest: Square | string
 ): boolean {
 	const piece = chess.get(orig as Square);
-	return piece && piece.type === 'p' && (dest.charAt(1) === '8' || dest.charAt(1) === '1');
+	return !!piece && piece.type === 'p' && (dest.charAt(1) === '8' || dest.charAt(1) === '1');
 }
 
 export function getCheckState(chess: Chess) {
