@@ -1,8 +1,13 @@
 import express from 'express';
 import { createGame } from '../lib/game';
 import { TimeOption } from '../lib/types';
+import { RateLimiter } from '../lib/rateLimiter';
 
 const ALLOWED_TIME_OPTIONS: TimeOption[] = [0, 1, 3, 10];
+
+// Per-IP rate limit on room creation (audit H4): ~30 creates / 10 min / IP.
+// In-memory and single-instance only — see README "Limitations / scaling".
+const createLimiter = new RateLimiter({ limit: 30, windowMs: 10 * 60 * 1000 });
 
 export const GameRouter = express.Router();
 
@@ -11,6 +16,16 @@ GameRouter.get('/', (req, res) => {
 });
 
 GameRouter.post('/create', (req, res) => {
+	// Throttle per client IP before doing any work. `req.ip` honours the configured
+	// trust-proxy setting; fall back to a constant bucket if it's somehow absent.
+	const ip = req.ip || 'unknown';
+	const limit = createLimiter.hit(ip);
+	if (!limit.allowed) {
+		const retryAfterSec = Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000));
+		res.setHeader('Retry-After', String(retryAfterSec));
+		return res.status(429).json({ error: 'Too many game creations, please try again later' });
+	}
+
 	const rawTime = req.body.time;
 	const time = Number(rawTime);
 

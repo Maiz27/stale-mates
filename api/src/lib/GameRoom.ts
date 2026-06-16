@@ -10,6 +10,10 @@ export class GameRoom {
 	id: string = nanoid();
 	players: Player[] = [];
 	gameStarted: boolean = false;
+	// Wall-clock time (ms) the room was created. Used by the abandoned-room sweep
+	// to bound memory: a room that nobody ever connects to is only cleaned up on a
+	// WS `close`, so without this it would leak forever (audit H4).
+	readonly createdAt: number = Date.now();
 	private chess: Chess = new Chess();
 	private currentFen: string = this.chess.fen();
 	private currentTurn: Color = 'white';
@@ -70,6 +74,11 @@ export class GameRoom {
 			this.clearFlagTimer();
 		}
 		this.broadcastGameState();
+	}
+
+	/** True if at least one seated player still has a live connection. */
+	hasConnectedPlayers(): boolean {
+		return this.players.some((p) => p.connected);
 	}
 
 	reconnectPlayer(playerId: string, ws: WebSocket): boolean {

@@ -4,6 +4,60 @@ import { TimeOption } from './types';
 
 const gameRooms = new Map<string, GameRoom>();
 
+// Default room TTL: 30 minutes. Overridable via ROOM_TTL_MS (validated at startup).
+export const DEFAULT_ROOM_TTL_MS = 30 * 60 * 1000;
+
+function resolveRoomTtlMs(): number {
+	const raw = process.env.ROOM_TTL_MS;
+	if (!raw || raw.trim() === '') return DEFAULT_ROOM_TTL_MS;
+	const parsed = Number(raw);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_ROOM_TTL_MS;
+}
+
+/**
+ * Pure predicate (audit H4): a room is "abandoned" — eligible for sweeping —
+ * when it is older than the TTL AND has no connected players. This covers both
+ * never-joined rooms (created via POST but no WS ever connected) and
+ * long-finished/empty rooms whose players have all disconnected. Side-effect
+ * free so it can be unit-tested without timers.
+ */
+export function isRoomExpired(room: GameRoom, now: number, ttlMs: number): boolean {
+	return now - room.createdAt >= ttlMs && !room.hasConnectedPlayers();
+}
+
+/**
+ * Delete every abandoned room. Returns the number swept. Pure w.r.t. timers —
+ * `now`/`ttlMs` are injected so it can be driven directly from a unit test.
+ */
+export function sweepAbandonedRooms(
+	now: number = Date.now(),
+	ttlMs: number = resolveRoomTtlMs()
+): number {
+	let swept = 0;
+	for (const [id, room] of gameRooms) {
+		if (isRoomExpired(room, now, ttlMs)) {
+			gameRooms.delete(id);
+			swept++;
+		}
+	}
+	if (swept > 0) {
+		console.log(`Swept ${swept} abandoned room(s); ${gameRooms.size} remaining`);
+	}
+	return swept;
+}
+
+/**
+ * Start the periodic abandoned-room sweep. Call this once when the server boots
+ * (from index.ts) — NOT at import time — so unit tests never spawn a timer. The
+ * interval is `.unref()`ed so it can't keep the process alive on shutdown.
+ */
+export function startRoomSweep(intervalMs: number = 5 * 60 * 1000): ReturnType<typeof setInterval> {
+	const ttlMs = resolveRoomTtlMs();
+	const timer = setInterval(() => sweepAbandonedRooms(Date.now(), ttlMs), intervalMs);
+	timer.unref();
+	return timer;
+}
+
 export function createGame({ time }: { time: TimeOption }): string {
 	const room = new GameRoom({ time });
 	gameRooms.set(room.id, room);

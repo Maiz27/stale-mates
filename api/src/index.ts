@@ -6,8 +6,22 @@ import http from 'http';
 import app from './app';
 import WebSocket from 'ws';
 import { handleWebSocketConnection } from './lib/websocket';
+import { assertValidEnv } from './lib/env';
+import { startRoomSweep } from './lib/game';
+
+// Fail fast on invalid configuration before binding any sockets (audit M4).
+try {
+	assertValidEnv();
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
+	process.exit(1);
+}
 
 const server = http.createServer(app);
+
+// Periodically reap abandoned rooms so memory stays bounded (audit H4). Started
+// here (not at import time) and unref()ed so unit tests never spawn this timer.
+startRoomSweep();
 
 // Create a WebSocket server attached to the HTTP server
 const wss = new WebSocket.Server({ server });

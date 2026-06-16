@@ -93,6 +93,36 @@ The Stalemates API is built around the concept of game rooms, managed by the `Ga
 
 This architecture allows for efficient management of multiple concurrent games, each isolated in its own room with real-time communication capabilities.
 
+## Limitations / scaling
+
+This server is intentionally simple and runs as a **single instance**:
+
+- **In-memory state.** All game rooms live in a process-local `Map`. There is no
+  database or shared cache.
+- **Restart loses games.** Because state is in memory, a restart or crash drops all
+  in-progress games. (Graceful shutdown closes sockets cleanly but does not persist
+  games.)
+- **Not horizontally scalable as-is.** Running multiple instances behind a load
+  balancer would split rooms across processes; a player and their opponent could land
+  on different instances. Scaling out would require **sticky sessions** (to pin a
+  game's players to one instance) and/or moving room state into a shared store
+  (e.g. Redis) plus a pub/sub layer for cross-instance broadcasts.
+- **Memory is bounded by room TTL.** A periodic sweep reaps abandoned rooms — those
+  older than `ROOM_TTL_MS` (default 30 min) with no connected players — so rooms that
+  are created but never joined, or long finished, cannot leak indefinitely.
+- **Room creation is rate-limited per IP** (default ~30 creates / 10 min) to prevent
+  spam; this limiter is also in-memory and therefore per-instance.
+
+## Configuration
+
+Environment variables (validated at startup; the server fails fast on invalid values):
+
+| Variable      | Required            | Default                 | Notes                                              |
+| ------------- | ------------------- | ----------------------- | -------------------------------------------------- |
+| `PORT`        | No                  | `3000`                  | Must be an integer 1-65535 if set.                 |
+| `ORIGIN`      | In production only  | `http://localhost:5173` | Allowed CORS origin. Required when `NODE_ENV=production`. |
+| `ROOM_TTL_MS` | No                  | `1800000` (30 min)      | Abandoned-room sweep TTL (ms). Positive integer.   |
+
 ## API Endpoints
 
 - `POST /game/create`: Create a new game
