@@ -38,10 +38,21 @@ export type MoveType =
 	| 'game-start'
 	| 'game-end';
 
-// duplicate at api/src/lib/types.ts
+// Single canonical definition, mirrored on the server at api/src/lib/types.ts.
+// All fields required (the optional fields here had drifted from the server).
 export type TimeControl = {
 	initial: number; // in seconds
-	lowTimeThreshold?: number;
-	increment?: number; // in seconds
+	lowTimeThreshold: number; // in seconds
+	increment: number; // in seconds
 	isUnlimited: boolean;
+};
+
+// Authoritative clock snapshot from the server; the client interpolates from it
+// for smooth display and never decides game-over from its own timer. Mirrors
+// api/src/lib/clock.ts ClockSnapshot.
+export type ClockSnapshot = {
+	whiteMs: number;
+	blackMs: number;
+	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
+	serverTime: number; // Date.now() on the server when the snapshot was taken
 };
