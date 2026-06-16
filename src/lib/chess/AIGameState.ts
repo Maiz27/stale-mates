@@ -64,7 +64,13 @@ export class AIGameState extends GameState {
 	}
 
 	updateSettings(settings: GameSettings) {
-		this.player = settings.color!;
+		// Color only takes effect on a fresh game. Reassigning `player` mid-game
+		// would desync it from the board orientation/input color, which
+		// `ChessBoard` likewise only updates while `!started` — the AI would then
+		// start moving for the human's side. Difficulty is safe to change anytime.
+		if (!get(this.started)) {
+			this.player = settings.color!;
+		}
 		this.setDifficulty(settings.difficulty);
 	}
 
