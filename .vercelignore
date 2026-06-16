@@ -1,0 +1,6 @@
+# The Express + ws backend in api/ deploys SEPARATELY (see api/Dockerfile,
+# api/fly.toml) and must never be uploaded to Vercel. Vercel's zero-config
+# treats files under a top-level api/ directory as Serverless Functions (one per
+# .ts), which both deploys the wrong thing and blows past the Hobby plan's
+# 12-function limit. The SvelteKit frontend build does not reference api/ at all.
+api
