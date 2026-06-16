@@ -77,13 +77,13 @@ export class GameModel implements Readable<GameView> {
 	newGame(): void {
 		this.core.reset();
 		this.updateGameState();
-		this.patch({ started: true });
+		this.patch({ started: true, moveHistory: [] });
 	}
 
 	endGame(): void {
 		this.core.reset();
 		this.updateGameState();
-		this.patch({ started: false, gameOver: { isOver: false, winner: null } });
+		this.patch({ started: false, gameOver: { isOver: false, winner: null }, moveHistory: [] });
 	}
 
 	handlePlayerMove({ from, to }: ChessMove): void {
