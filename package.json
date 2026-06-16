@@ -12,6 +12,7 @@
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test:integration": "playwright test",
+    "test:e2e": "playwright test",
     "test:unit": "vitest",
     "api": "cd api && bun run dev",
     "api:build": "cd api && bun run build",
