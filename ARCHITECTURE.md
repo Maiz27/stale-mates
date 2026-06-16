@@ -8,6 +8,13 @@ biggest single refactor).
 
 > Ranking is **impact-to-effort**. Effort: **S** ≈ <½ day · **M** ≈ ~1 day · **L** ≈ ~2 days.
 
+> **Status (remediation branch):** #3 (pure clock) ✅ done server-side (`api/src/lib/clock.ts`);
+> #4 (dead `Engine` base) ✅ done; #6 (shared domain-core) 🟡 partial — `gameOutcome()` +
+> unified `TimeControl`/`ClockSnapshot`/`GameOverReason`, but not yet a single copied `protocol.ts`;
+> the latent draw-reason bug ✅ fixed. #1/#2/#5 (composition / store consolidation / presentational
+> board) remain **deferred** — high-regression-risk internal restructuring that needs interactive
+> browser verification.
+
 ---
 
 ## Current shape (as-built)
@@ -99,7 +106,7 @@ server-authoritative outcomes, two-deployment split). Delivered as Phase-1 Strea
 
 ---
 
-## Latent bug (still open) — generic draw reason from the server
+## Latent bug (✅ FIXED on the remediation branch) — generic draw reason from the server
 
 `api/src/lib/GameRoom.ts` `determineGameOutcome` (~lines 225–231) collapses every
 non-checkmate ending to `reason: 'draw'`, discarding stalemate / threefold / insufficient

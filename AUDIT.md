@@ -32,9 +32,9 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 
 | #   | Finding                                                                                                                                                                                                                                               | Location                                               | Status |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------ |
-| C1  | **Deployment mismatch** — frontend targets Vercel serverless, backend is a long-lived stateful WS process with in-memory state. No Dockerfile/fly/railway/render/`vercel.json` in repo; backend host is undocumented and unreproducible from a clone. | `svelte.config.js`, `api/`                             | ⬜     |
+| C1  | **Deployment mismatch** — frontend targets Vercel serverless, backend is a long-lived stateful WS process with in-memory state. No Dockerfile/fly/railway/render/`vercel.json` in repo; backend host is undocumented and unreproducible from a clone. | `svelte.config.js`, `api/`                             | ✅     |
 | C2  | **One bad WS frame crashes the whole server** — unguarded `JSON.parse(message)` and illegal moves _throw_ in chess.js beta; both uncaught, all games share one process → unauthenticated DoS.                                                         | `api/src/lib/game.ts:54`, `api/src/lib/GameRoom.ts:92` | ✅     |
-| C3  | **Forge any win / impersonate side / hijack room** — client-supplied timeout winner, client-chosen color, no join auth, reconnect by leaked `playerId`.                                                                                               | `GameRoom.ts`, `websocket.ts`                          | 📄     |
+| C3  | **Forge any win / impersonate side / hijack room** — client-supplied timeout winner, client-chosen color, no join auth, reconnect by leaked `playerId`.                                                                                               | `GameRoom.ts`, `websocket.ts`                          | 🟡     |
 | C4  | **AI game can permanently hang** — Stockfish `setPosition`/`go` silently no-op off `Waiting`; undo during AI thinking + no search cancellation applies a stale `bestmove` or drops it, freezing the game with no watchdog.                            | `Stockfish.ts`, `AIGameState.ts`                       | ✅     |
 
 ## High
@@ -42,10 +42,10 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 | #   | Finding                                                                                                                                                                                               | Location                                | Status |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------ |
 | H1  | **No persistence / single instance** — in-memory `Map`; restart loses all games; can't scale horizontally. Acceptable for a hobby project _if documented_.                                            | `api/src/lib/game.ts:5`                 | 🟡     |
-| H2  | **Client reconnect missing despite server support** — `WebSocketManager` opens one socket and never retries; `onClose` never wired, though `reconnectPlayer` + `playerId` cookie exist server-side.   | `src/lib/websocket/WebSocketManager.ts` | ⬜     |
-| H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`       | 📄     |
+| H2  | **Client reconnect missing despite server support** — `WebSocketManager` opens one socket and never retries; `onClose` never wired, though `reconnectPlayer` + `playerId` cookie exist server-side.   | `src/lib/websocket/WebSocketManager.ts` | ✅     |
+| H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`       | ✅     |
 | H4  | **Memory leaks** — each `GameState` creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                           | `GameState.ts`, `api/src/lib/game.ts`   | 🟡     |
-| H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                   | ⬜     |
+| H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                   | 🟡     |
 | H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                      | 🟡     |
 | H7  | **SEO/social** — no Open Graph/Twitter cards, no per-page `<title>`, no web manifest despite a full PWA icon set in `static/`.                                                                        | `+layout.svelte`, `app.html`            | ✅     |
 | H8  | **Accessibility** — board is mouse/touch only (keyboard users can't play); no `aria-live` move announcements.                                                                                         | `ChessBoard.svelte`                     | 🟡     |
@@ -54,8 +54,8 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 
 | #   | Finding                                                                                                                                                                                                                                                                                | Location                                 | Status |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
-| M1  | **Type/protocol duplication & drift** — `Color`/`TimeControl`/`TimeOption`/move shapes redefined in `src/lib` and `api/src/lib`; `TimeControl` already drifted; WS messages typed `any`.                                                                                               | both `types.ts`                          | 📄     |
-| M2  | **Mid-game color change desyncs** `gameState.player` vs board orientation → AI plays wrong side.                                                                                                                                                                                       | `AIGameState.ts`, `ai/+page.svelte`      | ⬜     |
+| M1  | **Type/protocol duplication & drift** — `Color`/`TimeControl`/`TimeOption`/move shapes redefined in `src/lib` and `api/src/lib`; `TimeControl` already drifted; WS messages typed `any`.                                                                                               | both `types.ts`                          | 🟡     |
+| M2  | **Mid-game color change desyncs** `gameState.player` vs board orientation → AI plays wrong side.                                                                                                                                                                                       | `AIGameState.ts`, `ai/+page.svelte`      | ✅     |
 | M3  | **AI under-promotion lost** — always promotes to queen, discarding Stockfish's choice; board input not locked during promotion modal.                                                                                                                                                  | `AIGameState.ts:78`, `ChessBoard.svelte` | ✅     |
 | M4  | **DX** — `api/` has no lint/format/test scripts; no shared tsconfig; no root install/build-all; no env validation; raw `console.*` logging (logs `playerId`); no `/health`, no graceful shutdown, no error monitoring.                                                                 | tooling                                  | 🟡     |
 | M5  | **UX friction** — "Waiting for opponent" dead end (no re-copy invite, no color shown, no leave); no toast on copy; weak game-over overlay (no rematch/analyze in AI); no error states for invalid/full room; empty `<footer>`; no 404 page; board shrinks to ⅓ width on large screens. | routes                                   | 🟡     |
@@ -84,6 +84,34 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 
 ## What this pass changed
 
-This audit pass implemented the Tier-1 quick wins and the cheap Critical backend guards, and wrote the
-server-authority design doc. Remaining items (deployment config, client reconnect, full server-authority
-refactor, CI/tests) are tracked as GitHub issues and in the status columns above.
+**Audit pass (baseline):** Tier-1 quick wins + cheap Critical backend guards (C2, C4), and the
+server-authority design doc.
+
+**Remediation pass (this branch):**
+
+- **C1 ✅** — `api/Dockerfile` + `.dockerignore` + `fly.toml`, two-target deploy docs in `README.md`.
+- **H5 🟡 / M4 🟡** — `.github/workflows/ci.yml` (lint + check + unit tests, both targets); real unit
+  tests for the pure seams (`clock`, `outcome`, board utils, `convertTimeOption`); api test scripts.
+  Playwright integration tests still TODO.
+- **H3 ✅ / C3(F1) ✅ / F4 ✅ / F5 ✅** — multiplayer server is now authoritative for clocks and
+  outcomes: ms-based clock + per-room flag-fall watchdog (pure, tested), client-trusted `gameOver`
+  removed (no more forged wins), rematch gated on a real game end, client interpolates a server clock
+  snapshot instead of self-declaring timeouts.
+- **Latent draw-reason bug ✅** — `gameOutcome()` distinguishes stalemate/threefold/insufficient/
+  fifty-move.
+- **C3(F2) 🟡** — duplicate-color joins rejected server-side (two players can't both be white).
+- **H2 ✅** — client WebSocket reconnect with exponential backoff + jitter; reconnecting banner.
+- **M1 🟡** — single canonical `TimeControl` (drift resolved); `ClockSnapshot`/`GameOverReason`
+  mirrored both sides. Full copied-`protocol.ts` module deferred (arch #6).
+- **M2 ✅** — AI no longer desyncs on a mid-game color change.
+- **arch #4 ✅** — dead `Engine` base class deleted; double UCI init fixed.
+
+**Deliberately deferred (need two-browser end-to-end verification not available in this session):**
+
+- **C3(F3) + server-authority plan Steps 4–5** — seat tokens, `Sec-WebSocket-Protocol`/ticket
+  transport, HttpOnly creator cookie, server-side color assignment. The riskiest, most user-visible
+  change; tracked in issue #10. Join URL/`?color=` scheme unchanged for now.
+- **Frontend composition refactor (ARCHITECTURE.md #1/#2/#5)** — replace the `GameState` inheritance
+  with composition over a pure `ChessCore`, collapse the ~18 per-field stores into one
+  `Readable<GameView>`, make `ChessBoard` purely presentational. High-regression-risk internal
+  restructuring with no user-facing change; needs interactive verification.
