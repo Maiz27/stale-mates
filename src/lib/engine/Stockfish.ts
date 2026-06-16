@@ -1,4 +1,4 @@
-import { Engine, EngineState } from './engine';
+import { EngineState } from './engine';
 import type { ChessMove } from '$lib/chess/types';
 import { STARTING_FEN } from '$lib/constants';
 
@@ -12,7 +12,8 @@ interface SearchParams {
  * Stockfish class that interacts with the Stockfish chess engine via a Web Worker.
  * It provides methods to control the engine, set difficulty, and retrieve best moves.
  */
-export class Stockfish extends Engine {
+export class Stockfish {
+	private worker: Worker;
 	private state: EngineState;
 	private difficulty: number;
 	private bestMove: ChessMove;
@@ -28,7 +29,7 @@ export class Stockfish extends Engine {
 	 * @param debug - If true, enables detailed logging.
 	 */
 	constructor({ debug = false, difficulty = 10 }) {
-		super('/stockfish.js');
+		this.worker = new Worker('/stockfish.js');
 		this.state = EngineState.Uninitialized;
 		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
