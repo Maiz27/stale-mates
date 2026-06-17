@@ -41,8 +41,9 @@ export class GameModel implements Readable<GameView> {
 			fen,
 			turn: this.core.turn(),
 			started: false,
-			checkState: { inCheck: false },
-			gameOver: { isOver: false, winner: null },
+			// Derive from the core so a non-starting FEN reflects its real state.
+			checkState: this.core.checkState(),
+			gameOver: this.core.outcome() ?? { isOver: false, winner: null },
 			destinations: this.core.destinations(),
 			promotionMove: null,
 			hint: null,
