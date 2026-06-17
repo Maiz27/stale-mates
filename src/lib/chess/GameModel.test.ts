@@ -49,6 +49,19 @@ describe('GameModel', () => {
 		expect(view.started).toBe(true);
 	});
 
+	it('clears a finished result on newGame so the prior game-over does not persist', () => {
+		const model = new GameModel('pve', 'white');
+		// Fool's mate: black checkmates on move 2.
+		model.makeMove({ from: 'f2', to: 'f3' });
+		model.makeMove({ from: 'e7', to: 'e5' });
+		model.makeMove({ from: 'g2', to: 'g4' });
+		model.makeMove({ from: 'd8', to: 'h4' });
+		expect(get(model).gameOver).toEqual({ isOver: true, winner: 'black', reason: 'checkmate' });
+
+		model.newGame();
+		expect(get(model).gameOver).toEqual({ isOver: false, winner: null });
+	});
+
 	it('clears move history on endGame', () => {
 		const model = new GameModel('pve', 'white');
 		model.makeMove({ from: 'e2', to: 'e4' });

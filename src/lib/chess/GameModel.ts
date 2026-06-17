@@ -78,7 +78,9 @@ export class GameModel implements Readable<GameView> {
 	newGame(): void {
 		this.core.reset();
 		this.updateGameState();
-		this.patch({ started: true, moveHistory: [] });
+		// Explicitly clear gameOver: a fresh board makes outcome() null, so
+		// checkGameOver() won't patch it and a finished game's result would persist.
+		this.patch({ started: true, gameOver: { isOver: false, winner: null }, moveHistory: [] });
 	}
 
 	endGame(): void {
