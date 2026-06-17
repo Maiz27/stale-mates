@@ -28,7 +28,7 @@ biggest single refactor).
 
 The game logic is organized around a thin shared base plus two mode classes:
 
-```
+```text
 GameModel  (src/lib/chess/GameModel.ts)   — composes ChessCore + AudioCue, owns one Readable<GameView>
    ├── AIGameState          (src/lib/chess/AIGameState.ts)        — play vs Stockfish
    └── MultiplayerGameState (src/lib/chess/MultiplayerGameState.ts) — play vs a remote peer
