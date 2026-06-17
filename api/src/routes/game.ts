@@ -27,13 +27,18 @@ GameRouter.post('/create', (req, res) => {
 	}
 
 	const rawTime = req.body.time;
+
+	// Gate on type before coercion: Number(true) === 1 and Number([]) === 0, so a
+	// boolean/array/object could otherwise be coerced into a "valid" time option.
+	if (typeof rawTime !== 'string' && typeof rawTime !== 'number') {
+		return res.status(400).json({ error: 'Invalid time option' });
+	}
+
 	const time = Number(rawTime);
 
 	// Reject missing/blank/non-numeric values. Number('') and Number('   ') are
 	// both 0, which would otherwise slip through as a valid "unlimited" game.
 	if (
-		rawTime === undefined ||
-		rawTime === null ||
 		(typeof rawTime === 'string' && rawTime.trim() === '') ||
 		!Number.isInteger(time)
 	) {
