@@ -12,19 +12,28 @@ import { boardLocator, clickMove } from './helpers/board';
 
 const API_URL = process.env.VITE_API_URL ?? 'http://localhost:3000';
 
-/** POST /game/create -> { id }. Returns null if the API is unreachable. */
+/**
+ * POST /game/create -> { id }. Returns null ONLY when the API is unreachable
+ * (so the test skips rather than failing on a missing server). A reachable
+ * server that responds badly is a real regression and is thrown, failing the test.
+ */
 async function createRoom(page: Page): Promise<string | null> {
+	let res;
 	try {
-		const res = await page.request.post(`${API_URL}/game/create`, {
+		res = await page.request.post(`${API_URL}/game/create`, {
 			data: { time: 0 },
 			timeout: 5_000
 		});
-		if (!res.ok()) return null;
-		const body = (await res.json()) as { id?: string };
-		return body.id ?? null;
 	} catch {
+		// Connection error — server not running. Caller skips.
 		return null;
 	}
+	if (!res.ok()) {
+		throw new Error(`POST /game/create failed: ${res.status()} ${res.statusText()}`);
+	}
+	const body = (await res.json()) as { id?: string };
+	if (!body.id) throw new Error('POST /game/create returned no room id');
+	return body.id;
 }
 
 test.describe('Multiplayer mode', () => {

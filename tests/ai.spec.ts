@@ -46,8 +46,12 @@ test.describe('AI mode', () => {
 		await clickMove(page, 'e2', 'e4', 'white');
 
 		// White's move appears in the SAN move list. The first white move of a
-		// king-pawn opening is "e4".
-		const moveList = page.getByRole('list');
+		// king-pawn opening is "e4". Scope the list to the Moves panel so an
+		// unrelated list elsewhere on the page can't make this ambiguous.
+		const movesPanel = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) });
+		const moveList = movesPanel.getByRole('list');
 		await expect(moveList.getByText('e4', { exact: true })).toBeVisible();
 
 		// The Stockfish worker replies as black: a second half-move is rendered
