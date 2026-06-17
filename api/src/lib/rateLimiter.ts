@@ -83,7 +83,20 @@ export class RateLimiter {
 	hit(key: string, now: number = Date.now()): HitResult {
 		const result = hitWindow(this.windows.get(key), now, this.limit, this.windowMs);
 		this.windows.set(key, result.state);
+		// Opportunistically evict fully-expired windows so one-shot keys that are
+		// never hit again don't accumulate forever. The map is naturally tiny
+		// (per-IP, low-volume create traffic), so this O(n) sweep is cheap.
+		this.prune(now);
 		return result;
+	}
+
+	/** Drop every key whose current window has fully expired at `now`. */
+	private prune(now: number): void {
+		for (const [key, state] of this.windows) {
+			if (now - state.windowStart >= this.windowMs) {
+				this.windows.delete(key);
+			}
+		}
 	}
 
 	/** Test/diagnostic helper: number of tracked keys. */
