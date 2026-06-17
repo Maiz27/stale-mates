@@ -1,0 +1,42 @@
+# Fly.io config for the Stalemates stateful WebSocket backend.
+#
+# This service keeps game rooms in an in-memory Map in a single long-lived
+# process, so it MUST run as exactly one always-on instance. Do not scale
+# horizontally and do not let Fly stop the machine, or active games are lost.
+
+app = "stalemates-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  # ORIGIN (deployed frontend origin) is set as a secret/runtime env, not here:
+  #   fly secrets set ORIGIN=https://stalemates.magedfaiz.xyz
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # Keep the single in-memory instance alive: never auto-stop, always 1 running.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 800
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+# Single always-on machine sized for a lightweight Node WS process.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpus = 1

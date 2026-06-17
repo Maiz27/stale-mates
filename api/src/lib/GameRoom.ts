@@ -2,18 +2,32 @@
 import WebSocket from 'ws';
 import { Chess } from 'chess.js';
 import { nanoid } from 'nanoid';
-import { Player, TimeControl, TimeOption, Color, GameMessage } from './types';
+import { Player, TimeControl, TimeOption, Color, GameMessage, GameOverReason } from './types';
+import { ClockMs, ClockSnapshot, buildSnapshot, clockAfterMove, remainingMs } from './clock';
+import { gameOutcome } from './outcome';
 
 export class GameRoom {
 	id: string = nanoid();
 	players: Player[] = [];
 	gameStarted: boolean = false;
+	// Wall-clock time (ms) the room was created. Used by the abandoned-room sweep
+	// to bound memory: a room that nobody ever connects to is only cleaned up on a
+	// WS `close`, so without this it would leak forever (audit H4).
+	readonly createdAt: number = Date.now();
 	private chess: Chess = new Chess();
 	private currentFen: string = this.chess.fen();
 	private currentTurn: Color = 'white';
 	private rematchOffers: Set<string> = new Set();
 	private timeControl: TimeControl;
-	private lastMoveTime?: number;
+
+	// Authoritative clock state (ms). The server is the single source of truth
+	// for time; the client only interpolates from snapshots for smooth display.
+	private clocksMs: ClockMs = { white: 0, black: 0 };
+	private turnStartedAt: number | null = null;
+	private flagTimer: ReturnType<typeof setTimeout> | null = null;
+	// True once a game has actually ended (checkmate/draw/resign/timeout). Gates
+	// rematch so it can't be triggered before any game has finished (audit F5).
+	private gameEnded: boolean = false;
 
 	constructor({ time = 0 }: { time: TimeOption }) {
 		this.timeControl = this.convertTimeOption(time);
@@ -23,9 +37,20 @@ export class GameRoom {
 		if (this.players.length >= 2) {
 			throw new Error('Game room is full');
 		}
+		// Validate the requested color is a real seat (it arrives unchecked from the
+		// WS URL) before anything is stored, so an invalid value can't break invariants.
+		if (color !== 'white' && color !== 'black') {
+			throw new Error('Invalid color');
+		}
+		// Enforce distinct seats server-side: the two players cannot hold the same
+		// color (audit F2 — color was previously trusted from the URL unchecked,
+		// so both clients could request white). The connection is rejected; a
+		// legitimate opposite-color join is unaffected.
+		if (this.players.some((p) => p.color === color)) {
+			throw new Error('Color already taken');
+		}
 		const playerId = nanoid();
-		const timeRemaining = this.timeControl.isUnlimited ? null : this.timeControl.initial;
-		const player = { id: playerId, color, ws, timeRemaining, connected: true };
+		const player: Player = { id: playerId, color, ws, connected: true };
 		this.players.push(player);
 
 		this.notifyPlayersOfJoin(playerId);
@@ -43,7 +68,17 @@ export class GameRoom {
 			this.players[playerIndex].connected = false;
 			this.players[playerIndex].ws = null;
 		}
+		// Stop the watchdog if nobody is left to receive a flag-fall broadcast,
+		// so an abandoned room doesn't leak a pending timer.
+		if (this.players.every((p) => !p.connected)) {
+			this.clearFlagTimer();
+		}
 		this.broadcastGameState();
+	}
+
+	/** True if at least one seated player still has a live connection. */
+	hasConnectedPlayers(): boolean {
+		return this.players.some((p) => p.connected);
 	}
 
 	reconnectPlayer(playerId: string, ws: WebSocket): boolean {
@@ -55,11 +90,7 @@ export class GameRoom {
 		player.ws = ws;
 		player.connected = true;
 
-		this.sendToPlayer(player, {
-			type: 'gameState',
-			...this.getCurrentGameState(),
-			timeControl: this.timeControl
-		});
+		this.resyncPlayer(player);
 		this.notifyOpponentOfReconnection(playerId);
 
 		return true;
@@ -74,63 +105,153 @@ export class GameRoom {
 				this.handleMove(player, message.move);
 				break;
 			case 'offerRematch':
-				this.handleRematchOffer(playerId);
-				break;
-			case 'acceptRematch':
-				this.handleRematchAccept(playerId);
-				break;
-			case 'gameOver':
-				if (message.reason === 'timeout') {
-					this.handleTimeOut(message.winner);
+				if (this.canRematch()) {
+					this.handleRematchOffer(playerId);
 				}
 				break;
+			case 'acceptRematch':
+				if (this.canRematch()) {
+					this.handleRematchAccept(playerId);
+				}
+				break;
+			case 'resign':
+				this.handleResign(player);
+				break;
+			// NOTE: there is deliberately no 'gameOver'/'timeout' case — clients
+			// cannot declare outcomes (audit F1). Timeouts are decided by the
+			// server's flag-fall watchdog (onFlagFall).
 		}
 	}
 
 	private handleMove(player: Player, move: { from: string; to: string; promotion?: string }) {
-		if (player.color !== this.currentTurn) return;
-
-		const success = this.chess.move(move);
-		if (success) {
-			this.updateGameStateAfterMove(player.id, move);
+		if (!this.gameStarted || player.color !== this.currentTurn) {
+			this.resyncPlayer(player);
+			return;
 		}
+
+		if (!move || typeof move.from !== 'string' || typeof move.to !== 'string') {
+			this.resyncPlayer(player);
+			return;
+		}
+
+		let success;
+		try {
+			// chess.js (beta) throws on illegal moves
+			success = this.chess.move(move);
+		} catch (error) {
+			console.error('Ignoring illegal move:', error);
+			this.resyncPlayer(player);
+			return;
+		}
+
+		if (!success) {
+			this.resyncPlayer(player);
+			return;
+		}
+
+		this.updateGameStateAfterMove(player, move);
+	}
+
+	private handleResign(player: Player) {
+		if (!this.gameStarted) return;
+		const opponentColor: Color = player.color === 'white' ? 'black' : 'white';
+		this.finishGame(opponentColor, 'resignation');
+	}
+
+	private canRematch(): boolean {
+		return this.gameEnded && this.players.length === 2;
+	}
+
+	private resyncPlayer(player: Player) {
+		this.sendToPlayer(player, {
+			type: 'gameState',
+			...this.getCurrentGameState(),
+			timeControl: this.timeControl
+		});
 	}
 
 	private updateGameStateAfterMove(
-		playerId: string,
+		player: Player,
 		move: { from: string; to: string; promotion?: string }
 	) {
-		this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
-		this.currentFen = this.chess.fen();
-		this.broadcastMove(playerId, move);
-		if (!this.timeControl.isUnlimited) {
-			this.updatePlayerTime(this.findPlayerById(playerId)!);
-		}
-		this.checkGameEnd();
-	}
-
-	private updatePlayerTime(player: Player) {
-		if (player.timeRemaining === null) return;
-
 		const now = Date.now();
-		if (this.lastMoveTime) {
-			const timeTaken = (now - this.lastMoveTime) / 1000;
-			player.timeRemaining -= timeTaken;
 
-			if (player.timeRemaining <= this.timeControl.lowTimeThreshold) {
-				player.timeRemaining += this.timeControl.increment;
-			}
-
-			if (player.timeRemaining <= 0) {
-				this.handleTimeOut(player.color === 'white' ? 'black' : 'white');
-			}
+		// Apply the clock to the mover (the side whose turn just ended), then flip.
+		if (!this.timeControl.isUnlimited) {
+			this.clocksMs[player.color] = clockAfterMove(
+				this.clocksMs[player.color],
+				this.turnStartedAt,
+				this.timeControl.increment * 1000,
+				now
+			);
 		}
-		this.lastMoveTime = now;
-		this.broadcastGameState();
+
+		this.currentTurn = player.color === 'white' ? 'black' : 'white';
+		this.currentFen = this.chess.fen();
+		this.turnStartedAt = this.timeControl.isUnlimited ? null : now;
+
+		this.broadcastMove(player.id, move);
+		this.broadcastClock();
+
+		if (this.chess.isGameOver()) {
+			const outcome = gameOutcome(this.chess);
+			this.finishGame(outcome?.winner, outcome?.reason ?? 'draw');
+		} else {
+			this.scheduleFlagTimer();
+		}
 	}
 
-	private handleTimeOut(winner: Color) {
-		this.broadcastGameOver(winner, 'timeout');
+	private scheduleFlagTimer() {
+		this.clearFlagTimer();
+		if (this.timeControl.isUnlimited || !this.gameStarted) return;
+
+		const remaining = remainingMs(
+			this.clocksMs,
+			this.currentTurn,
+			this.turnStartedAt,
+			this.currentTurn,
+			Date.now()
+		);
+		this.flagTimer = setTimeout(() => this.onFlagFall(), Math.max(0, remaining));
+	}
+
+	private clearFlagTimer() {
+		if (this.flagTimer) {
+			clearTimeout(this.flagTimer);
+			this.flagTimer = null;
+		}
+	}
+
+	private onFlagFall() {
+		this.flagTimer = null;
+		if (!this.gameStarted || this.timeControl.isUnlimited) return;
+
+		const remaining = remainingMs(
+			this.clocksMs,
+			this.currentTurn,
+			this.turnStartedAt,
+			this.currentTurn,
+			Date.now()
+		);
+		if (remaining > 0) {
+			// Clock was adjusted (e.g. reconnect); re-arm rather than flagging early.
+			this.scheduleFlagTimer();
+			return;
+		}
+
+		// The side on the move has run out. Snap their clock to 0 and award the win.
+		this.clocksMs[this.currentTurn] = 0;
+		this.turnStartedAt = null;
+		const winner: Color = this.currentTurn === 'white' ? 'black' : 'white';
+		this.finishGame(winner, 'timeout');
+	}
+
+	private finishGame(winner: Color | undefined, reason: GameOverReason) {
+		this.gameStarted = false;
+		this.gameEnded = true;
+		this.clearFlagTimer();
+		this.turnStartedAt = null;
+		this.broadcastGameOver(winner, reason);
 	}
 
 	private handleRematchOffer(playerId: string) {
@@ -145,6 +266,7 @@ export class GameRoom {
 	}
 
 	private checkRematchAccepted() {
+		// Require both distinct seats to have accepted.
 		if (this.rematchOffers.size === 2) {
 			this.restartGame();
 
@@ -153,7 +275,8 @@ export class GameRoom {
 					type: 'rematchAccepted',
 					timeControl: this.timeControl,
 					fen: this.chess.fen(),
-					turn: this.currentTurn
+					turn: this.currentTurn,
+					clock: this.currentSnapshot()
 				});
 			});
 		}
@@ -164,28 +287,13 @@ export class GameRoom {
 		this.currentTurn = 'white';
 		this.currentFen = this.chess.fen();
 		this.rematchOffers.clear();
-		this.resetPlayerTimes();
-		this.lastMoveTime = Date.now(); // Reset the last move time
+		this.gameEnded = false;
 		this.gameStarted = true;
+		this.initClocks();
+		this.scheduleFlagTimer();
 
 		// Broadcast the new game state to all players
 		this.broadcastGameState();
-	}
-
-	private checkGameEnd() {
-		if (this.chess.isGameOver()) {
-			this.gameStarted = false;
-			const { winner, reason } = this.determineGameOutcome();
-			this.broadcastGameOver(winner, reason);
-		}
-	}
-
-	private determineGameOutcome(): { winner?: Color; reason: string } {
-		if (this.chess.isCheckmate()) {
-			return { winner: this.currentTurn === 'white' ? 'black' : 'white', reason: 'checkmate' };
-		}
-
-		return { reason: 'draw' };
 	}
 
 	private broadcastMove(senderId: string, move: { from: string; to: string; promotion?: string }) {
@@ -193,8 +301,13 @@ export class GameRoom {
 		this.broadcastToOtherPlayers(senderId, moveMessage);
 	}
 
-	private broadcastGameOver(winner?: Color, reason?: string) {
-		const gameOverMessage = { type: 'gameOver', winner, reason };
+	private broadcastClock() {
+		if (this.timeControl.isUnlimited) return;
+		this.broadcastToAllPlayers({ type: 'clock', clock: this.currentSnapshot() });
+	}
+
+	private broadcastGameOver(winner: Color | undefined, reason: GameOverReason) {
+		const gameOverMessage = { type: 'gameOver', winner, reason, clock: this.currentSnapshot() };
 		this.broadcastToAllPlayers(gameOverMessage);
 	}
 
@@ -248,14 +361,31 @@ export class GameRoom {
 
 	private startGame() {
 		this.gameStarted = true;
+		this.gameEnded = false;
+		this.initClocks();
 		this.players.forEach((player) => {
 			this.sendToPlayer(player, {
 				type: 'gameStart',
 				timeControl: this.timeControl,
 				fen: this.chess.fen(),
-				turn: this.currentTurn
+				turn: this.currentTurn,
+				clock: this.currentSnapshot()
 			});
 		});
+		this.scheduleFlagTimer();
+	}
+
+	/** Reset both clocks to the initial control and start white's clock now. */
+	private initClocks() {
+		const initialMs = this.timeControl.isUnlimited ? 0 : this.timeControl.initial * 1000;
+		this.clocksMs = { white: initialMs, black: initialMs };
+		this.turnStartedAt = this.timeControl.isUnlimited ? null : Date.now();
+	}
+
+	private currentSnapshot(): ClockSnapshot {
+		const running =
+			this.timeControl.isUnlimited || !this.gameStarted ? null : this.currentTurn;
+		return buildSnapshot(this.clocksMs, running, this.turnStartedAt, Date.now());
 	}
 
 	private notifyOpponentOfReconnection(reconnectedPlayerId: string) {
@@ -267,14 +397,6 @@ export class GameRoom {
 
 	private findPlayerById(playerId: string): Player | undefined {
 		return this.players.find((p) => p.id === playerId);
-	}
-
-	private resetPlayerTimes() {
-		this.players.forEach((player) => {
-			if (player.timeRemaining !== null) {
-				player.timeRemaining = this.timeControl.initial;
-			}
-		});
 	}
 
 	private broadcastGameState() {
@@ -291,8 +413,7 @@ export class GameRoom {
 			started: this.gameStarted,
 			fen: this.currentFen,
 			turn: this.currentTurn,
-			whiteTime: this.players.find((p) => p.color === 'white')?.timeRemaining,
-			blackTime: this.players.find((p) => p.color === 'black')?.timeRemaining
+			clock: this.currentSnapshot()
 		};
 	}
 }

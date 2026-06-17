@@ -1,7 +1,6 @@
-import { get, writable, type Writable } from 'svelte/store';
-import { GameState } from './GameState';
+import { GameModel } from './GameModel';
 import type { Color } from 'chessground/types';
-import type { ChessMove, GameOver, TimeControl } from './types';
+import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './types';
 import { WebSocketManager } from '../websocket/WebSocketManager';
 import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
 import { PLAYER_ID_EXPIRATION } from '$lib/constants';
@@ -11,31 +10,39 @@ export interface MultiplayerGameStateOptions {
 	roomId: string;
 }
 
-export class MultiplayerGameState extends GameState {
+export class MultiplayerGameState extends GameModel {
 	private wsManager: WebSocketManager;
-	private timer: number | null = null;
-	private lastMoveTime: number | null = null;
-	private firstMovesMade: { white: boolean; black: boolean } = { white: false, black: false };
 
-	opponentConnected: Writable<boolean> = writable(false);
-	isUnlimited: Writable<boolean> = writable(true);
-	whiteTime: Writable<number> = writable(0);
-	blackTime: Writable<number> = writable(0);
-	rematchOffer: Writable<boolean> = writable(false);
+	// Display-only clock interpolation. The SERVER is authoritative for time and
+	// flag-fall; this client never decides a timeout — it renders the latest
+	// snapshot and waits for the server's `gameOver`.
+	private clockSnapshot: ClockSnapshot | null = null;
+	private clockTick: number | null = null;
+	private serverOffset = 0; // serverTime - local Date.now(), to align the snapshot
+	private unlimited = true; // mirrors the active time control for clock patches
+
 	roomId: string;
 
 	constructor({ player, roomId }: MultiplayerGameStateOptions) {
 		super('pvp', player);
 		this.roomId = roomId;
-		const playerId = GetItemFromCookies(`${this.roomId}-playerId`);
-		const wsUrl = this.constructWebSocketUrl(player, roomId, playerId);
-		this.wsManager = new WebSocketManager(wsUrl);
+		// Resolve the URL lazily so a reconnect re-reads the playerId cookie that
+		// the first `connected` message stored — the server then rebinds our seat
+		// instead of treating us as a brand-new (rejected) join.
+		this.wsManager = new WebSocketManager(() =>
+			this.constructWebSocketUrl(player, roomId, GetItemFromCookies(`${this.roomId}-playerId`))
+		);
+		this.wsManager.onStatus((status) => this.patch({ connectionStatus: status }));
 		this.setupMessageHandlers();
 	}
 
 	private constructWebSocketUrl(player: Color, roomId: string, playerId: string | null): string {
-		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${roomId}&color=${player}`;
-		return playerId ? `${baseUrl}&playerId=${playerId}` : baseUrl;
+		// Encode values that originate from the page URL / cookies so stray special
+		// characters can't break or inject into the query string.
+		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${encodeURIComponent(
+			roomId
+		)}&color=${player}`;
+		return playerId ? `${baseUrl}&playerId=${encodeURIComponent(playerId)}` : baseUrl;
 	}
 
 	private setupMessageHandlers() {
@@ -44,29 +51,29 @@ export class MultiplayerGameState extends GameState {
 		this.wsManager.addMessageHandler('opponentJoined', () => this.handleOpponentJoined());
 		this.wsManager.addMessageHandler('opponentReconnected', () => this.handleOpponentReconnected());
 		this.wsManager.addMessageHandler('gameStart', (data) => this.handleGameStart(data));
+		this.wsManager.addMessageHandler('clock', (data) => this.applyClockSnapshot(data.clock));
 		this.wsManager.addMessageHandler('gameOver', (data) => this.handleGameOver(data));
 		this.wsManager.addMessageHandler('gameState', (data) => this.handleGameState(data));
-		this.wsManager.addMessageHandler('rematchOffer', () => this.rematchOffer.set(true));
-		this.wsManager.addMessageHandler('rematchAccepted', () => this.handleRematchAccepted());
-	}
-
-	newGame() {
-		super.newGame();
-		this.resetTimer();
-		this.startTimer();
+		this.wsManager.addMessageHandler('rematchOffer', () => this.patch({ rematchOffer: true }));
+		this.wsManager.addMessageHandler('rematchAccepted', (data) => this.handleRematchAccepted(data));
 	}
 
 	makeMove(move: ChessMove): boolean {
 		const result = super.makeMove(move);
 		if (result) {
-			this.wsManager.sendMessage({
+			// Optimistic local apply already happened in super.makeMove; just tell
+			// the server. The authoritative clock comes back via a `clock` snapshot.
+			const sent = this.wsManager.sendMessage({
 				type: 'move',
 				move: { from: move.from, to: move.to, promotion: move.promotion }
 			});
-			this.updateTimer();
-			this.firstMovesMade[this.player] = true;
-			if (!this.timer) {
-				this.startTimer();
+			if (!sent) {
+				// The socket isn't open, so the server will never see this move.
+				// Roll back the optimistic apply; reconnect will resync from server truth.
+				this.core.undo();
+				this.patch({ moveHistory: this.snapshot().moveHistory.slice(0, -1) });
+				this.updateGameState();
+				return false;
 			}
 		}
 		return result;
@@ -74,24 +81,7 @@ export class MultiplayerGameState extends GameState {
 
 	endGame() {
 		super.endGame();
-		this.stopTimer();
-	}
-
-	setDifficulty(): void {
-		console.warn('Difficulty settings are not applicable in multiplayer mode');
-	}
-
-	updateSettings(): void {
-		console.warn('Some settings may not apply in multiplayer mode');
-	}
-
-	undoMove(): void {
-		console.warn('Undo is not available in multiplayer mode');
-	}
-
-	async getHint(): Promise<ChessMove | null> {
-		console.warn('Hints are not available in multiplayer mode');
-		return null;
+		this.stopClockTick();
 	}
 
 	offerRematch() {
@@ -102,21 +92,35 @@ export class MultiplayerGameState extends GameState {
 		this.wsManager.sendMessage({ type: 'acceptRematch' });
 	}
 
+	resign() {
+		this.wsManager.sendMessage({ type: 'resign' });
+	}
+
 	close() {
 		this.wsManager.close();
 	}
 
-	private handleRematchAccepted() {
-		this.rematchOffer.set(false);
-		this.endGame();
-		this.newGame();
-		this.resetTimer();
-		this.startTimer();
+	destroy() {
+		this.stopClockTick();
+		this.close();
+		super.destroy();
+	}
+
+	private handleRematchAccepted(data: {
+		fen: string;
+		turn: Color;
+		timeControl: TimeControl;
+		clock?: ClockSnapshot;
+	}) {
+		this.patch({ rematchOffer: false, gameOver: { isOver: false, winner: null } });
+		this.core.load(data.fen);
+		this.patch({ turn: data.turn, moveHistory: [], started: true });
+		this.initializeClock(data.timeControl, data.clock);
 		this.updateGameState();
 	}
 
 	private handleOpponentReconnected() {
-		this.opponentConnected.set(true);
+		this.patch({ opponentConnected: true });
 	}
 
 	private handleConnected(playerId: string) {
@@ -128,158 +132,120 @@ export class MultiplayerGameState extends GameState {
 	}
 
 	private handleOpponentJoined() {
-		this.opponentConnected.set(true);
+		this.patch({ opponentConnected: true });
 	}
 
-	private handleGameStart(data: { fen: string; turn: Color; timeControl: TimeControl }) {
-		this.chess.load(data.fen);
-		this.turn.set(data.turn);
-		this.initializeTimer(data.timeControl);
-		this.started.set(true);
+	private handleGameStart(data: {
+		fen: string;
+		turn: Color;
+		timeControl: TimeControl;
+		clock?: ClockSnapshot;
+	}) {
+		this.core.load(data.fen);
+		this.patch({ turn: data.turn, started: true });
+		this.initializeClock(data.timeControl, data.clock);
 		this.updateGameState();
-		this.firstMovesMade = { white: false, black: false };
 	}
 
 	private handleOpponentMove(move: ChessMove) {
+		// Apply locally only; bypass our own `makeMove` so we don't echo it back.
 		super.makeMove(move);
-		this.updateTimer();
-		const opponentColor = this.player === 'white' ? 'black' : 'white';
-		this.firstMovesMade[opponentColor] = true;
-		if (!this.timer) {
-			this.startTimer();
+	}
+
+	private initializeClock(timeControl: TimeControl, clock?: ClockSnapshot) {
+		this.unlimited = timeControl.isUnlimited;
+		if (timeControl.isUnlimited) {
+			this.stopClockTick();
+			this.patch({ clock: { isUnlimited: true, myClock: 0, opponentClock: 0 } });
+			return;
+		}
+		if (clock) {
+			this.applyClockSnapshot(clock);
+		} else {
+			this.setClock(timeControl.initial, timeControl.initial);
 		}
 	}
 
-	private initializeTimer(timeControl: TimeControl) {
-		this.isUnlimited.set(timeControl.isUnlimited);
-		if (!timeControl.isUnlimited) {
-			this.whiteTime.set(timeControl.initial);
-			this.blackTime.set(timeControl.initial);
-		}
+	/** Adopt a server clock snapshot and (re)start the display interpolation. */
+	private applyClockSnapshot(snapshot: ClockSnapshot | undefined) {
+		if (!snapshot) return;
+		this.clockSnapshot = snapshot;
+		this.serverOffset = snapshot.serverTime - Date.now();
+		this.startClockTick();
 	}
 
-	private startTimer() {
-		this.stopTimer();
-		if (get(this.isUnlimited)) return;
+	/** Render the latest snapshot, deducting live elapsed time from the running side. */
+	private renderClock() {
+		const snap = this.clockSnapshot;
+		if (!snap) return;
 
-		this.lastMoveTime = Date.now();
-		this.timer = window.setInterval(() => this.updateRemainingTime(), 1000);
+		const now = Date.now() + this.serverOffset;
+		const elapsed = now - snap.serverTime;
+		const whiteMs = snap.running === 'white' ? snap.whiteMs - elapsed : snap.whiteMs;
+		const blackMs = snap.running === 'black' ? snap.blackMs - elapsed : snap.blackMs;
+
+		// Display only — clamp at zero and NEVER declare game-over here.
+		this.setClock(Math.max(0, whiteMs / 1000), Math.max(0, blackMs / 1000));
 	}
 
-	private stopTimer() {
-		if (this.timer) {
-			clearInterval(this.timer);
-			this.timer = null;
-		}
-	}
-
-	private updateTimer() {
-		if (get(this.isUnlimited)) return;
-
-		const now = Date.now();
-		if (this.lastMoveTime) {
-			const elapsedTime = (now - this.lastMoveTime) / 1000;
-			this.updatePlayerTime(elapsedTime);
-		}
-		this.lastMoveTime = now;
-	}
-
-	private updatePlayerTime(elapsedTime: number) {
-		const currentPlayerTime = this.chess.turn() === 'w' ? this.whiteTime : this.blackTime;
-		currentPlayerTime.update((time) => Math.max(0, time - elapsedTime));
-	}
-
-	private updateRemainingTime() {
-		if (get(this.isUnlimited)) return;
-
-		const currentTurn = this.chess.turn() === 'w' ? 'white' : 'black';
-		if (!this.firstMovesMade[currentTurn]) return;
-
-		const currentPlayerTime = this.chess.turn() === 'w' ? this.whiteTime : this.blackTime;
-		const now = Date.now();
-		const elapsedTime = (now - (this.lastMoveTime || now)) / 1000;
-
-		currentPlayerTime.update((time) => {
-			const newTime = Math.max(0, time - elapsedTime);
-			if (newTime === 0) {
-				this.handleTimeOut();
+	/** Project white/black seconds into the player-relative clock view. */
+	private setClock(whiteSeconds: number, blackSeconds: number) {
+		this.patch({
+			clock: {
+				isUnlimited: this.unlimited,
+				myClock: this.player === 'white' ? whiteSeconds : blackSeconds,
+				opponentClock: this.player === 'white' ? blackSeconds : whiteSeconds
 			}
-			return newTime;
-		});
-
-		this.lastMoveTime = now;
-	}
-
-	private handleTimeOut() {
-		this.stopTimer();
-		const loser = this.chess.turn();
-		const winner = loser === 'w' ? 'black' : 'white';
-
-		this.audioCue.set('game-end');
-		this.setGameOver(winner);
-		this.notifyGameOverDueToTimeout(winner);
-		this.updateGameState();
-	}
-
-	private setGameOver(winner: Color) {
-		const gameOver: GameOver = { isOver: true, winner };
-		this.gameOver.set(gameOver);
-	}
-
-	private notifyGameOverDueToTimeout(winner: Color) {
-		this.wsManager.sendMessage({
-			type: 'gameOver',
-			reason: 'timeout',
-			winner
 		});
 	}
 
-	private handleGameOver(data: { winner?: Color; reason?: string }) {
-		this.stopTimer();
-		this.setGameOver(data.winner!);
-		this.audioCue.set('game-end');
+	private startClockTick() {
+		this.stopClockTick();
+		this.renderClock();
+		// Only animate when a clock is actually running.
+		if (this.clockSnapshot && this.clockSnapshot.running !== null) {
+			this.clockTick = window.setInterval(() => this.renderClock(), 250);
+		}
+	}
+
+	private stopClockTick() {
+		if (this.clockTick) {
+			clearInterval(this.clockTick);
+			this.clockTick = null;
+		}
+	}
+
+	private handleGameOver(data: {
+		winner?: Color | 'draw' | null;
+		reason?: GameOverReason;
+		clock?: ClockSnapshot;
+	}) {
+		// Freeze the display on the final authoritative clock, then stop ticking.
+		if (data.clock) {
+			this.clockSnapshot = data.clock;
+			this.serverOffset = data.clock.serverTime - Date.now();
+			this.renderClock();
+		}
+		this.stopClockTick();
+		this.patch({ gameOver: { isOver: true, winner: data.winner ?? null, reason: data.reason } });
 		this.updateGameState();
 	}
 
 	private handleGameState(data: {
+		started: boolean;
 		fen: string;
 		turn: Color;
-		whiteTime?: number;
-		blackTime?: number;
+		clock?: ClockSnapshot;
 		timeControl?: TimeControl;
 	}) {
-		this.chess.load(data.fen);
-		this.fen.set(data.fen);
-		this.turn.set(data.turn);
-		if (data.whiteTime !== undefined) {
-			this.whiteTime.set(data.whiteTime);
-			this.firstMovesMade.white = true;
-		}
-		if (data.blackTime !== undefined) {
-			this.blackTime.set(data.blackTime);
-			this.firstMovesMade.black = true;
-		}
+		this.core.load(data.fen);
+		this.patch({ turn: data.turn });
 		if (data.timeControl) {
-			this.isUnlimited.set(data.timeControl.isUnlimited);
-			if (!data.timeControl.isUnlimited) {
-				this.resetTimer();
-				this.startTimer();
-			}
+			this.initializeClock(data.timeControl, data.clock);
+		} else if (data.clock) {
+			this.applyClockSnapshot(data.clock);
 		}
-		this.started.set(true);
-		this.opponentConnected.set(true);
+		this.patch({ started: data.started, opponentConnected: true });
 		this.updateGameState();
-		if (this.firstMovesMade.white || this.firstMovesMade.black) {
-			this.startTimer();
-		}
-	}
-
-	private resetTimer() {
-		this.stopTimer();
-		const whiteTime = get(this.whiteTime);
-		const blackTime = get(this.blackTime);
-		this.whiteTime.set(whiteTime);
-		this.blackTime.set(blackTime);
-		this.lastMoveTime = null;
 	}
 }

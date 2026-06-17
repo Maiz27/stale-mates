@@ -16,6 +16,7 @@
 	let color: Color | 'random' = 'white';
 	let time = 0;
 	let errorMessage = '';
+	let copied = false;
 
 	let loading = false;
 
@@ -62,6 +63,7 @@
 		color = 'white';
 		time = 0;
 		errorMessage = '';
+		copied = false;
 	}
 
 	$: if (!open) resetState();
@@ -78,8 +80,15 @@
 		goto(playerLink);
 	};
 
-	const copyLink = () => {
-		navigator.clipboard.writeText(opponentLink);
+	const copyLink = async () => {
+		if (!navigator.clipboard) return;
+		try {
+			await navigator.clipboard.writeText(opponentLink);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// Clipboard write was blocked/denied — don't show a false success.
+		}
 	};
 </script>
 
@@ -113,8 +122,16 @@
 									class="max-w-sm"
 								/>
 								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-									<button title="Copy Link" on:click={copyLink} class="p-1 hover:bg-muted">
-										<Icon icon="radix-icons:copy" font-size="1.2rem" />
+									<button
+										title={copied ? 'Copied!' : 'Copy Link'}
+										aria-label={copied ? 'Invite link copied' : 'Copy invite link'}
+										on:click={copyLink}
+										class="p-1 hover:bg-muted"
+									>
+										<Icon
+											icon={copied ? 'radix-icons:check' : 'radix-icons:copy'}
+											font-size="1.2rem"
+										/>
 									</button>
 								</div>
 							</div>
@@ -164,8 +181,16 @@
 									class="max-w-sm"
 								/>
 								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-									<button title="Copy Link" on:click={copyLink} class="p-1 hover:bg-muted">
-										<Icon icon="radix-icons:copy" font-size="1.2rem" />
+									<button
+										title={copied ? 'Copied!' : 'Copy Link'}
+										aria-label={copied ? 'Invite link copied' : 'Copy invite link'}
+										on:click={copyLink}
+										class="p-1 hover:bg-muted"
+									>
+										<Icon
+											icon={copied ? 'radix-icons:check' : 'radix-icons:copy'}
+											font-size="1.2rem"
+										/>
 									</button>
 								</div>
 							</div>
