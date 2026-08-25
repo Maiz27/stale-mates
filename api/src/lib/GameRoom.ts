@@ -234,7 +234,7 @@ export class GameRoom {
 			Date.now()
 		);
 		if (remaining > 0) {
-			// Clock was adjusted (e.g. reconnect); re-arm rather than flagging early.
+			// Re-arm if the authoritative clock still has time remaining.
 			this.scheduleFlagTimer();
 			return;
 		}
