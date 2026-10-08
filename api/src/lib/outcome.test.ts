@@ -7,7 +7,7 @@ describe('gameOutcome', () => {
 		expect(gameOutcome(new Chess())).toBeNull();
 	});
 
-	it('reports checkmate with the correct winner (fool\'s mate -> black wins)', () => {
+	it("reports checkmate with the correct winner (fool's mate -> black wins)", () => {
 		const chess = new Chess();
 		chess.move('f3');
 		chess.move('e5');

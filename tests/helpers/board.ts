@@ -46,7 +46,9 @@ async function waitForStableBox(board: Locator): Promise<void> {
 	let prev = '';
 	for (let i = 0; i < 20; i++) {
 		const box = await board.boundingBox();
-		const key = box ? `${Math.round(box.width)}x${Math.round(box.height)}@${Math.round(box.x)},${Math.round(box.y)}` : '';
+		const key = box
+			? `${Math.round(box.width)}x${Math.round(box.height)}@${Math.round(box.x)},${Math.round(box.y)}`
+			: '';
 		if (key && key === prev) return;
 		prev = key;
 		await board.page().waitForTimeout(100);

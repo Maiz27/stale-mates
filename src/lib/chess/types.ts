@@ -31,13 +31,7 @@ export type ChessMove = {
 };
 
 export type MoveType =
-	| 'normal'
-	| 'capture'
-	| 'castle'
-	| 'check'
-	| 'promote'
-	| 'game-start'
-	| 'game-end';
+	'normal' | 'capture' | 'castle' | 'check' | 'promote' | 'game-start' | 'game-end';
 
 // Single canonical definition, mirrored on the server at api/src/lib/types.ts.
 // All fields required (the optional fields here had drifted from the server).

@@ -31,7 +31,7 @@ describe('ChessCore', () => {
 		expect(core.moveType(core.move({ from: 'e4', to: 'd5' })!)).toBe('capture');
 	});
 
-	it('reports checkmate outcome with the winner (fool\'s mate)', () => {
+	it("reports checkmate outcome with the winner (fool's mate)", () => {
 		const core = new ChessCore();
 		core.move({ from: 'f2', to: 'f3' });
 		core.move({ from: 'e7', to: 'e5' });

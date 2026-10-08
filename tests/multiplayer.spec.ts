@@ -41,7 +41,9 @@ test.describe('Multiplayer mode', () => {
 		const roomId = await createRoom(page);
 		test.skip(
 			roomId === null,
-			'API server at ' + API_URL + ' not reachable (or frontend build lacks VITE_API_URL). ' +
+			'API server at ' +
+				API_URL +
+				' not reachable (or frontend build lacks VITE_API_URL). ' +
 				'Multiplayer requires the api/ server on :3000 with ORIGIN allowing the preview origin.'
 		);
 

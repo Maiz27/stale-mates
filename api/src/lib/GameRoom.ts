@@ -383,8 +383,7 @@ export class GameRoom {
 	}
 
 	private currentSnapshot(): ClockSnapshot {
-		const running =
-			this.timeControl.isUnlimited || !this.gameStarted ? null : this.currentTurn;
+		const running = this.timeControl.isUnlimited || !this.gameStarted ? null : this.currentTurn;
 		return buildSnapshot(this.clocksMs, running, this.turnStartedAt, Date.now());
 	}
 

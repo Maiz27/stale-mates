@@ -13,7 +13,7 @@ biggest single refactor).
 > unified `TimeControl`/`ClockSnapshot`/`GameOverReason`, but not yet a single copied `protocol.ts`;
 > the latent draw-reason bug ✅ fixed. **Phase 2.1 complete:** #1 (composition) ✅ — a pure
 > `ChessCore` + `AudioCue` are composed by a concrete `GameModel` base the two modes extend with
-> *only* mode-specific behaviour (no more `console.warn` stubs); #2 (store consolidation) ✅ —
+> _only_ mode-specific behaviour (no more `console.warn` stubs); #2 (store consolidation) ✅ —
 > the ~18 per-field `Writable`s collapsed into one `Readable<GameView>` the model exposes via
 > `subscribe` (`$gameState`), with a player-relative `clock` (`myClock`/`opponentClock`); #5
 > (presentational board) ✅ — `ChessBoard` is now props-in (`view`/`playerColor`/`boardFlipped`)
@@ -34,13 +34,13 @@ GameModel  (src/lib/chess/GameModel.ts)   — composes ChessCore + AudioCue, own
    └── MultiplayerGameState (src/lib/chess/MultiplayerGameState.ts) — play vs a remote peer
 ```
 
-`GameModel` *composes* the pure rules (`ChessCore`) and the seven-cue `AudioCue`, and projects
+`GameModel` _composes_ the pure rules (`ChessCore`) and the seven-cue `AudioCue`, and projects
 all state into a **single `Readable<GameView>`** (`fen`/`turn`/`clock`/`check`/`game-over`/…)
 that it exposes via `subscribe`. The two modes `extend` it and add only mode-specific behaviour
 (Stockfish + hints/undo for AI; the `WebSocketManager` + server clock/rematch for MP) — neither
 stubs methods it doesn't support. The route pages (`src/routes/ai/+page.svelte`,
 `src/routes/room/+page.svelte`) subscribe once to the view (`$gameState` / one `subscribe`) and
-call game methods *directly*; the board (`src/lib/components/chessBoard/ChessBoard.svelte`) is a
+call game methods _directly_; the board (`src/lib/components/chessBoard/ChessBoard.svelte`) is a
 presentational component — `view` in, `move`/`promotion` events out.
 
 The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` and is now
@@ -50,17 +50,18 @@ server clock snapshot rather than declaring timeouts itself. The remaining autho
 seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.md`.
 
 ### Known structural smells (most now resolved — kept for history)
+
 - ~~**Liskov violation:** `MultiplayerGameState` stubs ~4/5 of `GameState`'s abstract/engine
   methods with `console.warn`.~~ **Resolved** — `GameModel` declares no AI-specific abstract
   methods; each mode adds only what it supports.
 - ~~**Store ceremony:** every consumer manually `subscribe`s … for ~18 separate stores.~~
   **Resolved** — one `Readable<GameView>`; consumers read `$gameState` / a single `subscribe`.
 - **Time/units drift:** clock math mixes seconds and `Date.now()` milliseconds across client
-  and server; `TimeControl` is defined twice and has already drifted (`AUDIT.md` M1). *(Server
-  clock authority landed (#3); a single shared `protocol.ts` is still outstanding (#6).)*
+  and server; `TimeControl` is defined twice and has already drifted (`AUDIT.md` M1). _(Server
+  clock authority landed (#3); a single shared `protocol.ts` is still outstanding (#6).)_
 - ~~**Engine seam is stringly-typed** … a dead `Engine` base class shadows `Stockfish`.~~
   Dead `Engine` base **removed** (#4); UCI parsing still lives in the `Stockfish` adapter.
-- ~~**Inverted control:** pages reach *into* the board (`newGame/resign/...`).~~ **Resolved** —
+- ~~**Inverted control:** pages reach _into_ the board (`newGame/resign/...`).~~ **Resolved** —
   the board is presentational (props in / events out); pages call the game model directly.
 
 ---
@@ -68,19 +69,22 @@ seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.
 ## Deepening opportunities (ranked)
 
 ### 1. (High / M) Composition over a pure `ChessCore` instead of inheritance
+
 Replace the `GameState → AIGameState/MultiplayerGameState` inheritance with **composition**:
+
 - A pure **`ChessCore`** module — rules only (wraps `chess.js`: make move, legal destinations,
   check/checkmate/draw detection, FEN). No stores, no audio, no sockets, no engine. Trivially
   unit-testable.
 - An **`AudioCue`** adapter that owns the seven `Audio` objects and a `destroy()`; injected, not
   inherited.
 - The two modes become **composition roots** that wire `ChessCore` + `AudioCue` + (AI) a
-  Stockfish adapter / (MP) a `WebSocketManager`. They *share* the core rather than descending
+  Stockfish adapter / (MP) a `WebSocketManager`. They _share_ the core rather than descending
   from a common ancestor that knows about engines.
 
 Kills the Liskov violation and the `console.warn` stubs in `MultiplayerGameState`.
 
 ### 2. (High / S–M) Collapse the per-field stores into one `Readable<GameView>`
+
 Replace the ~18 individual `Writable`s with a single derived **`Readable<GameView>`** view-model.
 Deletes the manual subscribe/copy/unsubscribe ceremony at every call site
 (`ChessBoard.svelte`, both route pages). Add **player-relative accessors** `myClock` /
@@ -88,30 +92,35 @@ Deletes the manual subscribe/copy/unsubscribe ceremony at every call site
 with #1 — the composition root publishes the consolidated view-model.
 
 ### 3. (Med-High / S) Extract a pure `clock` module with injected `now`
-A pure clock module — no `Date.now()` / `setTimeout` *inside* — that takes
+
+A pure clock module — no `Date.now()` / `setTimeout` _inside_ — that takes
 `(clocks, turnStartedAt, timeControl, now)` and returns new state. Shared by the client's
 display interpolation and the server's flag-fall. **Ships before/with the server-authority
 rewrite** and kills the seconds-vs-ms drift. Makes flag-fall deterministic in tests
 (see `docs/server-authority-plan.md` §3.2, §6).
 
 ### 4. (Med / S) Delete the dead `Engine` base class; type the Stockfish seam
+
 `src/lib/engine/engine.ts` is a base class with a single subclass, an incompatible `go()`
 signature, and a double `uci` init. Delete it and give `Stockfish` a typed
 `onBestMove(move, { generation })` callback seam so callers stop parsing UCI strings. Makes
 `AIGameState` testable against a fake engine.
 
 ### 5. (Med / M) Make `ChessBoard.svelte` purely presentational
+
 Props in / events out. Remove the inverted `bind:this` command-routing where pages call
-`newGame` / `resign` / … *through* the board. Lift `REASON_LABELS` / `resultText` out into a
+`newGame` / `resign` / … _through_ the board. Lift `REASON_LABELS` / `resultText` out into a
 pure `formatResult()` helper. Reduces coupling and makes the board reusable.
 
 ### 6. (Med / L) Shared domain-core (turn / outcome / time)
-Widen `docs/server-authority-plan.md`'s protocol package from *wire types* to *domain logic*:
+
+Widen `docs/server-authority-plan.md`'s protocol package from _wire types_ to _domain logic_:
 a single shared module exporting `Color`, `TimeControl` + `convertTimeOption`, `flipTurn`, and
 one canonical **`gameOutcome()`** used by BOTH `src/` and `api/`. This also fixes the latent
 bug below.
 
 ### 7. (Low-Med / S) `CONTEXT.md` + ADRs
+
 Domain glossary and ADRs for the deliberate decisions (single-instance in-memory state,
 server-authoritative outcomes, two-deployment split). Delivered as Phase-1 Stream C
 (`CONTEXT.md`, `docs/adr/*`).
@@ -133,7 +142,7 @@ shared domain-core step of the server-authority plan, or as a standalone quick f
 ## Recommended sequencing
 
 The chess core is central, so these refactors and the server-authority rewrite **cannot run
-in parallel with each other**. Do the foundational refactors *before* the server-authority
+in parallel with each other**. Do the foundational refactors _before_ the server-authority
 rewrite so the rewrite builds on clean seams:
 
 1. Composition refactor (#1, #2) — then #5, #4.

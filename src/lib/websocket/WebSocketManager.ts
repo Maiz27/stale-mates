@@ -1,4 +1,9 @@
-import type { ClientMessage, ServerMessage, ServerMessageOf, ServerMessageType } from '$lib/chess/protocol';
+import type {
+	ClientMessage,
+	ServerMessage,
+	ServerMessageOf,
+	ServerMessageType
+} from '$lib/chess/protocol';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 type StatusHandler = (status: ConnectionStatus) => void;

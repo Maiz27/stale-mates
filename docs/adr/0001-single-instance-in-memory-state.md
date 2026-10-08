@@ -38,12 +38,14 @@ a single instance (`docs/server-authority-plan.md` §2, §7).
 ## Consequences
 
 **Positive**
+
 - Drastically simpler: no schema, no migrations, no external service to run or pay
   for, no serialization of `chess.js` state.
 - Low latency and trivial local development — clone and run, nothing to provision.
 - Fits the actual product: rooms are short-lived and disposable.
 
 **Negative / accepted risks**
+
 - All games are lost on restart, crash, or deploy. Acceptable for friendly duels.
 - Cannot run more than one instance; no horizontal scaling and no failover.
 - Abandoned rooms can leak until both sockets close; there is no room TTL yet
