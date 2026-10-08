@@ -22,16 +22,26 @@ export interface ConnectionEnv extends OriginEnv {
  * (lib/origins.ts: normalised `ORIGIN` entries plus opt-in `ORIGIN_PATTERNS`). Outside production any localhost origin and
  * origin-less (non-browser) clients are also allowed, so local dev just works.
  */
+export function originGuard(env: ConnectionEnv): (origin: string | undefined) => boolean {
+	// Parsed once per server, not on every handshake.
+	const matches = originMatcher(env);
+	const production = env.NODE_ENV === 'production';
+	return (origin) => {
+		if (matches(origin)) return true;
+		if (production) return false;
+		if (!origin) return true;
+		try {
+			const { hostname } = new URL(origin);
+			return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+		} catch {
+			return false;
+		}
+	};
+}
+
+/** One-off form of {@link originGuard} (tests). */
 export function isOriginAllowed(origin: string | undefined, env: ConnectionEnv): boolean {
-	if (originMatcher(env)(origin)) return true;
-	if (env.NODE_ENV === 'production') return false;
-	if (!origin) return true;
-	try {
-		const { hostname } = new URL(origin);
-		return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-	} catch {
-		return false;
-	}
+	return originGuard(env)(origin);
 }
 
 /**
@@ -73,7 +83,8 @@ export class MessageBudget {
 export function handleWebSocketConnection(
 	ws: WebSocket,
 	req: IncomingMessage,
-	env: ConnectionEnv = process.env
+	env: ConnectionEnv = process.env,
+	isAllowed: (origin: string | undefined) => boolean = originGuard(env)
 ) {
 	// Registered first: `ws` emits 'error' for protocol violations (a frame over
 	// maxPayload, a bad opcode, invalid UTF-8...) and an EventEmitter 'error'
@@ -82,7 +93,7 @@ export function handleWebSocketConnection(
 	trackHeartbeat(ws);
 
 	try {
-		if (!isOriginAllowed(req.headers.origin, env)) {
+		if (!isAllowed(req.headers.origin)) {
 			closeConnection(ws, 1008, 'Origin not allowed');
 			return;
 		}
@@ -205,6 +216,7 @@ export function createWebSocketServer(
 	// Open sockets per client IP: one source can't exhaust the process's sockets
 	// and memory by opening (and idling) thousands of connections (CR-8).
 	const perIp = new Map<string, number>();
+	const isAllowed = originGuard(env);
 	wss.on('connection', (ws, req) => {
 		const ip = clientIp(req, hops);
 		const open = perIp.get(ip) ?? 0;
@@ -219,7 +231,7 @@ export function createWebSocketServer(
 			if (left > 0) perIp.set(ip, left);
 			else perIp.delete(ip);
 		});
-		handleWebSocketConnection(ws, req, env);
+		handleWebSocketConnection(ws, req, env, isAllowed);
 	});
 	if (heartbeatMs > 0) startHeartbeat(wss, heartbeatMs);
 	return wss;

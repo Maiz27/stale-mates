@@ -75,6 +75,32 @@ describe('handleWebSocketConnection (SM-3)', () => {
 		expect(ws.closed?.code).toBe(1008);
 	});
 
+	it('uses the origin guard the server built once instead of re-parsing the env per handshake', () => {
+		const { id } = createGame({ time: 0 });
+		const seen: (string | undefined)[] = [];
+		const guard = (origin: string | undefined) => {
+			seen.push(origin);
+			return origin === 'https://allowed.example';
+		};
+		const refused = new FakeSocket();
+		handleWebSocketConnection(
+			refused as unknown as WebSocket,
+			req(`/game/join?id=${id}`, 'http://localhost:5173'),
+			dev,
+			guard
+		);
+		expect(refused.closed).toEqual({ code: 1008, reason: 'Origin not allowed' });
+		const accepted = new FakeSocket();
+		handleWebSocketConnection(
+			accepted as unknown as WebSocket,
+			req(`/game/join?id=${id}`, 'https://allowed.example'),
+			dev,
+			guard
+		);
+		expect(accepted.closed).toBeNull();
+		expect(seen).toEqual(['http://localhost:5173', 'https://allowed.example']);
+	});
+
 	it('rejects an unknown room and a malformed URL without throwing', () => {
 		expect(connect('/game/join?id=nope').closed?.code).toBe(1008);
 		expect(connect('/game/join').closed?.code).toBe(1008);
