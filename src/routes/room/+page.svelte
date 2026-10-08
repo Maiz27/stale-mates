@@ -49,6 +49,13 @@
 	const started = $derived(view?.started ?? false);
 	const opponentConnected = $derived(view?.opponentConnected ?? false);
 	const reconnecting = $derived(status === 'reconnecting');
+	// Game actions need a live socket: while (re)connecting they'd be dropped, so
+	// their controls are disabled and say why (CR3-3).
+	const online = $derived(status === 'open');
+	const OFFLINE_REASON = 'Reconnecting…';
+	const offline = $derived(
+		online ? {} : { disabled: true, title: OFFLINE_REASON, 'aria-describedby': 'offline-reason' }
+	);
 	const terminal = $derived(status === 'rejected' || status === 'replaced');
 	const gameOver = $derived(view?.gameOver.isOver ?? false);
 	const opponentOfferedRematch = $derived(view?.rematchOffer ?? false);
@@ -324,7 +331,7 @@
 									You can claim the win in {claimInSeconds}s if they don't return.
 								</p>
 							{:else if claimInSeconds === 0}
-								<Button onclick={claimVictory}>Claim victory</Button>
+								<Button onclick={claimVictory} {...offline}>Claim victory</Button>
 							{/if}
 						</div>
 					{/if}
@@ -345,6 +352,8 @@
 						onConfirm={resign}
 						triggerLabel="Resign"
 						triggerVariant="outline"
+						disabled={!online}
+						disabledReason={OFFLINE_REASON}
 						title="Resign"
 						description="Resign this game? Your opponent will be awarded the win."
 						confirmLabel="Resign"
@@ -359,18 +368,20 @@
 							onclick={offerDraw}
 							disabled={!drawOfferable}
 							title={drawOfferable ? 'Offer a draw' : 'You can offer a draw again after a move'}
-							>½ Offer draw</Button
+							{...offline}>½ Offer draw</Button
 						>
 					{/if}
 				{/if}
 			{/if}
 			{#if gameOver && !terminal}
 				{#if opponentOfferedRematch}
-					<Button onclick={acceptRematch}>Accept Rematch</Button>
+					<Button onclick={acceptRematch} {...offline}>Accept Rematch</Button>
 				{:else if rematchOffered}
 					<Button disabled>Rematch Offered</Button>
 				{:else}
-					<Button onclick={offerRematch} disabled={!opponentConnected}>Offer Rematch</Button>
+					<Button onclick={offerRematch} disabled={!opponentConnected} {...offline}
+						>Offer Rematch</Button
+					>
 				{/if}
 				<Button variant="ghost" onclick={leave}>Leave</Button>
 			{/if}
@@ -383,8 +394,8 @@
 			class="mx-auto flex max-w-md flex-wrap items-center justify-center gap-2 rounded-md border border-primary p-3"
 		>
 			<span class="font-semibold">Your opponent offers a draw.</span>
-			<Button onclick={acceptDraw}>Accept</Button>
-			<Button variant="outline" onclick={declineDraw}>Decline</Button>
+			<Button onclick={acceptDraw} {...offline}>Accept</Button>
+			<Button variant="outline" onclick={declineDraw} {...offline}>Decline</Button>
 		</div>
 	{/if}
 
@@ -449,5 +460,23 @@
 				event="Stale Mates · friendly game"
 			/>
 		</div>
+	{/if}
+</div>
+
+<!-- Describes the controls disabled while the connection is down (CR3-3). -->
+<span id="offline-reason" class="sr-only">Reconnecting…</span>
+
+<!-- Transient notices, e.g. an action that couldn't be sent while reconnecting (CR3-3). -->
+<div
+	role="status"
+	aria-live="polite"
+	class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
+>
+	{#if view?.notice}
+		<p
+			class="rounded-md border border-amber-500 bg-background px-4 py-2 text-sm font-semibold shadow-lg"
+		>
+			{view.notice}
+		</p>
 	{/if}
 </div>

@@ -19,6 +19,7 @@
 		confirmLabel = undefined,
 		triggerVariant = 'secondary',
 		disabled = false,
+		disabledReason = undefined,
 		icon = undefined
 	}: {
 		onConfirm: () => void;
@@ -30,11 +31,15 @@
 		confirmLabel?: string;
 		triggerVariant?: ButtonVariant;
 		disabled?: boolean;
+		/** Why the trigger is disabled (tooltip + accessible description), e.g. "Reconnecting…". */
+		disabledReason?: string;
 		icon?: Snippet;
 	} = $props();
 
 	let open = $state(false);
 	const triggerClass = $derived(buttonVariants({ variant: triggerVariant }));
+	const reason = $derived(disabled ? disabledReason : undefined);
+	const reasonId = $props.id();
 
 	const handleConfirm = () => {
 		open = false;
@@ -52,13 +57,18 @@
 	<Button onclick={handleConfirm}>{confirmLabel ?? title}</Button>
 {/snippet}
 
+{#if reason}
+	<span id={reasonId} class="sr-only">{reason}</span>
+{/if}
+
 {#if isDesktop.current}
 	<Dialog.Root bind:open>
 		<Dialog.Trigger
 			class={triggerClass}
 			{disabled}
 			aria-label={triggerAriaLabel}
-			title={triggerAriaLabel}
+			aria-describedby={reason ? reasonId : undefined}
+			title={reason ?? triggerAriaLabel}
 		>
 			{@render trigger()}
 		</Dialog.Trigger>
@@ -78,7 +88,8 @@
 			class={triggerClass}
 			{disabled}
 			aria-label={triggerAriaLabel}
-			title={triggerAriaLabel}
+			aria-describedby={reason ? reasonId : undefined}
+			title={reason ?? triggerAriaLabel}
 		>
 			{@render trigger()}
 		</Drawer.Trigger>

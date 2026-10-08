@@ -44,6 +44,11 @@ function presence(
 	};
 }
 
+/** Shown when an action can't be sent because the socket is down (CR3-3). */
+export const NOT_SENT_NOTICE = 'Not sent — reconnecting';
+/** How long a {@link GameView.notice} stays up. */
+export const NOTICE_MS = 4000;
+
 /** The slice of {@link WebSocketManager} the game mode uses (lets tests inject a fake). */
 export type GameSocket = Pick<
 	WebSocketManager,
@@ -87,6 +92,7 @@ export class MultiplayerGameState extends GameModel {
 
 	roomId: string;
 	private token: string | null;
+	private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor({ roomId, token, connect, serverUrl = apiUrls.ws }: MultiplayerGameStateOptions) {
 		// Our colour is assigned by the server (`seat`); white is only a placeholder.
@@ -161,6 +167,7 @@ export class MultiplayerGameState extends GameModel {
 				this.core.undo();
 				this.patch({ moveHistory: this.snapshot().moveHistory.slice(0, -1) });
 				this.updateGameState();
+				this.notSent();
 				return false;
 			}
 		}
@@ -173,42 +180,62 @@ export class MultiplayerGameState extends GameModel {
 	}
 
 	offerRematch() {
-		if (this.wsManager.sendMessage({ type: 'offerRematch' })) {
+		if (this.send({ type: 'offerRematch' })) {
 			this.patch({ myRematchOffer: true });
 		}
 	}
 
 	acceptRematch() {
-		if (this.wsManager.sendMessage({ type: 'acceptRematch' })) {
+		if (this.send({ type: 'acceptRematch' })) {
 			this.patch({ myRematchOffer: true });
 		}
 	}
 
 	resign() {
-		this.wsManager.sendMessage({ type: 'resign' });
+		this.send({ type: 'resign' });
 	}
 
 	offerDraw() {
 		const view = this.snapshot();
 		if (!canOfferDraw(view)) return;
-		if (this.wsManager.sendMessage({ type: 'offerDraw' })) {
+		if (this.send({ type: 'offerDraw' })) {
 			this.patch({ drawOffer: 'mine', lastDrawOfferPly: view.moveHistory.length });
 		}
 	}
 
 	acceptDraw() {
 		if (this.snapshot().drawOffer !== 'opponent') return;
-		this.wsManager.sendMessage({ type: 'acceptDraw' });
+		this.send({ type: 'acceptDraw' });
 	}
 
 	declineDraw() {
 		if (this.snapshot().drawOffer !== 'opponent') return;
-		if (this.wsManager.sendMessage({ type: 'declineDraw' })) this.patch({ drawOffer: null });
+		if (this.send({ type: 'declineDraw' })) this.patch({ drawOffer: null });
 	}
 
 	/** Claim the win after the opponent has been gone past the grace period (server-verified). */
 	claimVictory() {
-		this.wsManager.sendMessage({ type: 'claimVictory' });
+		this.send({ type: 'claimVictory' });
+	}
+
+	/**
+	 * Send a game action. The page disables these controls unless the socket is
+	 * open, but if one slips through (the socket dropped a moment ago) the player
+	 * is told it wasn't sent instead of it vanishing silently (CR3-3).
+	 */
+	private send(message: ClientMessage): boolean {
+		const sent = this.wsManager.sendMessage(message);
+		if (!sent) this.notSent();
+		return sent;
+	}
+
+	private notSent() {
+		this.patch({ notice: NOT_SENT_NOTICE });
+		if (this.noticeTimer) clearTimeout(this.noticeTimer);
+		this.noticeTimer = setTimeout(() => {
+			this.noticeTimer = null;
+			this.patch({ notice: null });
+		}, NOTICE_MS);
 	}
 
 	close() {
@@ -217,6 +244,7 @@ export class MultiplayerGameState extends GameModel {
 
 	destroy() {
 		this.stopClockTick();
+		if (this.noticeTimer) clearTimeout(this.noticeTimer);
 		this.close();
 		super.destroy();
 	}

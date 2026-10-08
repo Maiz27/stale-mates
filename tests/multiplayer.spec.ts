@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type WebSocketRoute } from '@playwright/test';
 import { boardLocator, clickMove } from './helpers/board';
 
 /**
@@ -307,6 +307,66 @@ test.describe('Multiplayer mode', () => {
 			// Colours swap: the former black player is now white.
 			await expect(black.getByText('You are playing as')).toContainText('white');
 			await expect(white.getByText('You are playing as')).toContainText('black');
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
+	test('game actions are disabled while reconnecting and an unsent move says so (CR3-3)', async ({
+		browser,
+		page
+	}) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await a.newPage();
+			const black = await b.newPage();
+			// White's game socket goes through a proxy the test can cut: while `outage`
+			// is set, every reconnect attempt is closed at once (a non-refusal close
+			// code), so the client keeps reconnecting.
+			let outage = false;
+			let live: { page: WebSocketRoute; server: WebSocketRoute } | null = null;
+			await white.routeWebSocket(/\/game\/join/, (ws) => {
+				if (outage) {
+					ws.close({ code: 3001, reason: 'test outage' });
+					return;
+				}
+				live = { page: ws, server: ws.connectToServer() };
+			});
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			const resign = white.getByRole('button', { name: 'Resign' });
+			const offerDraw = white.getByRole('button', { name: /Offer draw/ });
+			await expect(resign).toBeEnabled();
+			await expect(offerDraw).toBeEnabled();
+
+			// Cut the connection.
+			outage = true;
+			await live!.server.close();
+			await live!.page.close({ code: 3001, reason: 'test outage' });
+			await expect(white.getByText('Connection lost — reconnecting…')).toBeVisible();
+			await expect(resign).toBeDisabled();
+			await expect(resign).toHaveAccessibleDescription('Reconnecting…');
+			await expect(offerDraw).toBeDisabled();
+			await expect(offerDraw).toHaveAttribute('title', 'Reconnecting…');
+
+			// A move can't reach the server: it is taken back and the player is told.
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(white.getByRole('status').getByText('Not sent — reconnecting')).toBeVisible();
+			await expect(white.getByRole('list').getByText('e4', { exact: true })).toHaveCount(0);
+
+			// Back online: the controls come back and moves go through.
+			outage = false;
+			await expect(resign).toBeEnabled({ timeout: 20_000 });
+			await expect(offerDraw).toBeEnabled();
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible({
+				timeout: 15_000
+			});
 		} finally {
 			await a.close();
 			await b.close();

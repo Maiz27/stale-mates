@@ -83,4 +83,6 @@ export type GameView = {
 	/** Ply (moves played) at my last draw offer; the server refuses another until it changes. */
 	lastDrawOfferPly: number | null;
 	clock: ClockView;
+	/** Multiplayer: a short-lived message for the player, e.g. an action not sent while reconnecting. */
+	notice: string | null;
 };

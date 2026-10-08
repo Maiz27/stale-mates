@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { MultiplayerGameState, canOfferDraw, type GameSocket } from './MultiplayerGameState';
+import {
+	MultiplayerGameState,
+	NOTICE_MS,
+	NOT_SENT_NOTICE,
+	canOfferDraw,
+	type GameSocket
+} from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
 import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
 import { getSeatToken, setSeatToken, wasRoomEnded } from './seat';
@@ -539,5 +545,56 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 		expect(get(game).opponentConnected).toBe(false);
 		expect(get(game).opponentClaimableAt).toBe(560_000);
 		vi.useRealTimers();
+	});
+});
+
+describe('MultiplayerGameState actions while reconnecting (CR3-3)', () => {
+	function started() {
+		const ctx = setup();
+		ctx.socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK,
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		return ctx;
+	}
+
+	it('tells the player an action was not sent, then clears the notice', () => {
+		vi.useFakeTimers();
+		const { game, socket } = started();
+		socket.open = false;
+		game.resign();
+		expect(socket.sent).toEqual([]);
+		expect(get(game).notice).toBe(NOT_SENT_NOTICE);
+		vi.advanceTimersByTime(NOTICE_MS);
+		expect(get(game).notice).toBeNull();
+		game.destroy();
+	});
+
+	it.each([
+		['offerDraw', (g: MultiplayerGameState) => g.offerDraw()],
+		['claimVictory', (g: MultiplayerGameState) => g.claimVictory()],
+		['move', (g: MultiplayerGameState) => g.makeMove({ from: 'e2', to: 'e4' })]
+	])('%s: no optimistic state is kept and the notice shows', (_name, act) => {
+		const { game, socket } = started();
+		socket.open = false;
+		act(game);
+		const view = get(game);
+		expect(view.notice).toBe(NOT_SENT_NOTICE);
+		expect(view.drawOffer).toBeNull();
+		expect(view.moveHistory).toEqual([]);
+		game.destroy();
+	});
+
+	it('shows no notice when the action is sent', () => {
+		const { game, socket } = started();
+		game.resign();
+		expect(socket.sent).toEqual([{ type: 'resign' }]);
+		expect(get(game).notice).toBeNull();
+		game.destroy();
 	});
 });
