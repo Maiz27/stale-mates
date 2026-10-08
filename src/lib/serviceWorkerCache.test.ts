@@ -4,7 +4,8 @@ import {
 	engineDirs,
 	isStaleEngine,
 	navigationCacheKey,
-	staleCaches
+	staleCaches,
+	PREVIOUS_BUILDS_KEPT
 } from './serviceWorkerCache';
 
 describe('service worker cache policy (CR-9)', () => {
@@ -14,10 +15,18 @@ describe('service worker cache policy (CR-9)', () => {
 		expect(navigationCacheKey(new URL('https://x.test/'))).toBe('/');
 	});
 
-	it('keeps the engine cache across deploys; drops other old app caches', () => {
+	it('keeps the engine cache across deploys; drops unrelated caches', () => {
 		expect(
 			staleCaches(['stalemates-v1', 'stalemates-v2', ENGINE_CACHE, 'other'], 'stalemates-v2')
-		).toEqual(['stalemates-v1', 'other']);
+		).toEqual(['other']);
+	});
+
+	it('keeps the previous builds an open tab may still need; drops older ones (CR2-8)', () => {
+		// caches.keys() lists caches in creation order, oldest first.
+		const keys = ['stalemates-v1', 'stalemates-v2', ENGINE_CACHE, 'stalemates-v3', 'stalemates-v4'];
+		expect(staleCaches(keys, 'stalemates-v4')).toEqual(['stalemates-v1']);
+		expect(staleCaches(keys, 'stalemates-v4', 1)).toEqual(['stalemates-v1', 'stalemates-v2']);
+		expect(PREVIOUS_BUILDS_KEPT).toBe(2);
 	});
 
 	it('finds the shipped engine versions and flags only older ones as stale', () => {

@@ -6,6 +6,20 @@
 /** Long-lived cache for the versioned Stockfish files; survives deploys. */
 export const ENGINE_CACHE = 'stalemates-engine';
 
+/** Per-build app caches are `stalemates-<build version>`. */
+export const APP_CACHE_PREFIX = 'stalemates-';
+export const appCacheName = (version: string) => `${APP_CACHE_PREFIX}${version}`;
+
+/**
+ * How many previous builds' app caches survive an update (CR2-8). The new
+ * service worker takes over open tabs at once (`skipWaiting` + `claim`), and a
+ * tab still running an older build lazily loads that build's content-hashed
+ * chunks — which the server stops serving after a deploy. Keeping the last
+ * couple of builds' caches (and looking chunks up in every cache) lets those
+ * tabs keep working until they're reloaded.
+ */
+export const PREVIOUS_BUILDS_KEPT = 2;
+
 const ENGINE_DIR = /^\/engine\/[^/]+\//;
 
 /**
@@ -17,9 +31,20 @@ export function navigationCacheKey(url: URL): string {
 	return url.pathname;
 }
 
-/** Caches to delete on activate: everything but the current app cache and the engine cache. */
-export function staleCaches(keys: string[], current: string): string[] {
-	return keys.filter((key) => key !== current && key !== ENGINE_CACHE);
+/**
+ * Caches to delete on activate: everything but the current app cache, the
+ * engine cache and the `keep` most recent previous app caches. `keys` is in
+ * `caches.keys()` order, which is creation order (oldest first).
+ */
+export function staleCaches(
+	keys: string[],
+	current: string,
+	keep: number = PREVIOUS_BUILDS_KEPT
+): string[] {
+	const others = keys.filter((key) => key !== current && key !== ENGINE_CACHE);
+	const previousBuilds = others.filter((key) => key.startsWith(APP_CACHE_PREFIX));
+	const kept = new Set(keep > 0 ? previousBuilds.slice(-keep) : []);
+	return others.filter((key) => !kept.has(key));
 }
 
 /** The `/engine/<version>/` directories present in this build's static assets. */

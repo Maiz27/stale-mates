@@ -42,4 +42,31 @@ test.describe('service worker (CR-9)', () => {
 			)
 			.toBe(true);
 	});
+
+	test('a tab still on the previous build can load its chunks after a deploy (CR2-8)', async ({
+		page
+	}) => {
+		await page.goto('/');
+		await page.evaluate(async () => {
+			await navigator.serviceWorker.ready;
+		});
+		await page.reload();
+		await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+
+		// What a previous build leaves behind: its own app cache holding its
+		// content-hashed chunks, which the server no longer has after the deploy.
+		const chunk = '/_app/immutable/chunks/previous-build-chunk.js';
+		const body = await page.evaluate(async (path) => {
+			const previous = await caches.open('stalemates-0-previous-build');
+			await previous.put(
+				path,
+				new Response('export const fromPreviousBuild = true;', {
+					headers: { 'content-type': 'text/javascript' }
+				})
+			);
+			const response = await fetch(path);
+			return response.ok ? response.text() : `HTTP ${response.status}`;
+		}, chunk);
+		expect(body).toBe('export const fromPreviousBuild = true;');
+	});
 });
