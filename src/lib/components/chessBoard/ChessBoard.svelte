@@ -27,7 +27,7 @@
 		onpromotioncancel: () => void;
 	} = $props();
 
-	let chessground = $state<ReturnType<typeof Chessground> | undefined>(undefined);
+	let chessground = $state.raw<ReturnType<typeof Chessground> | undefined>(undefined);
 	let promotionModalOpen = $state(false);
 
 	const orientation = $derived<Color>(
