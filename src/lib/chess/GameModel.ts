@@ -57,6 +57,7 @@ export class GameModel implements Readable<GameView> {
 			connectionStatus: 'connecting',
 			rematchOffer: false,
 			myRematchOffer: false,
+			drawOffer: null,
 			clock: NO_CLOCK
 		});
 		this.subscribe = this.store.subscribe;
@@ -113,6 +114,24 @@ export class GameModel implements Readable<GameView> {
 		} else {
 			this.makeMove({ from, to });
 		}
+	}
+
+	/**
+	 * A move typed by the player (keyboard input). Same rules as the board: only
+	 * on the player's own turn in a running game; a promotion without a piece
+	 * opens the promotion chooser.
+	 */
+	submitMove({ from, to, promotion }: ChessMove): boolean {
+		const view = this.snapshot();
+		if (!view.started || view.gameOver.isOver || view.promotionMove || view.turn !== this.player) {
+			return false;
+		}
+		this.clearHint();
+		if (!promotion && this.isPromotionMove(from, to)) {
+			this.patch({ promotionMove: { from, to } });
+			return true;
+		}
+		return this.makeMove({ from, to, promotion });
 	}
 
 	makeMove({ from, to, promotion }: ChessMove): boolean {

@@ -14,8 +14,7 @@ playwright-report/
 test-results/
 
 # Vendored third-party bundle
-static/stockfish.js
-static/stockfish/
+vendor/
 
 # Rewritten by `bun add/remove` (2-space indent); not worth fighting over
 package.json

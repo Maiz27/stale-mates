@@ -16,6 +16,7 @@
 	import type { GameView } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
 	import { formatResult } from '$lib/chess/formatResult';
+	import { boardTheme } from '$lib/stores/boardTheme';
 
 	// Presentational: props in, events out. The board renders a `GameView` and
 	// emits the player's intent (`move`, `promotion`); the page owns the game
@@ -157,7 +158,10 @@
 	$: resultText = formatResult(view.gameOver);
 </script>
 
-<section class="relative mx-auto aspect-square w-full max-w-2xl">
+<section
+	class="board-theme relative mx-auto aspect-square w-full max-w-2xl"
+	data-board-theme={$boardTheme}
+>
 	{#if view.gameOver.isOver}
 		<div
 			role="status"

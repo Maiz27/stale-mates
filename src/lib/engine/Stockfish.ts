@@ -1,5 +1,6 @@
 import type { ChessMove } from '$lib/chess/types';
 import { STARTING_FEN } from '$lib/constants';
+import { STOCKFISH_URL } from './engineUrl';
 
 interface SearchParams {
 	moveTime: number;
@@ -62,7 +63,7 @@ export class Stockfish {
 		debug = false,
 		difficulty = 10,
 		worker,
-		url = '/stockfish.js'
+		url = STOCKFISH_URL
 	}: StockfishOptions = {}) {
 		this.worker = worker ?? (new Worker(url) as unknown as EngineWorker);
 		this.difficulty = difficulty; // Default difficulty level (range: 1-20)

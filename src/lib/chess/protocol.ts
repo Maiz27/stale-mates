@@ -17,6 +17,7 @@ export type GameOverReason =
 	| 'insufficient'
 	| 'fiftyMove'
 	| 'draw'
+	| 'agreement'
 	| 'timeout'
 	| 'timeoutVsInsufficient'
 	| 'resignation'
@@ -50,7 +51,10 @@ export type ClientMessage =
 	| { type: 'offerRematch' }
 	| { type: 'acceptRematch' }
 	| { type: 'resign' }
-	| { type: 'claimVictory' };
+	| { type: 'claimVictory' }
+	| { type: 'offerDraw' }
+	| { type: 'acceptDraw' }
+	| { type: 'declineDraw' };
 
 /** Full per-player resync payload. */
 export type GameStateMessage = {
@@ -64,6 +68,8 @@ export type GameStateMessage = {
 	timeControl: TimeControl;
 	gameOver: GameResult | null;
 	rematch: { mine: boolean; opponent: boolean };
+	/** Pending draw offer: who made it, or null. */
+	drawOffer: 'mine' | 'opponent' | null;
 	opponentConnected: boolean;
 	/** Ms until a win by abandonment may be claimed; null while the opponent is connected. */
 	opponentGraceMs: number | null;
@@ -94,7 +100,13 @@ export type ServerMessage =
 			turn: Color;
 			timeControl: TimeControl;
 			clock: ClockSnapshot;
-	  };
+			/** Your colour for the new game — seats swap colours on every rematch. */
+			color: Color;
+	  }
+	/** The opponent offers a draw. */
+	| { type: 'drawOffer' }
+	/** Your draw offer was declined (explicitly, or by the opponent moving instead). */
+	| { type: 'drawDeclined' };
 
 /** Discriminant strings for the server → client messages. */
 export type ServerMessageType = ServerMessage['type'];

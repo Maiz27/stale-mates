@@ -8,6 +8,7 @@
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import PlayerBar from '$lib/components/game/PlayerBar.svelte';
+	import MoveInput from '$lib/components/game/MoveInput.svelte';
 	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
 	import ConfirmAction from '$lib/components/controls/ConfirmAction.svelte';
 	import { settingsStore, type GameSettings } from '$lib/stores/gameSettings';
@@ -229,6 +230,13 @@
 					status={$gameState.thinking ? 'Thinking…' : ''}
 				/>
 			{/if}
+			<MoveInput
+				fen={$gameState.fen}
+				disabled={!inProgress ||
+					$gameState.turn !== $gameState.player ||
+					!!$gameState.promotionMove}
+				on:move={(e) => gameState.submitMove(e.detail)}
+			/>
 		</div>
 		<MoveList
 			moves={$gameState.sanHistory}

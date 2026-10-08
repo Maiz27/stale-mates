@@ -46,9 +46,9 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 | H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`                    | ✅     |
 | H4  | **Memory leaks** — each game creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                                  | `AudioCue.ts`, `GameModel.ts`, `api/src/lib/game.ts` | ✅     |
 | H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                                | ✅     |
-| H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                                   | 🟡     |
+| H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                                   | ✅     |
 | H7  | **SEO/social** — no Open Graph/Twitter cards, no per-page `<title>`, no web manifest despite a full PWA icon set in `static/`.                                                                        | `+layout.svelte`, `app.html`                         | ✅     |
-| H8  | **Accessibility** — board is mouse/touch only (keyboard users can't play); no `aria-live` move announcements.                                                                                         | `ChessBoard.svelte`                                  | 🟡     |
+| H8  | **Accessibility** — board is mouse/touch only (keyboard users can't play); no `aria-live` move announcements.                                                                                         | `ChessBoard.svelte`                                  | ✅     |
 
 ## Medium
 
@@ -205,3 +205,15 @@ referenced from commit messages.
 | SM-5.12 | Header loaded the 145 KB 1024px logo for a 48px slot — 96px WebP (1.4 KB) / PNG (5 KB)                                                                     | ✅     |
 | SM-5.13 | SEO: `/room` in the sitemap and indexable; static og:url/title; square logo as og:image — removed + `noindex`, per-page og:url/title, 1200×630 og-image    | ✅     |
 | SM-5.14 | README hero image hot-linked from Google Drive — repo-hosted `static/imgs/screenshot-ai.png`                                                               | ✅     |
+
+### SM-6 — Features
+
+| #      | Feature                                                                                                                                                                    | Status  |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| SM-6.1 | Draw offer / accept / decline — server-authoritative (offer cleared by a move, mutual offers agree, no spam), protocol + UI                                                | ✅      |
+| SM-6.2 | Rematch swaps colours (seat tokens follow their players)                                                                                                                   | ✅      |
+| SM-6.3 | Keyboard play: accessible "Type a move" input (SAN or coordinates, validated by chess.js) in both modes; closes H8                                                         | ✅      |
+| SM-6.4 | Board colour themes (brown / green / blue / gray) persisted, toned down in dark mode. Extra piece sets not added (would need separately-licensed piece artwork)            | 🟡      |
+| SM-6.5 | Stockfish upgraded from a 3.1 MB asm.js SF10 to Stockfish 18 lite single-threaded WASM (7.3 MB, much stronger/faster), loaded from content-hashed URLs only on the AI page | ✅      |
+| SM-6.6 | Service worker: precached app shell, runtime-cached engine, network-first pages — AI mode works offline after one online visit                                             | ✅      |
+| SM-6.7 | Spectators / chat                                                                                                                                                          | skipped |

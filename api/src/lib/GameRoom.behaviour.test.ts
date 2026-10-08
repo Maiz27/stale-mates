@@ -229,3 +229,75 @@ describe('rematch', () => {
 		expect(white.of('rematchAccepted')).toHaveLength(1);
 	});
 });
+
+describe('draw offers (SM-6)', () => {
+	it('offer + accept ends the game as a draw by agreement', () => {
+		const { room, white, black, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		expect(black.of('drawOffer')).toHaveLength(1);
+		room.handleMessage(blackId, { type: 'acceptDraw' });
+		expect(white.last('gameOver')).toMatchObject({ winner: 'draw', reason: 'agreement' });
+	});
+
+	it('the offerer cannot accept their own offer', () => {
+		const { room, white, whiteId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		room.handleMessage(whiteId, { type: 'acceptDraw' });
+		expect(white.of('gameOver')).toHaveLength(0);
+	});
+
+	it('decline clears the offer and tells the offerer', () => {
+		const { room, white, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		room.handleMessage(blackId, { type: 'declineDraw' });
+		expect(white.of('drawDeclined')).toHaveLength(1);
+		room.handleMessage(blackId, { type: 'acceptDraw' });
+		expect(white.of('gameOver')).toHaveLength(0);
+	});
+
+	it('moving instead of answering declines, and offers cannot be spammed', () => {
+		const { room, white, black, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		room.handleMessage(whiteId, { type: 'offerDraw' }); // duplicate ignored
+		expect(black.of('drawOffer')).toHaveLength(1);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+		expect(white.of('drawDeclined')).toHaveLength(1);
+		// White has moved since, so may offer again.
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		expect(black.of('drawOffer')).toHaveLength(2);
+	});
+
+	it('mutual offers are an agreement and the resync shows pending offers', () => {
+		const { reconnect, room, white, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		const fresh = new FakeWs();
+		reconnect(blackId, fresh);
+		expect(fresh.last('gameState')).toMatchObject({ drawOffer: 'opponent' });
+		room.handleMessage(blackId, { type: 'offerDraw' });
+		expect(white.last('gameOver')).toMatchObject({ reason: 'agreement' });
+	});
+});
+
+describe('rematch colour swap (SM-6)', () => {
+	it('swaps colours and keeps each seat token with its player', () => {
+		const { reconnect, room, white, black, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'resign' });
+		room.handleMessage(whiteId, { type: 'offerRematch' });
+		room.handleMessage(blackId, { type: 'acceptRematch' });
+		expect(white.last('rematchAccepted')).toMatchObject({ color: 'black' });
+		expect(black.last('rematchAccepted')).toMatchObject({ color: 'white' });
+
+		// The former black player now moves first, as white.
+		room.handleMessage(blackId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		expect(white.last('opponentMove')).toEqual({
+			type: 'opponentMove',
+			move: { from: 'e2', to: 'e4' }
+		});
+
+		// Reconnecting with the original token lands in the swapped colour.
+		const fresh = new FakeWs();
+		expect(reconnect(whiteId, fresh)).toBe(true);
+		expect(fresh.last('seat')).toMatchObject({ color: 'black' });
+	});
+});

@@ -57,6 +57,12 @@ export class GameRoom {
 	private currentTurn: Color = 'white';
 	// Keyed by seat colour so one client can't fill both slots (audit F5).
 	private rematchOffers: Set<Color> = new Set();
+	// Pending draw offer (server-authoritative). An offer stands until the
+	// opponent accepts, declines, or makes a move instead (an implicit decline).
+	private drawOffer: Color | null = null;
+	// Ply count at each side's last offer: a side may offer again only after
+	// it has moved since, so offers can't be spammed.
+	private lastDrawOfferPly: Record<Color, number> = { white: -1, black: -1 };
 	private timeControl: TimeControl;
 	private readonly disconnectGraceMs: number;
 	private readonly now: () => number;
@@ -226,6 +232,21 @@ export class GameRoom {
 			case 'claimVictory':
 				this.handleClaimVictory(player);
 				break;
+			case 'offerDraw':
+				this.handleOfferDraw(player);
+				break;
+			case 'acceptDraw':
+				if (this.gameStarted && this.drawOffer === opposite(player.color)) {
+					this.finishGame('draw', 'agreement');
+				}
+				break;
+			case 'declineDraw':
+				if (this.gameStarted && this.drawOffer === opposite(player.color)) {
+					this.drawOffer = null;
+					const offerer = this.opponentOf(player);
+					if (offerer) this.sendToPlayer(offerer, { type: 'drawDeclined' });
+				}
+				break;
 			// NOTE: there is deliberately no 'gameOver'/'timeout' case — clients
 			// cannot declare outcomes (audit F1). Timeouts are decided by the
 			// server's flag-fall watchdog (onFlagFall).
@@ -281,6 +302,21 @@ export class GameRoom {
 		});
 	}
 
+	private handleOfferDraw(player: Player) {
+		if (!this.gameStarted) return;
+		// Both sides offering is an agreement.
+		if (this.drawOffer === opposite(player.color)) {
+			this.finishGame('draw', 'agreement');
+			return;
+		}
+		const ply = this.chess.history().length;
+		if (this.drawOffer === player.color || this.lastDrawOfferPly[player.color] === ply) return;
+		this.drawOffer = player.color;
+		this.lastDrawOfferPly[player.color] = ply;
+		const opponent = this.opponentOf(player);
+		if (opponent) this.sendToPlayer(opponent, { type: 'drawOffer' });
+	}
+
 	private handleResign(player: Player) {
 		if (!this.gameStarted) return;
 		this.finishGame(opposite(player.color), 'resignation');
@@ -327,6 +363,13 @@ export class GameRoom {
 
 		this.currentTurn = opposite(player.color);
 		this.turnStartedAt = this.timeControl.isUnlimited ? null : now;
+
+		// Moving instead of answering declines the opponent's pending draw offer.
+		if (this.drawOffer === opposite(player.color)) {
+			this.drawOffer = null;
+			const offerer = this.opponentOf(player);
+			if (offerer) this.sendToPlayer(offerer, { type: 'drawDeclined' });
+		}
 
 		this.broadcastMove(player.id, move);
 		this.broadcastClock();
@@ -394,6 +437,7 @@ export class GameRoom {
 		this.gameStarted = false;
 		this.result = { winner, reason };
 		this.rematchOffers.clear();
+		this.drawOffer = null;
 		this.clearFlagTimer();
 		this.turnStartedAt = null;
 		this.broadcastToAllPlayers({
@@ -421,6 +465,12 @@ export class GameRoom {
 		this.chess.reset();
 		this.currentTurn = 'white';
 		this.rematchOffers.clear();
+		this.drawOffer = null;
+		this.lastDrawOfferPly = { white: -1, black: -1 };
+		// Swap colours for the rematch. Seat tokens follow their players, so each
+		// client keeps reconnecting with the token it already holds.
+		this.players.forEach((p) => (p.color = opposite(p.color)));
+		this.seats = { white: this.seats.black, black: this.seats.white };
 		this.result = null;
 		this.gameStarted = true;
 		this.initClocks();
@@ -432,7 +482,8 @@ export class GameRoom {
 				timeControl: this.timeControl,
 				fen: this.chess.fen(),
 				turn: this.currentTurn,
-				clock: this.currentSnapshot()
+				clock: this.currentSnapshot(),
+				color: player.color
 			});
 		});
 	}
@@ -560,6 +611,8 @@ export class GameRoom {
 				mine: this.rematchOffers.has(player.color),
 				opponent: this.rematchOffers.has(opposite(player.color))
 			},
+			drawOffer:
+				this.drawOffer === null ? null : this.drawOffer === player.color ? 'mine' : 'opponent',
 			opponentConnected: !!opponent && opponent.connected,
 			// Ms left until the win may be claimed (0 = claimable now), if the opponent is away.
 			opponentGraceMs: opponentGone

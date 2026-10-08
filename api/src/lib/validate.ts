@@ -51,6 +51,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 		case 'acceptRematch':
 		case 'resign':
 		case 'claimVictory':
+		case 'offerDraw':
+		case 'acceptDraw':
+		case 'declineDraw':
 			return { type: data.type };
 		default:
 			return null;

@@ -72,3 +72,36 @@
 		@apply font-bold;
 	}
 }
+
+/*
+ * Board themes (SM-6). The default "brown" keeps chessground's own board image;
+ * the others paint the 8x8 checkerboard with a conic gradient (each 25% tile is a
+ * 2x2 block, so it's correct in both orientations). Selectors are specific enough
+ * to beat svelte-chessground's scoped `.cg-default-style cg-board` rule.
+ */
+.board-theme[data-board-theme='green'] .cg-wrap cg-board {
+	--sq-light: #eeeed2;
+	--sq-dark: #769656;
+}
+.board-theme[data-board-theme='blue'] .cg-wrap cg-board {
+	--sq-light: #dee3e6;
+	--sq-dark: #8ca2ad;
+}
+.board-theme[data-board-theme='gray'] .cg-wrap cg-board {
+	--sq-light: #dcdcdc;
+	--sq-dark: #9a9a9a;
+}
+.board-theme:not([data-board-theme='brown']) .cg-wrap.cg-wrap cg-board {
+	background-image: conic-gradient(
+		var(--sq-dark) 0 25%,
+		var(--sq-light) 0 50%,
+		var(--sq-dark) 0 75%,
+		var(--sq-light) 0
+	);
+	background-size: 25% 25%;
+}
+
+/* Dark mode: tone the board down so it doesn't glare against a dark page. */
+.dark .board-theme .cg-wrap cg-board {
+	filter: brightness(0.85) saturate(0.9);
+}

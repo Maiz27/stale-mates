@@ -8,6 +8,7 @@ export const REASON_LABELS: Record<GameOverReason, string> = {
 	insufficient: 'Draw — insufficient material',
 	fiftyMove: 'Draw — fifty-move rule',
 	draw: 'Draw',
+	agreement: 'Draw by agreement',
 	timeout: 'Timeout',
 	timeoutVsInsufficient: 'Draw — timeout vs insufficient material',
 	resignation: 'Resignation',

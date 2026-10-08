@@ -85,8 +85,11 @@ increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes
 
 ### Engine / Stockfish / difficulty / hint
 
-- **Engine / Stockfish** — the chess AI, run as a Web Worker in the browser for AI
-  mode only. Wrapped by the `Stockfish` class in `src/lib/engine/Stockfish.ts`.
+- **Engine / Stockfish** — the chess AI (Stockfish 18, single-threaded WebAssembly,
+  vendored in `vendor/stockfish/`), run as a Web Worker in the browser for AI mode only.
+  Wrapped by the `Stockfish` class in `src/lib/engine/Stockfish.ts`, which queues
+  commands until `readyok`, keeps at most one search in flight and swallows the
+  `bestmove` of any cancelled search.
 - **Difficulty** — an integer level mapped (via a sigmoid) to Stockfish's Skill Level
   / depth / move-time options (`Stockfish.setDifficulty`, `mapLevelToSkill`).
 - **Hint** — a best-move suggestion produced by asking the engine to search the
@@ -118,11 +121,12 @@ and broadcasts the winner/reason. The client-supplied `timeout` message has been
 (audit F1). Client-side detection (`ChessCore.outcome`, via `GameModel.checkGameOver`)
 still drives AI mode.
 
-### Rematch
+### Rematch / draw offer
 
-A post-game restart of the same room with the same players and time control. Both
-players must agree: one sends `offerRematch`, the other `acceptRematch`; when the
-offer set reaches two, the room resets and starts a new game.
+A **rematch** is a post-game restart of the same room with the same players and time
+control, with **colours swapped**. Both players must agree (`offerRematch` /
+`acceptRematch`, tracked per seat colour). A **draw offer** (`offerDraw`) stands until
+the opponent accepts (`acceptDraw` → reason `agreement`), declines, or moves instead.
 Server: `GameRoom.handleRematchOffer` / `handleRematchAccept` / `restartGame`.
 Client: `MultiplayerGameState.offerRematch` / `acceptRematch` / `handleRematchAccepted`.
 

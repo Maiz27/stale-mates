@@ -157,4 +157,35 @@ test.describe('Multiplayer mode', () => {
 			/\/room\?id=.+#seat=/
 		);
 	});
+
+	test('draw offer, accept, and a colour-swapping rematch', async ({ browser, page }) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await a.newPage();
+			const black = await b.newPage();
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			await expect(boardLocator(black)).toBeVisible({ timeout: 20_000 });
+
+			await white.getByRole('button', { name: /Offer draw/ }).click();
+			await expect(white.getByRole('button', { name: 'Draw offered' })).toBeVisible();
+			await expect(black.getByText('Your opponent offers a draw.')).toBeVisible();
+			await black.getByRole('button', { name: 'Accept', exact: true }).click();
+			await expect(white.getByText('Game Over: Draw by agreement')).toBeVisible();
+			await expect(black.getByText('Game Over: Draw by agreement')).toBeVisible();
+
+			await white.getByRole('button', { name: 'Offer Rematch' }).click();
+			await black.getByRole('button', { name: 'Accept Rematch' }).click();
+			// Colours swap: the former black player is now white.
+			await expect(black.getByText('You are playing as')).toContainText('white');
+			await expect(white.getByText('You are playing as')).toContainText('black');
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
 });

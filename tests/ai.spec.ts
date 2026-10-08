@@ -103,4 +103,55 @@ test.describe('AI mode', () => {
 		await expect(list.getByText('e4', { exact: true })).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole('button', { name: 'Start New Game' })).toHaveCount(0);
 	});
+
+	test('works offline once visited (service worker)', async ({ page, context }) => {
+		await page.goto('/ai');
+		await page.evaluate(async () => {
+			await navigator.serviceWorker.ready;
+		});
+		// Reload while controlled so the engine (wasm) is fetched through the SW and cached.
+		await page.reload();
+		await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+		await page.waitForTimeout(1500);
+
+		await context.setOffline(true);
+		try {
+			await page.reload();
+			await page.getByRole('button', { name: 'Start New Game' }).click();
+			await expect(page.locator('cg-board piece')).toHaveCount(32);
+			await clickMove(page, 'e2', 'e4', 'white');
+			const list = page
+				.locator('div')
+				.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+				.getByRole('list');
+			// The engine replies with no network.
+			await expect
+				.poll(
+					async () =>
+						(await list.innerText()).split(/\s+/).filter((t) => t && !/^\d+\.$/.test(t)).length,
+					{
+						timeout: 30_000
+					}
+				)
+				.toBeGreaterThanOrEqual(2);
+		} finally {
+			await context.setOffline(false);
+		}
+	});
+
+	test('a move can be typed instead of dragged', async ({ page }) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		const input = page.getByLabel('Type a move:');
+		await input.fill('e5');
+		await input.press('Enter');
+		await expect(page.getByText('e5 is not a legal move here.')).toBeVisible();
+		await input.fill('Nf3');
+		await input.press('Enter');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect(list.getByText('Nf3', { exact: true })).toBeVisible();
+	});
 });

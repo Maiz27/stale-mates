@@ -77,6 +77,7 @@ function state(partial: Partial<GameStateMessage>): GameStateMessage {
 		timeControl: unlimited,
 		gameOver: null,
 		rematch: { mine: false, opponent: false },
+		drawOffer: null,
 		opponentConnected: true,
 		opponentGraceMs: null,
 		...partial
@@ -267,5 +268,56 @@ describe('MultiplayerGameState seats (SM-3)', () => {
 		expect(get(game).player).toBe('black');
 		expect(game.player).toBe('black');
 		expect(hello()).toEqual({ type: 'join', token: 'rotated-token-456' });
+	});
+});
+
+describe('MultiplayerGameState draws & rematch (SM-6)', () => {
+	const start = (socket: FakeSocket) =>
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK
+		});
+
+	it('offers a draw once and shows an incoming offer', () => {
+		const { game, socket } = setup();
+		start(socket);
+		game.offerDraw();
+		game.offerDraw();
+		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(1);
+		expect(get(game).drawOffer).toBe('mine');
+		socket.emit({ type: 'drawDeclined' });
+		expect(get(game).drawOffer).toBeNull();
+
+		socket.emit({ type: 'drawOffer' });
+		expect(get(game).drawOffer).toBe('opponent');
+		game.acceptDraw();
+		expect(socket.sent).toContainEqual({ type: 'acceptDraw' });
+	});
+
+	it('declining clears the incoming offer', () => {
+		const { game, socket } = setup();
+		start(socket);
+		socket.emit({ type: 'drawOffer' });
+		game.declineDraw();
+		expect(socket.sent).toContainEqual({ type: 'declineDraw' });
+		expect(get(game).drawOffer).toBeNull();
+	});
+
+	it('takes the swapped colour on a rematch', () => {
+		const { game, socket } = setup();
+		socket.emit({ type: 'seat', color: 'white', token: 'seat-token-123' });
+		socket.emit({
+			type: 'rematchAccepted',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK,
+			color: 'black'
+		});
+		expect(get(game).player).toBe('black');
+		expect(get(game).started).toBe(true);
 	});
 });

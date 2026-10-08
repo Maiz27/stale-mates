@@ -68,12 +68,21 @@ export class MultiplayerGameState extends GameModel {
 		ws.addMessageHandler('gameOver', (data) => this.handleGameOver(data));
 		ws.addMessageHandler('gameState', (data) => this.handleGameState(data));
 		ws.addMessageHandler('rematchOffer', () => this.patch({ rematchOffer: true }));
+		ws.addMessageHandler('drawOffer', () => {
+			this.patch({ drawOffer: 'opponent' });
+			this.playCue('notify');
+		});
+		ws.addMessageHandler('drawDeclined', () => {
+			if (this.snapshot().drawOffer === 'mine') this.patch({ drawOffer: null });
+		});
 		ws.addMessageHandler('rematchAccepted', (data) => this.handleRematchAccepted(data));
 	}
 
 	makeMove(move: ChessMove): boolean {
 		const result = super.makeMove(move);
 		if (result) {
+			// Moving instead of answering declines a pending offer (server does the same).
+			if (this.snapshot().drawOffer === 'opponent') this.patch({ drawOffer: null });
 			// Optimistic local apply already happened in super.makeMove; just tell
 			// the server. The authoritative clock comes back via a `clock` snapshot.
 			const sent = this.wsManager.sendMessage({
@@ -113,6 +122,22 @@ export class MultiplayerGameState extends GameModel {
 		this.wsManager.sendMessage({ type: 'resign' });
 	}
 
+	offerDraw() {
+		const view = this.snapshot();
+		if (!view.started || view.gameOver.isOver || view.drawOffer) return;
+		if (this.wsManager.sendMessage({ type: 'offerDraw' })) this.patch({ drawOffer: 'mine' });
+	}
+
+	acceptDraw() {
+		if (this.snapshot().drawOffer !== 'opponent') return;
+		this.wsManager.sendMessage({ type: 'acceptDraw' });
+	}
+
+	declineDraw() {
+		if (this.snapshot().drawOffer !== 'opponent') return;
+		if (this.wsManager.sendMessage({ type: 'declineDraw' })) this.patch({ drawOffer: null });
+	}
+
 	/** Claim the win after the opponent has been gone past the grace period (server-verified). */
 	claimVictory() {
 		this.wsManager.sendMessage({ type: 'claimVictory' });
@@ -130,9 +155,13 @@ export class MultiplayerGameState extends GameModel {
 
 	private handleRematchAccepted(data: ServerMessageOf<'rematchAccepted'>) {
 		this.core.reset();
+		// Colours swap on every rematch.
+		if (data.color && data.color !== this.player) this.player = data.color;
 		this.patch({
+			player: this.player,
 			rematchOffer: false,
 			myRematchOffer: false,
+			drawOffer: null,
 			gameOver: { isOver: false, winner: null },
 			moveHistory: [],
 			started: true
@@ -274,7 +303,8 @@ export class MultiplayerGameState extends GameModel {
 		this.patch({
 			gameOver: { isOver: true, winner: data.winner ?? null, reason: data.reason },
 			rematchOffer: false,
-			myRematchOffer: false
+			myRematchOffer: false,
+			drawOffer: null
 		});
 		this.updateGameState();
 		this.playCue('game-end');
@@ -312,6 +342,7 @@ export class MultiplayerGameState extends GameModel {
 			promotionMove: null,
 			rematchOffer: data.rematch?.opponent ?? false,
 			myRematchOffer: data.rematch?.mine ?? false,
+			drawOffer: data.drawOffer ?? null,
 			opponentConnected,
 			opponentClaimableAt:
 				!opponentConnected && data.opponentGraceMs != null

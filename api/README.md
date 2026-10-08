@@ -151,12 +151,17 @@ the rotated token; a newer connection for a seat replaces the older one (closed 
 code `4000`). Bad room / bad token / no `join` within 10 s → close `1008`.
 
 Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRematch`,
-`acceptRematch`, `claimVictory`.
+`acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`.
 
 Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
 `opponentReconnected`, `gameStart`, `opponentMove` (normalised), `clock`, `gameOver`
 (`winner`, `reason`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
-result, rematch state, opponent presence), `rematchOffer`, `rematchAccepted`.
+result, rematch and draw-offer state, opponent presence), `rematchOffer`,
+`rematchAccepted { color }` (colours swap on every rematch), `drawOffer`, `drawDeclined`.
+
+Draw offers are server-authoritative: an offer stands until the opponent accepts,
+declines or moves (an implicit decline); both sides offering is an agreement; a side can
+re-offer only after it has moved since its last offer.
 
 The server is authoritative for outcomes and time: clients can't declare a result,
 a move that arrives after the mover's flag fell loses on time, and a disconnected

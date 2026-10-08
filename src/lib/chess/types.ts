@@ -74,5 +74,7 @@ export type GameView = {
 	rematchOffer: boolean;
 	/** I have offered a rematch (server-confirmed on resync). */
 	myRematchOffer: boolean;
+	/** Pending draw offer in the current game. */
+	drawOffer: 'mine' | 'opponent' | null;
 	clock: ClockView;
 };

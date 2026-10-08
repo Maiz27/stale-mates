@@ -5,6 +5,11 @@
 	import { resetMode, setMode } from 'mode-watcher';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { BOARD_THEMES, boardTheme, type BoardTheme } from '$lib/stores/boardTheme';
+
+	// bits-ui's radio group binds a plain string.
+	let board: string = $boardTheme;
+	$: boardTheme.set(board as BoardTheme);
 </script>
 
 <DropdownMenu.Root>
@@ -23,5 +28,12 @@
 		<DropdownMenu.Item on:click={() => setMode('light')}>Light</DropdownMenu.Item>
 		<DropdownMenu.Item on:click={() => setMode('dark')}>Dark</DropdownMenu.Item>
 		<DropdownMenu.Item on:click={() => resetMode()}>System</DropdownMenu.Item>
+		<DropdownMenu.Separator />
+		<DropdownMenu.Label>Board</DropdownMenu.Label>
+		<DropdownMenu.RadioGroup bind:value={board}>
+			{#each BOARD_THEMES as theme}
+				<DropdownMenu.RadioItem value={theme.value}>{theme.label}</DropdownMenu.RadioItem>
+			{/each}
+		</DropdownMenu.RadioGroup>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

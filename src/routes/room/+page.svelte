@@ -8,6 +8,7 @@
 	import Flag from '$lib/components/icons/Flag.svelte';
 	import ConfirmAction from '$lib/components/controls/ConfirmAction.svelte';
 	import PlayerBar from '$lib/components/game/PlayerBar.svelte';
+	import MoveInput from '$lib/components/game/MoveInput.svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { GameView } from '$lib/chess/types';
@@ -86,6 +87,10 @@
 	const offerRematch = () => gameState?.offerRematch();
 	const acceptRematch = () => gameState?.acceptRematch();
 	const claimVictory = () => gameState?.claimVictory();
+	const offerDraw = () => gameState?.offerDraw();
+	const acceptDraw = () => gameState?.acceptDraw();
+	const declineDraw = () => gameState?.declineDraw();
+	$: drawOffer = view?.drawOffer ?? null;
 	const reload = () => location.reload();
 
 	async function shareInvite() {
@@ -279,6 +284,12 @@
 					>
 						<Flag slot="icon" class="mr-2" />
 					</ConfirmAction>
+					{#if drawOffer === 'mine'}
+						<Button variant="outline" disabled>Draw offered</Button>
+					{:else if drawOffer === null}
+						<Button variant="outline" on:click={offerDraw} title="Offer a draw">½ Offer draw</Button
+						>
+					{/if}
 				{/if}
 			{/if}
 			{#if gameOver && !terminal}
@@ -293,6 +304,17 @@
 			{/if}
 		</div>
 	</section>
+
+	{#if drawOffer === 'opponent' && started && !gameOver}
+		<div
+			role="alert"
+			class="mx-auto flex max-w-md flex-wrap items-center justify-center gap-2 rounded-md border border-primary p-3"
+		>
+			<span class="font-semibold">Your opponent offers a draw.</span>
+			<Button on:click={acceptDraw}>Accept</Button>
+			<Button variant="outline" on:click={declineDraw}>Decline</Button>
+		</div>
+	{/if}
 
 	{#if gameState && view && !waiting && !terminal}
 		<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
@@ -341,6 +363,11 @@
 						status={opponentStatus}
 					/>
 				{/if}
+				<MoveInput
+					fen={view.fen}
+					disabled={!running || turn !== playerColor || !!view.promotionMove}
+					on:move={(e) => gameState?.submitMove(e.detail)}
+				/>
 			</div>
 			<MoveList
 				moves={sanHistory}

@@ -41,7 +41,10 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
   results, reconnect handling and rematches
 - Move list with PGN copy/download, last-move highlighting, sound cues (with a mute
   toggle) and screen-reader move announcements
-- A responsive chessboard with player bars, clocks and light/dark themes
+- Draw offers, colour-swapping rematches and claim-the-win when an opponent abandons
+- Keyboard play: type moves in SAN (`Nf3`, `O-O`) or coordinates (`e2e4`)
+- A responsive chessboard with player bars, clocks, light/dark mode and board colour themes
+- Works offline for AI games once visited (service worker)
 
 ## Tech Stack
 
@@ -60,7 +63,7 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 ### Chess Logic
 
 - chess.js: Handling game rules, move validation, and board state
-- Stockfish.js: Providing the AI opponent with adjustable difficulty
+- Stockfish 18 (WebAssembly, in a Web Worker): the AI opponent with adjustable difficulty
 
 ### Build Tools
 
@@ -103,8 +106,8 @@ Follow these instructions to get Stalemates up and running on your local machine
    bun i
    ```
 
-5. Stockfish.js setup:
-   The Stockfish.js file is located in the static folder of the project. No additional setup is required as it's already in the correct location for the application to use.
+5. Stockfish: a single-threaded WebAssembly build of Stockfish 18 is vendored in
+   `vendor/stockfish/` and bundled by Vite with hashed file names — no setup needed.
 
 ## Scripts
 
@@ -227,7 +230,7 @@ This project incorporates third-party software. The licenses for these are inclu
 
 - chess.js: [BSD 2-Clause License](https://github.com/jhlywa/chess.js/blob/master/LICENSE)
 - Chessground: [GPL-3.0 License](https://github.com/lichess-org/chessground/blob/master/LICENSE)
-- Stockfish (shipped as `static/stockfish.js`, an Emscripten build of the engine):
+- Stockfish 18 (vendored WebAssembly build in `vendor/stockfish/`, from stockfish.js):
   [GPL-3.0 License](https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt).
   Its source is available from the [Stockfish project](https://github.com/official-stockfish/Stockfish)
   and the [stockfish.js port](https://github.com/nmrugg/stockfish.js).
