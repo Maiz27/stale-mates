@@ -8,7 +8,8 @@
 > colour assignment and per-seat tokens. **Deviations from the plan:** the token travels in
 > the first WebSocket frame (`{type:'join', token}`) rather than `Sec-WebSocket-Protocol`
 > (no proxy/echo quirks); creation tokens are single-use and rotate on first claim
-> (a spent invite link is worthless); tokens live in per-tab `sessionStorage` and invite
+> (a spent invite link is worthless); tokens live in `localStorage` keyed by room (per-tab
+> `sessionStorage` until CR-5) and invite
 > links carry them in the URL fragment. **Not done:** the HttpOnly creator cookie (the
 > cross-origin `SameSite=None` + credentials setup was judged not worth it for this deploy),
 > so a seat token is readable by page JS (XSS on the frontend could steal an in-progress

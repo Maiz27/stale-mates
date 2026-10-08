@@ -26,7 +26,7 @@
 	 * Create the room and go straight to it: the room page shows the invite link
 	 * (copy / share) while it waits, so there's no separate "Join Game" step.
 	 * The server picks colours (incl. 'random') and returns one seat token for us
-	 * and one for the invite link; both stay in this tab's sessionStorage.
+	 * and one for the invite link; both are remembered for this room in localStorage.
 	 */
 	async function createGame() {
 		if (loading) return;

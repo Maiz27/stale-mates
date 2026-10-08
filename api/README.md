@@ -155,7 +155,7 @@ ping/pong heartbeat.
 **Seats.** The first frame must be `{ type: 'join', token }`. The token selects the seat
 — the client never chooses its colour. The tokens returned by `/game/create` are
 single-use: the first `join` rotates the seat's token and returns the new one in
-`seat`, so a spent invite link can't take over the seat. Reconnecting (same tab) sends
+`seat`, so a spent invite link can't take over the seat. Reconnecting (the browser keeps the token per room) sends
 the rotated token; a newer connection for a seat replaces the older one (closed with
 code `4000`). Refusals close with `1008` and a reason the client shows: bad room / bad
 token → `Invalid game room` / `Unable to join game`, no `join` within 10 s → `Join

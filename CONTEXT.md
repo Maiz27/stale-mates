@@ -40,8 +40,11 @@ colours** — the creator's request (`white`/`black`/`random`, resolved server-s
 their seat and the invitee gets the other; the client never sends a colour.
 A WebSocket must present a seat token in its first frame (`{ type: 'join', token }`).
 The creation tokens are single-use: the first claim rotates the token and returns the
-new one in `seat`, which the tab keeps in `sessionStorage` for reconnects (so two tabs
-can't share a seat). Invite links carry the opponent's token in the URL fragment
+new one in `seat`, which the browser keeps in `localStorage`, keyed by room id and
+expiring after two hours unused, so closing the tab and reopening the room resumes the
+seat. A seat already held in this browser wins over an invite link's token. Two tabs
+on one seat: the newer connection takes over and the older tab shows "open somewhere
+else" (close `4000`). Invite links carry the opponent's token in the URL fragment
 (`/room?id=…#seat=…`), never in a query string the server would log.
 Server: `GameRoom.claimSeat` (`api/src/lib/GameRoom.ts`), connection handling in
 `api/src/lib/websocket.ts`. Client: `src/lib/chess/seat.ts`, `MultiplayerGameState`.

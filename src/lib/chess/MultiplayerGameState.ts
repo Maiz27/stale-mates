@@ -4,7 +4,7 @@ import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './ty
 import type { ServerMessageOf } from './protocol';
 import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
-import { getSeatToken, setSeatToken } from './seat';
+import { clearSeat, getSeatToken, setSeatToken, touchSeat } from './seat';
 import type { GameView } from './types';
 
 /**
@@ -62,9 +62,11 @@ export class MultiplayerGameState extends GameModel {
 		const hello = (): ClientMessage | null =>
 			this.token ? { type: 'join', token: this.token } : null;
 		this.wsManager = connect ? connect(url, hello) : new WebSocketManager(url, { hello });
-		this.wsManager.onStatus((status, rejection) =>
-			this.patch({ connectionStatus: status, rejection })
-		);
+		this.wsManager.onStatus((status, rejection) => {
+			// The room is gone or the token is dead: don't keep offering it (CR-5).
+			if (rejection === 'notFound') clearSeat(roomId);
+			this.patch({ connectionStatus: status, rejection });
+		});
 		this.setupMessageHandlers();
 	}
 
@@ -98,6 +100,7 @@ export class MultiplayerGameState extends GameModel {
 	makeMove(move: ChessMove): boolean {
 		const result = super.makeMove(move);
 		if (result) {
+			touchSeat(this.roomId);
 			// Moving instead of answering declines a pending offer (server does the same).
 			if (this.snapshot().drawOffer === 'opponent') this.patch({ drawOffer: null });
 			// Optimistic local apply already happened in super.makeMove; just tell
@@ -237,6 +240,8 @@ export class MultiplayerGameState extends GameModel {
 	private handleOpponentMove(move: ChessMove) {
 		// Apply locally only; bypass our own `makeMove` so we don't echo it back.
 		super.makeMove(move);
+		// Keep the stored seat alive for as long as the game is being played.
+		touchSeat(this.roomId);
 	}
 
 	private initializeClock(timeControl: TimeControl, clock?: ClockSnapshot) {

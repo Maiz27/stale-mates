@@ -149,7 +149,10 @@ test.describe('Multiplayer mode', () => {
 		}
 	});
 
-	test('a used invite link cannot take over the seat', async ({ browser, page }) => {
+	test('a used invite link cannot take over the seat from another browser', async ({
+		browser,
+		page
+	}) => {
 		const room = await createRoom(page);
 		test.skip(room === null, 'API server not reachable');
 		const a = await browser.newContext();
@@ -157,13 +160,65 @@ test.describe('Multiplayer mode', () => {
 		try {
 			const black = await a.newPage();
 			await black.goto(seatUrl(room!, 'black'));
-			await expect(black.getByText('You are playing as')).toBeVisible({ timeout: 15_000 });
-			await expect(black.getByText('black', { exact: true })).toBeVisible();
+			await expect(black.getByText('You are playing as')).toContainText('black', {
+				timeout: 15_000
+			});
 
-			// Someone else opens the same (now spent) invite link.
+			// Someone else (another browser) opens the same, now spent, invite link.
 			const intruder = await b.newPage();
 			await intruder.goto(seatUrl(room!, 'black'));
 			await expect(intruder.getByText('Room not found or full')).toBeVisible({ timeout: 15_000 });
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
+	test('the seat survives closing the tab and is resumed in the same browser (CR-5)', async ({
+		browser,
+		page
+	}) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await b.newPage();
+			await white.goto(seatUrl(room!, 'white'));
+			const black = await a.newPage();
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(black)).toBeVisible({ timeout: 20_000 });
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible({
+				timeout: 15_000
+			});
+
+			// Close the tab, then reopen the bare room URL (no #seat): the seat comes back.
+			await black.close();
+			const reopened = await a.newPage();
+			await reopened.goto(`/room?id=${room!.id}`);
+			await expect(reopened.getByText('You are playing as')).toContainText('black', {
+				timeout: 15_000
+			});
+			await expect(reopened.getByRole('list').getByText('e4', { exact: true })).toBeVisible();
+
+			// Reopening the (spent) invite link in the same browser also resumes the
+			// seat; the older tab is told the game moved.
+			const viaInvite = await a.newPage();
+			await viaInvite.goto(seatUrl(room!, 'black'));
+			await expect(viaInvite.getByText('You are playing as')).toContainText('black', {
+				timeout: 15_000
+			});
+			await expect(reopened.getByText('This game is open somewhere else')).toBeVisible({
+				timeout: 15_000
+			});
+
+			// The creator opening the invite link meant for the friend resumes their own seat.
+			const creatorViaInvite = await b.newPage();
+			await creatorViaInvite.goto(seatUrl(room!, 'black'));
+			await expect(creatorViaInvite.getByText('You are playing as')).toContainText('white', {
+				timeout: 15_000
+			});
 		} finally {
 			await a.close();
 			await b.close();

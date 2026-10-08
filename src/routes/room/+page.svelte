@@ -15,13 +15,7 @@
 	import type { GameView } from '$lib/chess/types';
 	import type { Rejection } from '$lib/websocket/WebSocketManager';
 	import { MultiplayerGameState, canOfferDraw } from '$lib/chess/MultiplayerGameState';
-	import {
-		getInviteToken,
-		getSeatToken,
-		inviteLink,
-		seatTokenFromHash,
-		setSeatToken
-	} from '$lib/chess/seat';
+	import { getInviteToken, inviteLink, resolveSeatToken, seatTokenFromHash } from '$lib/chess/seat';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 
@@ -32,7 +26,7 @@
 	// it would defeat the board's reference-equality optimisation.
 	let view = $state.raw<GameView | undefined>(undefined);
 	let boardFlipped = $state(false);
-	// No seat token for this room in this tab (e.g. a link without its #seat=… part).
+	// No seat token for this room in this browser (e.g. a link without its #seat=… part).
 	let missingSeat = $state(false);
 	// Only the creator's tab holds the opponent's invite token.
 	let opponentLink = $state('');
@@ -153,15 +147,16 @@
 		if (!id) return; // invalid room — handled in markup
 		tick = setInterval(() => (now = Date.now()), 1000);
 
-		// An invite link carries the seat token in the fragment. Move it into this
-		// tab's sessionStorage and strip it from the address bar so it isn't left in
-		// history or accidentally re-shared.
+		// An invite link carries the seat token in the fragment. Strip it from the
+		// address bar so it isn't left in history or accidentally re-shared. A seat
+		// this browser already holds for the room wins over the link's token, so
+		// reopening the room (or your own / a spent invite link) resumes your seat;
+		// otherwise the link's token is stored for this room (CR-5).
 		const fromHash = seatTokenFromHash(location.hash);
 		if (fromHash) {
-			setSeatToken(id, fromHash);
 			history.replaceState(history.state, '', location.pathname + location.search);
 		}
-		const token = getSeatToken(id);
+		const token = resolveSeatToken(id, fromHash);
 		if (!token) {
 			missingSeat = true;
 			return;
@@ -238,7 +233,10 @@
 			{:else if status === 'replaced'}
 				<div class="space-y-3" role="alert">
 					<p class="font-semibold">This game is open somewhere else</p>
-					<p class="text-muted-foreground">Your seat was taken over by another tab or window.</p>
+					<p class="text-muted-foreground">
+						You opened this game in another tab or window, so this one was disconnected. Keep
+						playing there, or move the game back here.
+					</p>
 					<div class="flex justify-center gap-2">
 						<Button onclick={reload}>Play here instead</Button>
 						<Button variant="ghost" onclick={leave}>Back to Home</Button>

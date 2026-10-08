@@ -3,20 +3,20 @@ import { get } from 'svelte/store';
 import { MultiplayerGameState, canOfferDraw, type GameSocket } from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
 import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
+import { getSeatToken, setSeatToken } from './seat';
+
+class AudioStub {
+	volume = 0;
+	src = '';
+	load() {}
+	pause() {}
+	play() {
+		return Promise.resolve();
+	}
+}
 
 beforeAll(() => {
-	vi.stubGlobal(
-		'Audio',
-		class {
-			volume = 0;
-			src = '';
-			load() {}
-			pause() {}
-			play() {
-				return Promise.resolve();
-			}
-		}
-	);
+	vi.stubGlobal('Audio', AudioStub);
 });
 
 /** In-memory stand-in for the WebSocketManager: records sends, lets tests push server frames. */
@@ -266,6 +266,29 @@ describe('MultiplayerGameState connection status (SM-1.7)', () => {
 		socket.setStatus('rejected', 'notFound');
 		expect(get(game).connectionStatus).toBe('rejected');
 		expect(get(game).rejection).toBe('notFound');
+	});
+
+	it('forgets the stored seat when the server says the room is gone (CR-5)', () => {
+		const store = new Map<string, string>();
+		vi.stubGlobal('localStorage', {
+			get length() {
+				return store.size;
+			},
+			key: (i: number) => [...store.keys()][i] ?? null,
+			getItem: (k: string) => store.get(k) ?? null,
+			setItem: (k: string, v: string) => void store.set(k, v),
+			removeItem: (k: string) => void store.delete(k)
+		});
+		try {
+			setSeatToken('room1', 'seat-token-123');
+			const { socket } = setup();
+			expect(getSeatToken('room1')).toBe('seat-token-123');
+			socket.setStatus('rejected', 'notFound');
+			expect(getSeatToken('room1')).toBeNull();
+		} finally {
+			vi.unstubAllGlobals();
+			vi.stubGlobal('Audio', AudioStub);
+		}
 	});
 
 	it('keeps the rejection kind so the page can explain it (CR-12)', () => {
