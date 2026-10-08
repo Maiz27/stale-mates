@@ -1,11 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
 	ENGINE_CACHE,
 	engineDirs,
 	isStaleEngine,
 	navigationCacheKey,
 	staleCaches,
-	PREVIOUS_BUILDS_KEPT
+	PREVIOUS_BUILDS_KEPT,
+	retainCacheWrite
 } from './serviceWorkerCache';
 
 describe('service worker cache policy (CR-9)', () => {
@@ -40,5 +41,36 @@ describe('service worker cache policy (CR-9)', () => {
 			false
 		);
 		expect(isStaleEngine('/engine/stockfish-17.1.0/sf.wasm', current)).toBe(true);
+	});
+});
+
+describe('retainCacheWrite', () => {
+	it('keeps the worker alive until the cache write lands', async () => {
+		let finishPut!: () => void;
+		const put = vi.fn(() => new Promise<void>((resolve) => (finishPut = resolve)));
+		const kept: Promise<unknown>[] = [];
+		const response = new Response('engine');
+
+		retainCacheWrite((p) => kept.push(p), { put }, '/engine/x.wasm', response);
+
+		expect(kept).toHaveLength(1);
+		expect(put).toHaveBeenCalledWith('/engine/x.wasm', expect.any(Response));
+		expect(response.bodyUsed).toBe(false);
+		let settled = false;
+		void kept[0].then(() => (settled = true));
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		finishPut();
+		await kept[0];
+		expect(settled).toBe(true);
+	});
+
+	it('swallows a failed write so the network response is unaffected', async () => {
+		const put = vi.fn(() => Promise.reject(new Error('QuotaExceededError')));
+		const kept: Promise<unknown>[] = [];
+
+		retainCacheWrite((p) => kept.push(p), { put }, '/', new Response('page'));
+
+		await expect(kept[0]).resolves.toBeUndefined();
 	});
 });

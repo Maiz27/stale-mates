@@ -62,3 +62,18 @@ export function isStaleEngine(pathname: string, current: Set<string>): boolean {
 	const match = ENGINE_DIR.exec(pathname);
 	return !match || !current.has(match[0]);
 }
+
+/**
+ * Stores a response copy in the cache and hands the write to `keepAlive`
+ * (the fetch event's `waitUntil`), so the browser doesn't stop the worker
+ * before the write lands. A failed write (quota, storage error) is swallowed:
+ * the network response is still returned, it just isn't cached.
+ */
+export function retainCacheWrite(
+	keepAlive: (promise: Promise<unknown>) => void,
+	cache: Pick<Cache, 'put'>,
+	key: RequestInfo,
+	response: Response
+): void {
+	keepAlive(cache.put(key, response.clone()).catch(() => undefined));
+}

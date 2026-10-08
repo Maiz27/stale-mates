@@ -28,6 +28,7 @@ import {
 	engineDirs,
 	isStaleEngine,
 	navigationCacheKey,
+	retainCacheWrite,
 	staleCaches
 } from '$lib/serviceWorkerCache';
 
@@ -80,8 +81,11 @@ sw.addEventListener('activate', (event) => {
 	);
 });
 
+type KeepAlive = (promise: Promise<unknown>) => void;
+
 async function cacheFirst(
 	request: Request,
+	keepAlive: KeepAlive,
 	cacheName = CACHE,
 	{ anyCache = false } = {}
 ): Promise<Response> {
@@ -89,16 +93,16 @@ async function cacheFirst(
 	const cached = (await cache.match(request)) ?? (anyCache ? await caches.match(request) : null);
 	if (cached) return cached;
 	const response = await fetch(request);
-	if (response.ok) cache.put(request, response.clone());
+	if (response.ok) retainCacheWrite(keepAlive, cache, request, response);
 	return response;
 }
 
-async function networkFirstPage(request: Request): Promise<Response> {
+async function networkFirstPage(request: Request, keepAlive: KeepAlive): Promise<Response> {
 	const cache = await caches.open(CACHE);
 	const key = navigationCacheKey(new URL(request.url));
 	try {
 		const response = await fetch(request);
-		if (response.ok && response.type === 'basic') cache.put(key, response.clone());
+		if (response.ok && response.type === 'basic') retainCacheWrite(keepAlive, cache, key, response);
 		return response;
 	} catch (error) {
 		const cached = (await cache.match(key)) ?? (await cache.match('/'));
@@ -107,11 +111,12 @@ async function networkFirstPage(request: Request): Promise<Response> {
 	}
 }
 
-async function networkFirst(request: Request): Promise<Response> {
+async function networkFirst(request: Request, keepAlive: KeepAlive): Promise<Response> {
 	const cache = await caches.open(CACHE);
 	try {
 		const response = await fetch(request);
-		if (response.ok && response.type === 'basic') cache.put(request, response.clone());
+		if (response.ok && response.type === 'basic')
+			retainCacheWrite(keepAlive, cache, request, response);
 		return response;
 	} catch (error) {
 		const cached = await cache.match(request, { ignoreSearch: true });
@@ -122,21 +127,23 @@ async function networkFirst(request: Request): Promise<Response> {
 
 sw.addEventListener('fetch', (event) => {
 	const { request } = event;
+	// Cache writes outlive the response; keep the worker alive until they land.
+	const keepAlive: KeepAlive = (promise) => event.waitUntil(promise);
 	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
 	if (url.origin !== sw.location.origin) return;
 
 	if (url.pathname.startsWith('/engine/')) {
-		event.respondWith(cacheFirst(request, ENGINE_CACHE));
+		event.respondWith(cacheFirst(request, keepAlive, ENGINE_CACHE));
 	} else if (PRECACHED.has(url.pathname) && request.mode !== 'navigate') {
-		event.respondWith(cacheFirst(request));
+		event.respondWith(cacheFirst(request, keepAlive));
 	} else if (url.pathname.startsWith('/_app/immutable/')) {
 		// Not in this build: maybe a previous build's chunk, for a tab still on it.
-		event.respondWith(cacheFirst(request, CACHE, { anyCache: true }));
+		event.respondWith(cacheFirst(request, keepAlive, CACHE, { anyCache: true }));
 	} else if (request.mode === 'navigate') {
-		event.respondWith(networkFirstPage(request));
+		event.respondWith(networkFirstPage(request, keepAlive));
 	} else {
-		event.respondWith(networkFirst(request));
+		event.respondWith(networkFirst(request, keepAlive));
 	}
 });

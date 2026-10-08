@@ -14,7 +14,7 @@ This is the backend API for Stalemates, a full-stack chess platform. It handles 
     - [Installation](#installation)
   - [API Overview](#api-overview)
   - [API Endpoints](#api-endpoints)
-  - [WebSocket Events](#websocket-events)
+  - [WebSocket protocol](#websocket-protocol)
   - [Contributing](#contributing)
   - [License](#license)
 
