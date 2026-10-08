@@ -58,6 +58,7 @@ export class GameModel implements Readable<GameView> {
 			rematchOffer: false,
 			myRematchOffer: false,
 			drawOffer: null,
+			lastDrawOfferPly: null,
 			clock: NO_CLOCK
 		});
 		this.subscribe = this.store.subscribe;

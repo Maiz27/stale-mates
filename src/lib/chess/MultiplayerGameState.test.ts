@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { MultiplayerGameState, type GameSocket } from './MultiplayerGameState';
+import { MultiplayerGameState, canOfferDraw, type GameSocket } from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
 import type { ConnectionStatus } from '../websocket/WebSocketManager';
 
@@ -321,6 +321,35 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 		expect(get(game).drawOffer).toBe('opponent');
 		game.acceptDraw();
 		expect(socket.sent).toContainEqual({ type: 'acceptDraw' });
+	});
+
+	it('cannot re-offer at the same ply after a decline, until a move is made (CR-4)', () => {
+		const { game, socket } = setup();
+		socket.emit({ type: 'seat', color: 'white', token: 'seat-token-123' });
+		start(socket);
+		game.offerDraw();
+		socket.emit({ type: 'drawDeclined' });
+		expect(get(game).drawOffer).toBeNull();
+		expect(canOfferDraw(get(game))).toBe(false);
+
+		game.offerDraw();
+		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(1);
+		expect(get(game).drawOffer).toBeNull();
+
+		game.makeMove({ from: 'e2', to: 'e4' });
+		expect(canOfferDraw(get(game))).toBe(true);
+		game.offerDraw();
+		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(2);
+		expect(get(game).drawOffer).toBe('mine');
+	});
+
+	it('a server refusal of a re-offer clears "Draw offered" (CR-4)', () => {
+		const { game, socket } = setup();
+		start(socket);
+		game.offerDraw();
+		expect(get(game).drawOffer).toBe('mine');
+		socket.emit({ type: 'drawDeclined' });
+		expect(get(game).drawOffer).toBeNull();
 	});
 
 	it('declining clears the incoming offer', () => {

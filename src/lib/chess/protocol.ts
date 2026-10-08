@@ -109,7 +109,10 @@ export type ServerMessage =
 	  }
 	/** The opponent offers a draw. */
 	| { type: 'drawOffer' }
-	/** Your draw offer was declined (explicitly, or by the opponent moving instead). */
+	/**
+	 * Your draw offer was declined (explicitly, or by the opponent moving instead),
+	 * or refused because you already offered in this position.
+	 */
 	| { type: 'drawDeclined' };
 
 /** Discriminant strings for the server → client messages. */

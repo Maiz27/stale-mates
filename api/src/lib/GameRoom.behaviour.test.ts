@@ -338,3 +338,17 @@ describe('joining after the creator left (CR-3)', () => {
 		});
 	});
 });
+
+describe('repeat draw offer at the same ply (CR-4)', () => {
+	it('answers a refused re-offer with drawDeclined instead of silence', () => {
+		const { room, white, black, whiteId, blackId } = setup();
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		room.handleMessage(blackId, { type: 'declineDraw' });
+		expect(white.of('drawDeclined')).toHaveLength(1);
+
+		// Same ply: refused, but the offerer is told so its UI doesn't stay on "Draw offered".
+		room.handleMessage(whiteId, { type: 'offerDraw' });
+		expect(black.of('drawOffer')).toHaveLength(1);
+		expect(white.of('drawDeclined')).toHaveLength(2);
+	});
+});

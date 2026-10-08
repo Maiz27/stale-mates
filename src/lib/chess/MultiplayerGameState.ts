@@ -5,6 +5,21 @@ import type { ServerMessageOf } from './protocol';
 import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
 import { getSeatToken, setSeatToken } from './seat';
+import type { GameView } from './types';
+
+/**
+ * Whether the "Offer draw" control is live: a game in progress, no offer pending,
+ * and the position has changed since my last offer (mirrors the server's rule,
+ * which refuses a second offer at the same ply) (CR-4).
+ */
+export function canOfferDraw(view: GameView): boolean {
+	return (
+		view.started &&
+		!view.gameOver.isOver &&
+		view.drawOffer === null &&
+		view.lastDrawOfferPly !== view.moveHistory.length
+	);
+}
 
 /** The slice of {@link WebSocketManager} the game mode uses (lets tests inject a fake). */
 export type GameSocket = Pick<
@@ -124,8 +139,10 @@ export class MultiplayerGameState extends GameModel {
 
 	offerDraw() {
 		const view = this.snapshot();
-		if (!view.started || view.gameOver.isOver || view.drawOffer) return;
-		if (this.wsManager.sendMessage({ type: 'offerDraw' })) this.patch({ drawOffer: 'mine' });
+		if (!canOfferDraw(view)) return;
+		if (this.wsManager.sendMessage({ type: 'offerDraw' })) {
+			this.patch({ drawOffer: 'mine', lastDrawOfferPly: view.moveHistory.length });
+		}
 	}
 
 	acceptDraw() {
@@ -162,6 +179,7 @@ export class MultiplayerGameState extends GameModel {
 			rematchOffer: false,
 			myRematchOffer: false,
 			drawOffer: null,
+			lastDrawOfferPly: null,
 			gameOver: { isOver: false, winner: null },
 			moveHistory: [],
 			started: true
@@ -204,6 +222,8 @@ export class MultiplayerGameState extends GameModel {
 					? Date.now() + data.opponentGraceMs
 					: null,
 			moveHistory: [],
+			drawOffer: null,
+			lastDrawOfferPly: null,
 			gameOver: { isOver: false, winner: null }
 		});
 		this.lowTimeWarned = false;

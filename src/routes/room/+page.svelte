@@ -13,7 +13,7 @@
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { GameView } from '$lib/chess/types';
-	import { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
+	import { MultiplayerGameState, canOfferDraw } from '$lib/chess/MultiplayerGameState';
 	import {
 		getInviteToken,
 		getSeatToken,
@@ -90,6 +90,8 @@
 	const acceptDraw = () => gameState?.acceptDraw();
 	const declineDraw = () => gameState?.declineDraw();
 	const drawOffer = $derived(view?.drawOffer ?? null);
+	// After a declined offer, another needs a move first (the server's rule).
+	const drawOfferable = $derived(view ? canOfferDraw(view) : false);
 	const reload = () => location.reload();
 
 	async function shareInvite() {
@@ -287,7 +289,13 @@
 					{#if drawOffer === 'mine'}
 						<Button variant="outline" disabled>Draw offered</Button>
 					{:else if drawOffer === null}
-						<Button variant="outline" onclick={offerDraw} title="Offer a draw">½ Offer draw</Button>
+						<Button
+							variant="outline"
+							onclick={offerDraw}
+							disabled={!drawOfferable}
+							title={drawOfferable ? 'Offer a draw' : 'You can offer a draw again after a move'}
+							>½ Offer draw</Button
+						>
 					{/if}
 				{/if}
 			{/if}

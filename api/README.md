@@ -168,7 +168,8 @@ result, rematch and draw-offer state, opponent presence), `rematchOffer`,
 
 Draw offers are server-authoritative: an offer stands until the opponent accepts,
 declines or moves (an implicit decline); both sides offering is an agreement; a side can
-re-offer only after it has moved since its last offer.
+re-offer only once a move has been played since its last offer (a refused re-offer is
+answered with `drawDeclined`, and the client disables the button until then).
 
 The server is authoritative for outcomes and time: clients can't declare a result,
 a move that arrives after the mover's flag fell loses on time, and a disconnected

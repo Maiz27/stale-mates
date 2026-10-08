@@ -312,8 +312,15 @@ export class GameRoom {
 			this.finishGame('draw', 'agreement');
 			return;
 		}
+		// Already pending: the offerer's UI already shows it, nothing to say.
+		if (this.drawOffer === player.color) return;
 		const ply = this.chess.history().length;
-		if (this.drawOffer === player.color || this.lastDrawOfferPly[player.color] === ply) return;
+		if (this.lastDrawOfferPly[player.color] === ply) {
+			// No new offer until the position has changed since this side's last
+			// one. Say so, or the offerer's client would sit on "Draw offered" (CR-4).
+			this.sendToPlayer(player, { type: 'drawDeclined' });
+			return;
+		}
 		this.drawOffer = player.color;
 		this.lastDrawOfferPly[player.color] = ply;
 		const opponent = this.opponentOf(player);

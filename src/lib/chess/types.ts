@@ -76,5 +76,7 @@ export type GameView = {
 	myRematchOffer: boolean;
 	/** Pending draw offer in the current game. */
 	drawOffer: 'mine' | 'opponent' | null;
+	/** Ply (moves played) at my last draw offer; the server refuses another until it changes. */
+	lastDrawOfferPly: number | null;
 	clock: ClockView;
 };
