@@ -110,6 +110,12 @@ This server is intentionally simple and runs as a **single instance**:
 - **Memory is bounded by room TTL.** A periodic sweep reaps abandoned rooms — those
   older than `ROOM_TTL_MS` (default 30 min) with no connected players — so rooms that
   are created but never joined, or long finished, cannot leak indefinitely.
+- **Crashes exit.** Per-socket problems (oversized or malformed frames, protocol
+  errors) are handled on the socket and never reach the process. A genuinely uncaught
+  exception logs, shuts down and exits non-zero so the process manager (Fly's machine
+  restart policy, Docker `restart:`) starts a clean process — the in-memory games are
+  lost either way, but a half-updated room is never served. Unhandled promise
+  rejections are logged and the process keeps running.
 - **Room creation is rate-limited per IP** (default ~30 creates / 10 min) to prevent
   spam; this limiter is also in-memory and therefore per-instance.
 

@@ -1,5 +1,5 @@
-import WebSocket from 'ws';
-import { IncomingMessage } from 'http';
+import WebSocket, { WebSocketServer } from 'ws';
+import type { IncomingMessage, Server as HttpServer } from 'http';
 import { URL } from 'url';
 import { getGameRoom, removePlayerFromGame } from './game';
 import { parseClientMessage } from './validate';
@@ -77,6 +77,10 @@ export function handleWebSocketConnection(
 	req: IncomingMessage,
 	env: ConnectionEnv = process.env
 ) {
+	// Registered first: `ws` emits 'error' for protocol violations (a frame over
+	// maxPayload, a bad opcode, invalid UTF-8...) and an EventEmitter 'error'
+	// with no listener throws, i.e. an uncaughtException (CR-2).
+	ws.on('error', (error) => onSocketError(ws, error));
 	trackHeartbeat(ws);
 
 	try {
@@ -133,6 +137,43 @@ export function handleWebSocketConnection(
 		console.error('Error handling WebSocket connection:', error);
 		closeConnection(ws, 1011, 'Internal server error');
 	}
+}
+
+/**
+ * A socket-level error. For protocol errors `ws` has already sent the matching
+ * close frame (e.g. 1009 for an oversized frame) before emitting, so the socket
+ * is torn down here; its 'close' event then runs the normal disconnect path.
+ */
+export function onSocketError(ws: WebSocket, error: Error & { code?: string }) {
+	console.warn(`WebSocket error${error.code ? ` (${error.code})` : ''}: ${error.message}`);
+	ws.terminate();
+}
+
+export interface WebSocketServerOptions {
+	/** Largest accepted frame, in bytes; bigger frames are refused with 1009. */
+	maxPayload?: number;
+	env?: ConnectionEnv;
+	/** Heartbeat interval; 0 disables it (tests). */
+	heartbeatMs?: number;
+}
+
+/**
+ * The game WebSocket server attached to an HTTP server: connection handling,
+ * server-level error logging and the heartbeat. Used by index.ts and the tests.
+ */
+export function createWebSocketServer(
+	server: HttpServer,
+	{ maxPayload = 4096, env = process.env, heartbeatMs = 30_000 }: WebSocketServerOptions = {}
+): WebSocketServer {
+	// maxPayload: the largest legitimate frame is a ~100-byte move/join; anything
+	// bigger is abuse and is refused by `ws` itself (close 1009) before parsing.
+	const wss = new WebSocketServer({ server, maxPayload });
+	// Server-level errors (e.g. the underlying HTTP server failing to listen) are
+	// re-emitted here; without a listener they would be thrown.
+	wss.on('error', (error) => console.error('WebSocket server error:', error));
+	wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req, env));
+	if (heartbeatMs > 0) startHeartbeat(wss, heartbeatMs);
+	return wss;
 }
 
 // Sockets that answered the last heartbeat ping. A socket missing from this set

@@ -4,8 +4,7 @@ dotenv.config();
 import http from 'http';
 
 import app from './app';
-import WebSocket from 'ws';
-import { handleWebSocketConnection, startHeartbeat } from './lib/websocket';
+import { createWebSocketServer } from './lib/websocket';
 import { assertValidEnv } from './lib/env';
 import { startRoomSweep } from './lib/game';
 
@@ -23,47 +22,53 @@ const server = http.createServer(app);
 // here (not at import time) and unref()ed so unit tests never spawn this timer.
 startRoomSweep();
 
-// Create a WebSocket server attached to the HTTP server
-// maxPayload: the largest legitimate frame is a ~100-byte move/join; anything
-// bigger is abuse and is refused by `ws` itself (close 1009) before parsing.
-const wss = new WebSocket.Server({ server, maxPayload: 4096 });
-
-// Handle WebSocket connections
-wss.on('connection', handleWebSocketConnection);
-
-// Ping every client periodically and terminate the ones that stop answering, so
-// dead connections are noticed and the opponent is told (audit SM-1.1).
-startHeartbeat(wss);
+// The game WebSocket server: 4 KB frame cap, per-socket error handling, and a
+// heartbeat that terminates sockets that stop answering pings, so dead
+// connections are noticed and the opponent is told (audit SM-1.1).
+const wss = createWebSocketServer(server);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
 	console.log(`Server is running on port ${PORT}`);
 });
 
-// Defense-in-depth: never let an uncaught error or rejection crash the process.
+// An uncaught exception means some code path was left half-done, so the
+// in-memory rooms can no longer be trusted: log it, try a graceful shutdown and
+// exit non-zero so the process manager (Fly's machine restart policy, Docker
+// `restart:`) starts a clean process. Expected per-socket failures never get
+// here: sockets have 'error' listeners and message handlers catch (CR-2).
 process.on('uncaughtException', (error) => {
-	console.error('Uncaught exception (keeping process alive):', error);
+	console.error('Uncaught exception, exiting:', error);
+	shutdown('uncaughtException', 1);
 });
 
+// A stray rejected promise doesn't leave synchronous state half-updated; log it
+// and keep serving.
 process.on('unhandledRejection', (reason) => {
-	console.error('Unhandled promise rejection (keeping process alive):', reason);
+	console.error('Unhandled promise rejection:', reason);
 });
 
 // Graceful shutdown: close WebSocket and HTTP servers cleanly, then exit.
-function shutdown(signal: string) {
+let shuttingDown = false;
+function shutdown(signal: string, exitCode = 0) {
+	if (shuttingDown) return;
+	shuttingDown = true;
 	console.log(`Received ${signal}, shutting down gracefully...`);
 
+	// wss.close() doesn't close accepted sockets, and server.close() waits for
+	// them; 1001 tells clients to reconnect (to the restarted process).
+	for (const client of wss.clients) client.close(1001, 'Server shutting down');
 	wss.close(() => {
 		console.log('WebSocket server closed');
 	});
 
 	server.close(() => {
 		console.log('HTTP server closed');
-		process.exit(0);
+		process.exit(exitCode);
 	});
 
 	// Best-effort: force exit if close hangs.
-	setTimeout(() => process.exit(0), 5000).unref();
+	setTimeout(() => process.exit(exitCode), 5000).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
