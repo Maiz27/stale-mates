@@ -76,7 +76,8 @@ export class Stockfish {
 	private searchParams: SearchParams;
 	private messageCallback: ((message: string) => void) | null = null;
 	private errorCallback: ((error: unknown) => void) | null = null;
-	private currentFen: string = STARTING_FEN;
+	/** The last `position …` command, re-sent before a hint search. */
+	private positionCommand = `position fen ${STARTING_FEN}`;
 	private debug: boolean;
 	private searchGeneration: number = 0;
 	private pendingGo: ReturnType<typeof setTimeout> | null = null;
@@ -317,11 +318,18 @@ export class Stockfish {
 		}
 	}
 
-	setPosition(fen: string): void {
+	/**
+	 * Set the position to search: the game's starting FEN plus the moves played
+	 * since, in UCI. Sending the history (not just the current FEN) lets the
+	 * engine see repetitions, so it can steer into or away from a threefold draw
+	 * (CR2-9).
+	 */
+	setPosition(fen: string, moves: string[] = []): void {
 		this.cancelSearch();
-		this.currentFen = fen;
-		this.log(`Sending position to Stockfish: ${fen}`);
-		this.send(`position fen ${fen}`);
+		this.positionCommand =
+			moves.length > 0 ? `position fen ${fen} moves ${moves.join(' ')}` : `position fen ${fen}`;
+		this.log(`Sending position to Stockfish: ${this.positionCommand}`);
+		this.send(this.positionCommand);
 	}
 
 	go(): void {
@@ -398,7 +406,7 @@ export class Stockfish {
 	 * already in flight.
 	 */
 	getHint(_playerColor?: 'w' | 'b'): Promise<ChessMove | null> {
-		void _playerColor; // the side to move is in the FEN
+		void _playerColor; // the side to move is in the position
 		this.cancelSearch();
 		return new Promise((resolve) => {
 			if (this.failed) {
@@ -413,7 +421,7 @@ export class Stockfish {
 			const hintTime = Math.min(2000, Math.max(1000, 1000 + this.difficulty * 125));
 
 			this.send('setoption name Skill Level value 20');
-			this.send(`position fen ${this.currentFen}`);
+			this.send(this.positionCommand);
 			this.inFlight = 'hint';
 			this.send(`go depth ${hintDepth} movetime ${hintTime}`);
 		});

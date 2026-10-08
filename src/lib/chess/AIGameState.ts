@@ -102,7 +102,7 @@ export class AIGameState extends GameModel {
 		const result = super.makeMove(move);
 		if (result) {
 			this.hintToken++;
-			this.engine.setPosition(this.core.fen());
+			this.syncEnginePosition();
 			if (this.snapshot().gameOver.isOver) {
 				this.patch({ thinking: false });
 				this.playCue('game-end');
@@ -141,7 +141,7 @@ export class AIGameState extends GameModel {
 		}
 		this.patch({ moveHistory: history, hint: null, hintPending: false, thinking: false });
 		this.updateGameState();
-		this.engine.setPosition(this.core.fen());
+		this.syncEnginePosition();
 		this.triggerAiMove();
 	}
 
@@ -241,11 +241,16 @@ export class AIGameState extends GameModel {
 		return true;
 	}
 
+	/** Give the engine the whole game — start position plus moves — not just the FEN (CR2-9). */
+	private syncEnginePosition() {
+		this.engine.setPosition(this.core.startFen(), this.core.uciMoves());
+	}
+
 	private resetEngine() {
 		this.hintToken++;
 		this.engine.stop();
 		this.engine.newGame();
-		this.engine.setPosition(this.core.fen());
+		this.syncEnginePosition();
 		this.patch({ thinking: false, hint: null, hintPending: false });
 	}
 

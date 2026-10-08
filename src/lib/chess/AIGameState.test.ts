@@ -24,6 +24,7 @@ class FakeEngine implements AIEngine {
 	goCalls = 0;
 	stopCalls = 0;
 	positions: string[] = [];
+	histories: { fen: string; moves: string[] }[] = [];
 	best: ChessMove = { from: '', to: '' };
 	hintResolve: ((m: ChessMove | null) => void) | null = null;
 	terminated = false;
@@ -38,8 +39,9 @@ class FakeEngine implements AIEngine {
 		this.stopCalls++;
 		this.generation++;
 	}
-	setPosition(fen: string) {
+	setPosition(fen: string, moves: string[] = []) {
 		this.positions.push(fen);
+		this.histories.push({ fen, moves });
 	}
 	go() {
 		this.goCalls++;
@@ -250,5 +252,32 @@ describe('AIGameState engine failure (CR-10)', () => {
 		expect(engines[1].goCalls).toBe(1);
 		engines[1].reply({ from: 'e2', to: 'e4' });
 		expect(get(game).moveHistory).toHaveLength(1);
+	});
+});
+
+describe('AIGameState engine position (CR2-9)', () => {
+	const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+	it('gives the engine the start position plus every move, not just the current FEN', () => {
+		const { game, engine } = setup();
+		game.newGame();
+		game.makeMove({ from: 'g1', to: 'f3' });
+		engine().reply({ from: 'g8', to: 'f6' });
+		game.makeMove({ from: 'f3', to: 'g1' });
+		expect(engine().histories.at(-1)).toEqual({
+			fen: START,
+			moves: ['g1f3', 'g8f6', 'f3g1']
+		});
+	});
+
+	it('keeps the history across undo and a restored game', () => {
+		const { game, engine } = setup();
+		expect(game.restore({ version: 1, player: 'white', moves: ['e2e4', 'e7e5', 'g1f3'] })).toBe(
+			true
+		);
+		expect(engine().histories.at(-1)).toEqual({ fen: START, moves: ['e2e4', 'e7e5', 'g1f3'] });
+		engine().reply({ from: 'b8', to: 'c6' });
+		game.undoMove();
+		expect(engine().histories.at(-1)).toEqual({ fen: START, moves: ['e2e4', 'e7e5'] });
 	});
 });

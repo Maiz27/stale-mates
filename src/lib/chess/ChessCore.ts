@@ -59,6 +59,16 @@ export class ChessCore {
 		return this.chess.fen();
 	}
 
+	/** The position this game started from: the standard start, or a loaded FEN. */
+	startFen(): string {
+		return this.chess.history({ verbose: true })[0]?.before ?? this.chess.fen();
+	}
+
+	/** The moves played from {@link startFen}, in UCI long algebraic ("e2e4", "e7e8q"). */
+	uciMoves(): string[] {
+		return this.chess.history({ verbose: true }).map((m) => m.lan);
+	}
+
 	turn(): Color {
 		return this.chess.turn() === 'w' ? 'white' : 'black';
 	}

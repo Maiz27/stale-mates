@@ -233,4 +233,22 @@ describe('Stockfish 18 options and difficulty (CR-10)', () => {
 		expect(errors).toHaveLength(1);
 		engine.terminate();
 	});
+
+	it('sends the move history so the engine can see repetitions (CR2-9)', async () => {
+		const { worker, engine } = setup();
+		worker.handshake();
+		const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+		engine.setPosition(start, ['g1f3', 'g8f6', 'f3g1', 'f6g8']);
+		expect(worker.posted).toContain(`position fen ${start} moves g1f3 g8f6 f3g1 f6g8`);
+		// No history: just the FEN.
+		engine.setPosition('8/8/8/4k3/8/8/8/3QK3 w - - 0 1');
+		expect(worker.posted.at(-1)).toBe('position fen 8/8/8/4k3/8/8/8/3QK3 w - - 0 1');
+		// A hint re-sends the full position, history included.
+		engine.setPosition(start, ['e2e4']);
+		worker.posted = [];
+		const hint = engine.getHint();
+		expect(worker.posted).toContain(`position fen ${start} moves e2e4`);
+		worker.reply('bestmove e7e5');
+		await expect(hint).resolves.toEqual({ from: 'e7', to: 'e5' });
+	});
 });
