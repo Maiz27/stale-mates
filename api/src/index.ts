@@ -5,6 +5,7 @@ import http from 'http';
 
 import app from './app';
 import { createWebSocketServer } from './lib/websocket';
+import type { CloseReason } from './lib/protocol';
 import { assertValidEnv } from './lib/env';
 import { startRoomSweep } from './lib/game';
 
@@ -57,7 +58,8 @@ function shutdown(signal: string, exitCode = 0) {
 
 	// wss.close() doesn't close accepted sockets, and server.close() waits for
 	// them; 1001 tells clients to reconnect (to the restarted process).
-	for (const client of wss.clients) client.close(1001, 'Server shutting down');
+	const reason: CloseReason = 'Server shutting down';
+	for (const client of wss.clients) client.close(1001, reason);
 	wss.close(() => {
 		console.log('WebSocket server closed');
 	});

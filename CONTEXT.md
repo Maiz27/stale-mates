@@ -52,7 +52,9 @@ A seated participant: `{ id, color, ws, connected, disconnectedAt }` (`api/src/l
 The `id` is internal to the server and never sent to clients. Only one live socket per
 seat exists; a newer connection replaces the older one (close code `4000`). When a
 player's socket drops, the opponent is told (`opponentDisconnected`) and may claim the
-win after `DISCONNECT_GRACE_MS`; the room itself survives until the TTL sweep.
+win after `DISCONNECT_GRACE_MS`; the room itself survives until the TTL sweep. Clocks
+do not pause while a player is disconnected: their clock keeps running and they can
+lose on time before the grace period ends.
 
 ### Game state
 

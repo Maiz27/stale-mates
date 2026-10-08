@@ -157,7 +157,11 @@ ping/pong heartbeat.
 single-use: the first `join` rotates the seat's token and returns the new one in
 `seat`, so a spent invite link can't take over the seat. Reconnecting (same tab) sends
 the rotated token; a newer connection for a seat replaces the older one (closed with
-code `4000`). Bad room / bad token / no `join` within 10 s → close `1008`.
+code `4000`). Refusals close with `1008` and a reason the client shows: bad room / bad
+token → `Invalid game room` / `Unable to join game`, no `join` within 10 s → `Join
+timeout`, message flood → `Rate limit exceeded`, bad `Origin` → `Origin not allowed`.
+Too many sockets from one IP → `1013 Too many connections`. The reasons are typed as
+`CloseReason` in `protocol.ts`.
 
 Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRematch`,
 `acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`.
@@ -175,8 +179,9 @@ re-offer only once a move has been played since its last offer (a refused re-off
 answered with `drawDeclined`, and the client disables the button until then).
 
 The server is authoritative for outcomes and time: clients can't declare a result,
-a move that arrives after the mover's flag fell loses on time, and a disconnected
-player's clock keeps running.
+a move that arrives after the mover's flag fell loses on time, and **clocks never pause
+on disconnect**: a disconnected player's clock keeps running (they can flag while away),
+independently of the abandonment grace period.
 
 ## Contributing
 

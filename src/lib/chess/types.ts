@@ -1,6 +1,6 @@
 import type { PieceSymbol, Square } from 'chess.js';
 import type { Color } from 'chessground/types';
-import type { ConnectionStatus } from '../websocket/WebSocketManager';
+import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
 import type { GameOverReason, TimeControl, ClockSnapshot } from './protocol';
 
 export type GameMode = 'pve' | 'pvp';
@@ -70,6 +70,8 @@ export type GameView = {
 	/** Local `Date.now()` after which a win by abandonment may be claimed; null while the opponent is present. */
 	opponentClaimableAt: number | null;
 	connectionStatus: ConnectionStatus;
+	/** Why the server refused us, when `connectionStatus` is `rejected`. */
+	rejection: Rejection | null;
 	/** The opponent has offered a rematch. */
 	rematchOffer: boolean;
 	/** I have offered a rematch (server-confirmed on resync). */

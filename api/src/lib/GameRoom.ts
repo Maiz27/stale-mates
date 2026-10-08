@@ -13,7 +13,7 @@ import {
 	ServerMessage,
 	WireMove
 } from './types';
-import type { GameStateMessage } from './protocol';
+import type { CloseReason, GameStateMessage } from './protocol';
 import { ClockMs, ClockSnapshot, buildSnapshot, clockAfterMove, remainingMs } from './clock';
 import { gameOutcome, canStillCheckmate } from './outcome';
 
@@ -195,7 +195,8 @@ export class GameRoom {
 		this.touch();
 		if (previous && previous !== ws) {
 			try {
-				previous.close(CLOSE_REPLACED, 'Replaced by a newer connection');
+				const reason: CloseReason = 'Replaced by a newer connection';
+				previous.close(CLOSE_REPLACED, reason);
 			} catch {
 				// best effort
 			}

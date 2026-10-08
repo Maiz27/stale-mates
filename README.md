@@ -42,6 +42,8 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 - Move list with PGN copy/download, last-move highlighting, sound cues (with a mute
   toggle) and screen-reader move announcements
 - Draw offers, colour-swapping rematches and claim-the-win when an opponent abandons
+  (clocks don't pause while a player is disconnected — a timed game can still be lost
+  on time while away)
 - Keyboard play: type moves in SAN (`Nf3`, `O-O`) or coordinates (`e2e4`)
 - A responsive chessboard with player bars, clocks, light/dark mode and board colour themes
 - Works offline for AI games once visited (service worker)

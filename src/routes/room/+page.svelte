@@ -13,6 +13,7 @@
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { GameView } from '$lib/chess/types';
+	import type { Rejection } from '$lib/websocket/WebSocketManager';
 	import { MultiplayerGameState, canOfferDraw } from '$lib/chess/MultiplayerGameState';
 	import {
 		getInviteToken,
@@ -93,6 +94,37 @@
 	// After a declined offer, another needs a move first (the server's rule).
 	const drawOfferable = $derived(view ? canOfferDraw(view) : false);
 	const reload = () => location.reload();
+
+	// What to tell the player when the server refused the connection (CR-12).
+	const REJECTION_COPY: Record<Rejection, { title: string; detail: string; retry: boolean }> = {
+		notFound: {
+			title: 'Room not found or full',
+			detail: 'This game has expired, already has two players, or the link is invalid.',
+			retry: false
+		},
+		rateLimited: {
+			title: 'Disconnected: too many messages',
+			detail: 'The server closed this connection for sending messages too quickly.',
+			retry: true
+		},
+		tooManyConnections: {
+			title: 'Too many open games',
+			detail:
+				'Your network has too many game connections open. Close some other game tabs and try again.',
+			retry: true
+		},
+		origin: {
+			title: "Can't reach the game server",
+			detail: "This site isn't allowed to connect to the game server.",
+			retry: false
+		},
+		other: {
+			title: "Couldn't join the game",
+			detail: 'The server refused the connection.',
+			retry: true
+		}
+	};
+	const rejectionCopy = $derived(REJECTION_COPY[view?.rejection ?? 'notFound']);
 
 	async function shareInvite() {
 		try {
@@ -192,11 +224,16 @@
 				</div>
 			{:else if status === 'rejected'}
 				<div class="space-y-3" role="alert">
-					<p class="font-semibold">Room not found or full</p>
-					<p class="text-muted-foreground">
-						This game has expired, already has two players, or the link is invalid.
-					</p>
-					<Button onclick={leave}>Back to Home</Button>
+					<p class="font-semibold">{rejectionCopy.title}</p>
+					<p class="text-muted-foreground">{rejectionCopy.detail}</p>
+					<div class="flex justify-center gap-2">
+						{#if rejectionCopy.retry}
+							<Button onclick={reload}>Try again</Button>
+						{/if}
+						<Button variant={rejectionCopy.retry ? 'ghost' : 'default'} onclick={leave}
+							>Back to Home</Button
+						>
+					</div>
 				</div>
 			{:else if status === 'replaced'}
 				<div class="space-y-3" role="alert">

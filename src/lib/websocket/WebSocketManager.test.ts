@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WebSocketManager, CLOSE_REPLACED, type ConnectionStatus } from './WebSocketManager';
+import {
+	WebSocketManager,
+	CLOSE_REPLACED,
+	rejectionFor,
+	type ConnectionStatus,
+	type Rejection
+} from './WebSocketManager';
 
 /** Minimal browser-WebSocket stand-in. */
 class FakeBrowserSocket {
@@ -10,7 +16,7 @@ class FakeBrowserSocket {
 	onopen: (() => void) | null = null;
 	onmessage: ((e: { data: string }) => void) | null = null;
 	onerror: ((e: unknown) => void) | null = null;
-	onclose: ((e: { code: number }) => void) | null = null;
+	onclose: ((e: { code: number; reason: string }) => void) | null = null;
 	constructor(public url: string) {
 		FakeBrowserSocket.instances.push(this);
 	}
@@ -22,9 +28,9 @@ class FakeBrowserSocket {
 		this.readyState = 1;
 		this.onopen?.();
 	}
-	drop(code = 1006) {
+	drop(code = 1006, reason = '') {
 		this.readyState = 3;
-		this.onclose?.({ code });
+		this.onclose?.({ code, reason });
 	}
 }
 
@@ -57,6 +63,26 @@ describe('WebSocketManager', () => {
 		expect(FakeBrowserSocket.instances).toHaveLength(1);
 	});
 
+	it('tells rejection reasons apart instead of calling every 1008 "not found" (CR-12)', () => {
+		expect(rejectionFor(1008, 'Invalid game room')).toBe('notFound');
+		expect(rejectionFor(1008, 'Unable to join game')).toBe('notFound');
+		expect(rejectionFor(1008, 'Rate limit exceeded')).toBe('rateLimited');
+		expect(rejectionFor(1008, 'Origin not allowed')).toBe('origin');
+		expect(rejectionFor(1008, 'Join timeout')).toBe('other');
+		expect(rejectionFor(1013, 'Too many connections')).toBe('tooManyConnections');
+		expect(rejectionFor(1006, '')).toBeNull();
+	});
+
+	it('passes the rejection kind to the status handler', () => {
+		const manager = new WebSocketManager('ws://x');
+		const seen: [ConnectionStatus, Rejection | null][] = [];
+		manager.onStatus((s, r) => seen.push([s, r]));
+		FakeBrowserSocket.instances[0].drop(1013, 'Too many connections');
+		vi.advanceTimersByTime(60_000);
+		expect(seen.at(-1)).toEqual(['rejected', 'tooManyConnections']);
+		expect(FakeBrowserSocket.instances).toHaveLength(1);
+	});
+
 	it('reports a seat takeover as terminal "replaced" and does not fight it', () => {
 		const manager = new WebSocketManager('ws://x');
 		const statuses = track(manager);
@@ -81,7 +107,7 @@ describe('WebSocketManager', () => {
 		expect(statuses.at(-1)).toBe('open');
 
 		// A stale close from the first socket must not trigger another reconnect.
-		first.onclose?.({ code: 1006 });
+		first.onclose?.({ code: 1006, reason: '' });
 		vi.advanceTimersByTime(60_000);
 		expect(FakeBrowserSocket.instances).toHaveLength(2);
 		expect(statuses.at(-1)).toBe('open');

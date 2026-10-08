@@ -55,6 +55,7 @@ export class GameModel implements Readable<GameView> {
 			opponentConnected: false,
 			opponentClaimableAt: null,
 			connectionStatus: 'connecting',
+			rejection: null,
 			rematchOffer: false,
 			myRematchOffer: false,
 			drawOffer: null,

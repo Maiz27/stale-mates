@@ -115,6 +115,24 @@ export type ServerMessage =
 	 */
 	| { type: 'drawDeclined' };
 
+/**
+ * Close reasons the server sends with a WebSocket close frame. The code is 1008
+ * (policy violation) for refusals, 1013 for "Too many connections", 4000 for
+ * "Replaced by a newer connection", 1001 for "Server shutting down" and 1011
+ * for "Internal server error". Clients use the reason to explain a refusal.
+ */
+export type CloseReason =
+	| 'Origin not allowed'
+	| 'Invalid game room'
+	| 'Join timeout'
+	| 'Expected join'
+	| 'Unable to join game'
+	| 'Rate limit exceeded'
+	| 'Too many connections'
+	| 'Replaced by a newer connection'
+	| 'Server shutting down'
+	| 'Internal server error';
+
 /** Discriminant strings for the server → client messages. */
 export type ServerMessageType = ServerMessage['type'];
 

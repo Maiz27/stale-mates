@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { MultiplayerGameState, canOfferDraw, type GameSocket } from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
-import type { ConnectionStatus } from '../websocket/WebSocketManager';
+import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
 
 beforeAll(() => {
 	vi.stubGlobal(
@@ -24,7 +24,7 @@ class FakeSocket implements GameSocket {
 	sent: ClientMessage[] = [];
 	open = true;
 	private handlers = new Map<string, (data: ServerMessage) => void>();
-	private status: ((s: ConnectionStatus) => void) | null = null;
+	private status: ((s: ConnectionStatus, r: Rejection | null) => void) | null = null;
 
 	addMessageHandler(type: string, handler: (data: never) => void) {
 		this.handlers.set(type, handler as (data: ServerMessage) => void);
@@ -34,16 +34,16 @@ class FakeSocket implements GameSocket {
 		this.sent.push(message);
 		return true;
 	}
-	onStatus(handler: (s: ConnectionStatus) => void) {
+	onStatus(handler: (s: ConnectionStatus, r: Rejection | null) => void) {
 		this.status = handler;
-		handler('connecting');
+		handler('connecting', null);
 	}
 	close() {}
 	emit(message: ServerMessage) {
 		this.handlers.get(message.type)?.(message);
 	}
-	setStatus(s: ConnectionStatus) {
-		this.status?.(s);
+	setStatus(s: ConnectionStatus, r: Rejection | null = null) {
+		this.status?.(s, r);
 	}
 }
 
@@ -263,8 +263,15 @@ describe('MultiplayerGameState clock view', () => {
 describe('MultiplayerGameState connection status (SM-1.7)', () => {
 	it('mirrors terminal socket statuses into the view', () => {
 		const { game, socket } = setup();
-		socket.setStatus('rejected');
+		socket.setStatus('rejected', 'notFound');
 		expect(get(game).connectionStatus).toBe('rejected');
+		expect(get(game).rejection).toBe('notFound');
+	});
+
+	it('keeps the rejection kind so the page can explain it (CR-12)', () => {
+		const { game, socket } = setup();
+		socket.setStatus('rejected', 'rateLimited');
+		expect(get(game).rejection).toBe('rateLimited');
 	});
 });
 

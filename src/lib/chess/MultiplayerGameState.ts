@@ -62,7 +62,9 @@ export class MultiplayerGameState extends GameModel {
 		const hello = (): ClientMessage | null =>
 			this.token ? { type: 'join', token: this.token } : null;
 		this.wsManager = connect ? connect(url, hello) : new WebSocketManager(url, { hello });
-		this.wsManager.onStatus((status) => this.patch({ connectionStatus: status }));
+		this.wsManager.onStatus((status, rejection) =>
+			this.patch({ connectionStatus: status, rejection })
+		);
 		this.setupMessageHandlers();
 	}
 

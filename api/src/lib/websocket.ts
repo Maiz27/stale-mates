@@ -4,6 +4,7 @@ import { URL } from 'url';
 import { getGameRoom, removePlayerFromGame } from './game';
 import { parseClientMessage } from './validate';
 import type { Player } from './types';
+import type { CloseReason } from './protocol';
 import { maxWsConnectionsPerIp, trustProxyHops } from './env';
 
 /** How long a socket may stay open without presenting a seat token. */
@@ -279,7 +280,7 @@ export function parseRoomId(rawUrl: string | undefined): string | null {
 	}
 }
 
-function closeConnection(ws: WebSocket, code: number, reason: string) {
+function closeConnection(ws: WebSocket, code: number, reason: CloseReason) {
 	try {
 		ws.close(code, reason);
 	} catch {
