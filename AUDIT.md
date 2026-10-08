@@ -208,12 +208,12 @@ referenced from commit messages.
 
 ### SM-6 — Features
 
-| #      | Feature                                                                                                                                                                    | Status  |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| SM-6.1 | Draw offer / accept / decline — server-authoritative (offer cleared by a move, mutual offers agree, no spam), protocol + UI                                                | ✅      |
-| SM-6.2 | Rematch swaps colours (seat tokens follow their players)                                                                                                                   | ✅      |
-| SM-6.3 | Keyboard play: accessible "Type a move" input (SAN or coordinates, validated by chess.js) in both modes; closes H8                                                         | ✅      |
-| SM-6.4 | Board colour themes (brown / green / blue / gray) persisted, toned down in dark mode. Extra piece sets not added (would need separately-licensed piece artwork)            | 🟡      |
-| SM-6.5 | Stockfish upgraded from a 3.1 MB asm.js SF10 to Stockfish 18 lite single-threaded WASM (7.3 MB, much stronger/faster), loaded from content-hashed URLs only on the AI page | ✅      |
-| SM-6.6 | Service worker: precached app shell, runtime-cached engine, network-first pages — AI mode works offline after one online visit                                             | ✅      |
-| SM-6.7 | Spectators / chat                                                                                                                                                          | skipped |
+| #      | Feature                                                                                                                                                                        | Status  |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| SM-6.1 | Draw offer / accept / decline — server-authoritative (offer cleared by a move, mutual offers agree, no spam), protocol + UI                                                    | ✅      |
+| SM-6.2 | Rematch swaps colours (seat tokens follow their players)                                                                                                                       | ✅      |
+| SM-6.3 | Keyboard play: accessible "Type a move" input (SAN or coordinates, validated by chess.js) in both modes; closes H8                                                             | ✅      |
+| SM-6.4 | Board colour themes (brown / green / blue / gray) persisted, toned down in dark mode. Extra piece sets not added (would need separately-licensed piece artwork)                | 🟡      |
+| SM-6.5 | Stockfish upgraded from a 3.1 MB asm.js SF10 to Stockfish 18 lite single-threaded WASM (7.3 MB, much stronger/faster), loaded from a versioned static path only on the AI page | ✅      |
+| SM-6.6 | Service worker: precached app shell, runtime-cached engine, network-first pages — AI mode works offline after one online visit                                                 | ✅      |
+| SM-6.7 | Spectators / chat                                                                                                                                                              | skipped |

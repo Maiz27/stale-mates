@@ -14,7 +14,7 @@ playwright-report/
 test-results/
 
 # Vendored third-party bundle
-vendor/
+static/engine/
 
 # Rewritten by `bun add/remove` (2-space indent); not worth fighting over
 package.json

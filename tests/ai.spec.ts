@@ -112,7 +112,20 @@ test.describe('AI mode', () => {
 		// Reload while controlled so the engine (wasm) is fetched through the SW and cached.
 		await page.reload();
 		await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
-		await page.waitForTimeout(1500);
+		// Wait until the engine's wasm has been runtime-cached by the service worker.
+		await expect
+			.poll(
+				() =>
+					page.evaluate(async () => {
+						for (const key of await caches.keys()) {
+							const requests = await (await caches.open(key)).keys();
+							if (requests.some((r) => r.url.endsWith('.wasm'))) return true;
+						}
+						return false;
+					}),
+				{ timeout: 30_000 }
+			)
+			.toBe(true);
 
 		await context.setOffline(true);
 		try {

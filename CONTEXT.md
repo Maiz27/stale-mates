@@ -86,7 +86,7 @@ increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes
 ### Engine / Stockfish / difficulty / hint
 
 - **Engine / Stockfish** — the chess AI (Stockfish 18, single-threaded WebAssembly,
-  vendored in `vendor/stockfish/`), run as a Web Worker in the browser for AI mode only.
+  vendored in `static/engine/stockfish-18.0.8/`), run as a Web Worker in the browser for AI mode only.
   Wrapped by the `Stockfish` class in `src/lib/engine/Stockfish.ts`, which queues
   commands until `readyok`, keeps at most one search in flight and swallows the
   `bestmove` of any cancelled search.

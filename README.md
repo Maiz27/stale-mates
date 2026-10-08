@@ -107,7 +107,7 @@ Follow these instructions to get Stalemates up and running on your local machine
    ```
 
 5. Stockfish: a single-threaded WebAssembly build of Stockfish 18 is vendored in
-   `vendor/stockfish/` and bundled by Vite with hashed file names — no setup needed.
+   `static/engine/stockfish-18.0.8/` — no setup needed.
 
 ## Scripts
 
@@ -230,7 +230,7 @@ This project incorporates third-party software. The licenses for these are inclu
 
 - chess.js: [BSD 2-Clause License](https://github.com/jhlywa/chess.js/blob/master/LICENSE)
 - Chessground: [GPL-3.0 License](https://github.com/lichess-org/chessground/blob/master/LICENSE)
-- Stockfish 18 (vendored WebAssembly build in `vendor/stockfish/`, from stockfish.js):
+- Stockfish 18 (vendored WebAssembly build in `static/engine/stockfish-18.0.8/`, from stockfish.js):
   [GPL-3.0 License](https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt).
   Its source is available from the [Stockfish project](https://github.com/official-stockfish/Stockfish)
   and the [stockfish.js port](https://github.com/nmrugg/stockfish.js).

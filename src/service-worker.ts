@@ -9,9 +9,10 @@
  *
  * - Precache the app shell: every build chunk (except the multi-MB engine
  *   `.wasm`), static files and the prerendered pages.
- * - Content-hashed `/_app/immutable/` files (including the Stockfish wasm,
- *   fetched when the AI page first starts the engine) are cached at runtime,
- *   cache-first — their URLs change whenever their contents do.
+ * - Content-hashed `/_app/immutable/` files and the versioned engine under
+ *   `/engine/<version>/` (the Stockfish wasm is fetched when the AI page first
+ *   starts the engine) are cached at runtime, cache-first — their URLs change
+ *   whenever their contents do.
  * - Page navigations are network-first with a cached fallback.
  * - Cross-origin traffic (the multiplayer API / WebSocket) is never touched:
  *   multiplayer needs the network anyway.
@@ -81,7 +82,7 @@ sw.addEventListener('fetch', (event) => {
 
 	if (PRECACHED.has(url.pathname) && request.mode !== 'navigate') {
 		event.respondWith(cacheFirst(request));
-	} else if (url.pathname.startsWith('/_app/immutable/')) {
+	} else if (url.pathname.startsWith('/_app/immutable/') || url.pathname.startsWith('/engine/')) {
 		event.respondWith(cacheFirst(request));
 	} else if (request.mode === 'navigate') {
 		event.respondWith(networkFirst(request, '/'));

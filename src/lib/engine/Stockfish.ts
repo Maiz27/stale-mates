@@ -1,6 +1,12 @@
 import type { ChessMove } from '$lib/chess/types';
 import { STARTING_FEN } from '$lib/constants';
-import { STOCKFISH_URL } from './engineUrl';
+/**
+ * Stockfish 18 lite (single-threaded WASM), served from a versioned static path.
+ * The worker finds its `.wasm` next to the `.js` by name, which keeps working
+ * when the service worker serves the script from cache (a URL-fragment hint
+ * would be lost there). Bump the folder name when upgrading so caches refresh.
+ */
+export const STOCKFISH_URL = '/engine/stockfish-18.0.8/stockfish-18-lite-single.js';
 
 interface SearchParams {
 	moveTime: number;
