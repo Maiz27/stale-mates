@@ -139,7 +139,8 @@ Backend (`api/`): `bun run dev`, `bun run build`, `bun run start`, `bun run test
 - **End-to-end:** `bun run test:e2e`. The Playwright config builds and previews the
   frontend and starts the API on :3000, so `VITE_API_URL`/`VITE_API_WS_URL` must point
   at `http://localhost:3000` / `ws://localhost:3000` (copy `.env.example` to `.env`).
-  Install a browser once with `bunx playwright install chromium`.
+  Install a browser once with `bunx playwright install chromium` (or point
+  `PW_CHROMIUM_EXECUTABLE` at an existing Chromium).
 
 ## Deployment
 

@@ -28,7 +28,12 @@ const config: PlaywrightTestConfig = {
 		// The board sizes to its column width, so a narrower viewport keeps the
 		// whole 8x8 grid a sane size and on-screen for coordinate-based clicks
 		// (see tests/helpers/board.ts). 820x1100 renders the board at ~672px.
-		viewport: { width: 820, height: 1100 }
+		viewport: { width: 820, height: 1100 },
+		// Optional: run against a preinstalled Chromium instead of the revision this
+		// Playwright version downloads (e.g. sandboxes without `playwright install`).
+		launchOptions: process.env.PW_CHROMIUM_EXECUTABLE
+			? { executablePath: process.env.PW_CHROMIUM_EXECUTABLE }
+			: {}
 	},
 
 	// Two servers: the SvelteKit preview (built with the .env API URLs baked in)
