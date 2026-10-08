@@ -45,9 +45,8 @@
 			setSeatToken(id, you.token);
 			setInviteToken(id, invite.token);
 			open = false;
-			// The room id is a query param (the room page is prerendered), which
-			// resolve() can't express; the path part is still resolved.
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			// The room id is a query param (the room page is prerendered); the path
+			// part is resolved.
 			await goto(`${resolve('/room')}?id=${encodeURIComponent(id)}`);
 		} catch (error) {
 			console.error('Error creating game:', error);

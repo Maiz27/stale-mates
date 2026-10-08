@@ -17,15 +17,21 @@
  * - Cross-origin traffic (the multiplayer API / WebSocket) is never touched:
  *   multiplayer needs the network anyway.
  */
-import { build, files, prerendered, version } from '$service-worker';
+import { immutable, assets, prerendered } from '$app/manifest';
+import { version } from '$app/env';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `stalemates-${version}`;
 
+// Manifest paths are relative to the base path (none here); normalise to "/…".
+const abs = ({ path }: { path: string }) => `/${path.replace(/^\//, '')}`;
+
 const PRECACHE = [
-	...build.filter((path) => !path.endsWith('.wasm')),
-	...files.filter((path) => !path.startsWith('/imgs/screenshot')),
-	...prerendered
+	...immutable.map(abs).filter((path) => !path.endsWith('.wasm')),
+	...assets
+		.map(abs)
+		.filter((path) => !path.startsWith('/imgs/screenshot') && !path.startsWith('/engine/')),
+	...prerendered.map(abs)
 ];
 const PRECACHED = new Set(PRECACHE);
 

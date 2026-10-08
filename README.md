@@ -50,7 +50,7 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 
 ### Frontend
 
-- SvelteKit 2 + Svelte 5 (runes): the user interface
+- SvelteKit 3 + Svelte 5 (runes), Vite 8: the user interface
 - Tailwind CSS 4: styling
 - shadcn-svelte (bits-ui 2, vaul-svelte): accessible UI primitives
 - chessground 9 (via a small in-repo Svelte 5 wrapper): the interactive chessboard
@@ -76,7 +76,7 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ### Prerequisites
 
-- Node.js 22 (see `.nvmrc`; `package.json` `engines` accepts 20.19+ up to 24)
+- Node.js 22.17+ (see `.nvmrc`; SvelteKit 3 needs >= 22.17, `engines` accepts up to 24)
 - Bun 1.2+ (the lockfiles are text `bun.lock`; CI pins Bun 1.4.2)
 
 ### Installation
