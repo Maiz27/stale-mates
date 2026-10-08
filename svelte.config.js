@@ -15,7 +15,11 @@ const config = {
 		// NOTE: all routes are prerendered (see src/routes/+layout.ts), so this app
 		// ships as static HTML + a single catch-all function — staying under Vercel's
 		// Hobby-plan limit of 12 Serverless Functions.
-		adapter: adapter()
+		//
+		// The runtime is pinned so local/CI builds on any Node version (e.g. Node 24,
+		// which adapter-vercel 5 refuses to auto-detect) produce the same function
+		// runtime Vercel will run. Keep in sync with .nvmrc / package.json engines.
+		adapter: adapter({ runtime: 'nodejs22.x' })
 	}
 };
 

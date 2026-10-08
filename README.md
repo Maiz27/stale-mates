@@ -71,8 +71,8 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ### Prerequisites
 
-- Node.js (v18.18.0 or later)
-- Bun
+- Node.js 22 (see `.nvmrc`; `package.json` `engines` accepts 20.19+ up to 24)
+- Bun 1.2+ (the lockfiles are text `bun.lock`; CI pins Bun 1.4.2)
 
 ### Installation
 
@@ -106,42 +106,35 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ## Scripts
 
-The `package.json` includes several scripts for common tasks:
+Frontend (repo root):
 
-```json
-{
-	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
-		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test:integration": "playwright test",
-		"test:unit": "vitest",
-		"lint": "prettier --check . && eslint .",
-		"format": "prettier --write .",
-		"api": "cd api && bun run dev",
-		"api:build": "cd api && bun run build",
-		"dev:all": "concurrently \"bun run dev\" \"bun run api\""
-	}
-}
-```
+| Script              | What it does                                                          |
+| ------------------- | --------------------------------------------------------------------- |
+| `bun run dev`       | SvelteKit dev server (http://localhost:5173)                          |
+| `bun run build`     | Production build (adapter-vercel, `nodejs22.x` runtime)               |
+| `bun run preview`   | Serve the production build locally (http://localhost:4173)            |
+| `bun run check`     | `svelte-kit sync` + `svelte-check` type checking                      |
+| `bun run lint`      | `prettier --check .` and `eslint .`                                   |
+| `bun run format`    | Format everything with Prettier                                       |
+| `bun run test:unit` | Vitest unit tests (`src/**/*.test.ts`)                                |
+| `bun run test:e2e`  | Playwright end-to-end tests (builds + previews the app, starts `api`) |
+| `bun run api`       | Run the backend in watch mode                                         |
+| `bun run dev:all`   | Frontend + backend together                                           |
 
-- `dev`: Runs the SvelteKit development server.
-- `build`: Builds the application for production.
-- `preview`: Previews the production build locally.
-- `check`: Runs type checking and syncs SvelteKit files.
-- `lint`: Runs Prettier and ESLint to check code style.
-- `format`: Formats code using Prettier.
-- `api`: Runs the Express.js API development server.
-- `api:build`: Builds the API for production.
-- `dev:all`: Runs both the frontend and backend concurrently for development.
+Backend (`api/`): `bun run dev`, `bun run build`, `bun run start`, `bun run test`,
+`bun run lint`, `bun run format`.
 
-To run both the frontend and backend concurrently:
+### Testing
 
-```bash
-bun run dev:all
-```
+- **Unit (frontend):** `bunx vitest run` — pure chess core, game model, formatting
+  helpers, the WebSocket manager and the game modes (with fake engine/socket).
+- **Unit (backend):** `cd api && bunx vitest run` — `GameRoom` (moves, clocks,
+  reconnects, draw offers, rematch), the clock/outcome modules, env validation, the
+  rate limiter, the room sweep and the inbound message validator.
+- **End-to-end:** `bun run test:e2e`. The Playwright config builds and previews the
+  frontend and starts the API on :3000, so `VITE_API_URL`/`VITE_API_WS_URL` must point
+  at `http://localhost:3000` / `ws://localhost:3000` (copy `.env.example` to `.env`).
+  Install a browser once with `bunx playwright install chromium`.
 
 ## Deployment
 
@@ -149,10 +142,10 @@ Stalemates ships as **two separate deployment targets** that must be deployed in
 
 ### Two-Target Split
 
-| Target | Code | Host | How |
-| --- | --- | --- | --- |
-| Frontend | repo root (SvelteKit) | Vercel | `adapter-vercel` |
-| Backend | `api/` (Express + `ws`) | A stateful host such as [Fly.io](https://fly.io) | `api/Dockerfile` |
+| Target   | Code                    | Host                                             | How              |
+| -------- | ----------------------- | ------------------------------------------------ | ---------------- |
+| Frontend | repo root (SvelteKit)   | Vercel                                           | `adapter-vercel` |
+| Backend  | `api/` (Express + `ws`) | A stateful host such as [Fly.io](https://fly.io) | `api/Dockerfile` |
 
 The frontend is a stateless SvelteKit app and deploys cleanly to Vercel's serverless platform. The backend is a long-lived, single-instance Express + WebSocket server and must run on a host that keeps a persistent process alive.
 
@@ -171,6 +164,8 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 
 - `ORIGIN` — the deployed frontend origin, used for CORS (e.g. `https://stalemates.magedfaiz.xyz`)
 - `PORT` — port the server listens on (defaults to `3000`)
+- `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
+  default `1800000` = 30 min). Disconnected players can rejoin until then.
 
 ### Deploying the Frontend (Vercel)
 
@@ -227,5 +222,9 @@ This project incorporates third-party software. The licenses for these are inclu
 
 - chess.js: [BSD 2-Clause License](https://github.com/jhlywa/chess.js/blob/master/LICENSE)
 - Chessground: [GPL-3.0 License](https://github.com/lichess-org/chessground/blob/master/LICENSE)
+- Stockfish (shipped as `static/stockfish.js`, an Emscripten build of the engine):
+  [GPL-3.0 License](https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt).
+  Its source is available from the [Stockfish project](https://github.com/official-stockfish/Stockfish)
+  and the [stockfish.js port](https://github.com/nmrugg/stockfish.js).
 
 Please make sure to comply with all license terms when using or modifying this software.

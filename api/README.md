@@ -45,7 +45,7 @@ Follow these instructions to set up the Stalemates API on your local machine for
 
 ### Prerequisites
 
-- Node.js (v18.18.0 or later)
+- Node.js 22 (see the repo-root `.nvmrc`)
 - Bun
 
 ### Installation
@@ -117,11 +117,11 @@ This server is intentionally simple and runs as a **single instance**:
 
 Environment variables (validated at startup; the server fails fast on invalid values):
 
-| Variable      | Required            | Default                 | Notes                                              |
-| ------------- | ------------------- | ----------------------- | -------------------------------------------------- |
-| `PORT`        | No                  | `3000`                  | Must be an integer 1-65535 if set.                 |
-| `ORIGIN`      | In production only  | `http://localhost:5173` | Allowed CORS origin. Required when `NODE_ENV=production`. |
-| `ROOM_TTL_MS` | No                  | `1800000` (30 min)      | Abandoned-room sweep TTL (ms). Positive integer.   |
+| Variable      | Required           | Default                 | Notes                                                     |
+| ------------- | ------------------ | ----------------------- | --------------------------------------------------------- |
+| `PORT`        | No                 | `3000`                  | Must be an integer 1-65535 if set.                        |
+| `ORIGIN`      | In production only | `http://localhost:5173` | Allowed CORS origin. Required when `NODE_ENV=production`. |
+| `ROOM_TTL_MS` | No                 | `1800000` (30 min)      | Abandoned-room sweep TTL (ms). Positive integer.          |
 
 ## API Endpoints
 

@@ -39,16 +39,16 @@ captured as a staged plan in `docs/server-authority-plan.md`.
 
 ## High
 
-| #   | Finding                                                                                                                                                                                               | Location                                | Status |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------ |
-| H1  | **No persistence / single instance** — in-memory `Map`; restart loses all games; can't scale horizontally. Acceptable for a hobby project _if documented_.                                            | `api/src/lib/game.ts:5`                 | ✅     |
-| H2  | **Client reconnect missing despite server support** — `WebSocketManager` opens one socket and never retries; `onClose` never wired, though `reconnectPlayer` + `playerId` cookie exist server-side.   | `src/lib/websocket/WebSocketManager.ts` | ✅     |
-| H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`       | ✅     |
-| H4  | **Memory leaks** — each game creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                           | `AudioCue.ts`, `GameModel.ts`, `api/src/lib/game.ts`   | ✅     |
-| H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                   | ✅     |
-| H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                      | 🟡     |
-| H7  | **SEO/social** — no Open Graph/Twitter cards, no per-page `<title>`, no web manifest despite a full PWA icon set in `static/`.                                                                        | `+layout.svelte`, `app.html`            | ✅     |
-| H8  | **Accessibility** — board is mouse/touch only (keyboard users can't play); no `aria-live` move announcements.                                                                                         | `ChessBoard.svelte`                     | 🟡     |
+| #   | Finding                                                                                                                                                                                               | Location                                             | Status |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
+| H1  | **No persistence / single instance** — in-memory `Map`; restart loses all games; can't scale horizontally. Acceptable for a hobby project _if documented_.                                            | `api/src/lib/game.ts:5`                              | ✅     |
+| H2  | **Client reconnect missing despite server support** — `WebSocketManager` opens one socket and never retries; `onClose` never wired, though `reconnectPlayer` + `playerId` cookie exist server-side.   | `src/lib/websocket/WebSocketManager.ts`              | ✅     |
+| H3  | **Clocks are client-side** — both clients tick independently → drift, `setInterval` throttling when backgrounded, reconnect hands back free time, `firstMovesMade` can freeze a clock.                | `MultiplayerGameState.ts:176-275`                    | ✅     |
+| H4  | **Memory leaks** — each game creates 7 `Audio` objects + a Stockfish Worker with no cleanup; no room TTL (abandoned rooms leak, no rate limiting on `/game/create`).                                  | `AudioCue.ts`, `GameModel.ts`, `api/src/lib/game.ts` | ✅     |
+| H5  | **Testing ≈ zero** — `src/index.test.ts` / `tests/test.ts` are stubs; Vitest + Playwright unused; no CI. Pure functions (Stockfish mappers, `convertTimeOption`, board utils) are trivially testable. | tests                                                | ✅     |
+| H6  | **Missing core chess features** — move list/PGN (data already tracked!), game-result _reason_ (only "wins/draw"), resign, draw offer, board flip.                                                     | UI                                                   | 🟡     |
+| H7  | **SEO/social** — no Open Graph/Twitter cards, no per-page `<title>`, no web manifest despite a full PWA icon set in `static/`.                                                                        | `+layout.svelte`, `app.html`                         | ✅     |
+| H8  | **Accessibility** — board is mouse/touch only (keyboard users can't play); no `aria-live` move announcements.                                                                                         | `ChessBoard.svelte`                                  | 🟡     |
 
 ## Medium
 
@@ -129,3 +129,23 @@ server-authority design doc.
 - **C3(F3) + server-authority plan Steps 4–5** — seat tokens, `Sec-WebSocket-Protocol`/ticket
   transport, HttpOnly creator cookie, server-side color assignment. The riskiest, most user-visible
   change; tracked in issue #10. Join URL/`?color=` scheme unchanged for now.
+
+---
+
+## Follow-up audit (second pass)
+
+A second review found new game-breaking multiplayer bugs, AI/board bugs, backend
+hardening gaps, tooling drift and UX gaps. Items are grouped by work package; IDs are
+referenced from commit messages.
+
+### SM-4 — Tooling & docs
+
+| #      | Finding                                                                                                                                        | Status |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| SM-4.1 | `prettier-plugin-tailwindcss@0.8` crashed on prettier 3.3 (`e.charAt is not a function`); prettier check disabled in CI                        | ✅     |
+| SM-4.2 | `bun install --frozen-lockfile` failed (root + api): binary lockfiles out of sync; CI didn't use frozen installs or pin Bun                    | ✅     |
+| SM-4.3 | `vite build` failed on Node 24 (adapter-vercel 5 auto-runtime); no `engines`/`.nvmrc`                                                          | ✅     |
+| SM-4.4 | `api/Dockerfile` used `npm install`, ignoring the Bun lockfile (non-reproducible image)                                                        | ✅     |
+| SM-4.5 | CI: no api lint, no concurrency/cancel, duplicate push+PR runs, e2e on Node 20, no dependabot, no build step                                   | ✅     |
+| SM-4.6 | `@eslint/js` missing from root devDeps; `@types/js-cookie` in dependencies; DaisyUI `bg-base-100` leftover; stub `tests/test.ts`; dead helpers | ✅     |
+| SM-4.7 | `CONTEXT.md` described the deleted `GameState.ts`/per-field stores; README lacked testing/Node/`ROOM_TTL_MS`/Stockfish GPL notes               | ✅     |

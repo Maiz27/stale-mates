@@ -1,6 +1,4 @@
-import { Chess, SQUARES, type Color as ChessJsColor, type Square } from 'chess.js';
-import type { Color } from 'chessground/types';
-import type { GameMode } from './types';
+import { Chess, SQUARES, type Square } from 'chess.js';
 import { Stockfish } from '$lib/engine/Stockfish';
 
 export function initializeEngine(
@@ -11,14 +9,6 @@ export function initializeEngine(
 	const engine = new Stockfish({ debug, difficulty });
 	engine.onMessage(messageHandler);
 	return engine;
-}
-
-export function isVsAI(gameMode: GameMode): boolean {
-	return gameMode === 'pve';
-}
-
-export function getChessJsColor(color: Color): ChessJsColor {
-	return color === 'white' ? 'w' : 'b';
 }
 
 export function isPromotionMove(
