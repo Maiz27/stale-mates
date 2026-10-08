@@ -226,6 +226,33 @@ test.describe('Multiplayer mode', () => {
 		}
 	});
 
+	test('joining a room keeps the saved AI game and settings (CR2-1)', async ({ page }) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		// A saved AI game and a preference, both under the shared `stalemates:` prefix.
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await expect(page.locator('cg-board piece')).toHaveCount(32);
+		await clickMove(page, 'e2', 'e4', 'white');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect(list.getByText('e4', { exact: true })).toBeVisible();
+		await page.evaluate(() => localStorage.setItem('stalemates:sound', 'off'));
+
+		// Joining stores a seat (and sweeps expired seats).
+		await page.goto(seatUrl(room!, 'black'));
+		await expect(page.getByText('You are playing as')).toContainText('black', {
+			timeout: 15_000
+		});
+
+		expect(await page.evaluate(() => localStorage.getItem('stalemates:sound'))).toBe('off');
+		await page.goto('/ai');
+		await expect(list.getByText('e4', { exact: true })).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole('button', { name: 'Start New Game' })).toHaveCount(0);
+	});
+
 	test('creating a game from home goes straight to the waiting room with an invite link', async ({
 		page
 	}) => {

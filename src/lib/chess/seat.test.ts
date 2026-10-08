@@ -8,6 +8,7 @@ import {
 	setInviteToken,
 	clearSeat,
 	resolveSeatToken,
+	touchSeat,
 	SEAT_TTL_MS
 } from './seat';
 
@@ -115,5 +116,19 @@ describe('seat storage survives closing the tab (CR-5)', () => {
 		expect(resolveSeatToken('r2', 'invite-token-r2')).toBe('invite-token-r2');
 		expect(getSeatToken('r2')).toBe('invite-token-r2');
 		expect(resolveSeatToken('r3', null)).toBeNull();
+	});
+
+	it('leaves other stalemates:* keys alone when sweeping (CR2-1)', () => {
+		local.setItem('stalemates:ai-game', JSON.stringify({ version: 1, moves: ['e2e4'] }));
+		local.setItem('stalemates:sound', 'off');
+		local.setItem('stalemates:board-theme', 'green');
+		local.setItem('stalemates:seat:junk', 'not json');
+		setSeatToken('r1', 'seat-token-r1');
+		touchSeat('r1');
+		expect(local.getItem('stalemates:ai-game')).not.toBeNull();
+		expect(local.getItem('stalemates:sound')).toBe('off');
+		expect(local.getItem('stalemates:board-theme')).toBe('green');
+		// Unparseable seat entries are still cleaned up.
+		expect(local.getItem('stalemates:seat:junk')).toBeNull();
 	});
 });

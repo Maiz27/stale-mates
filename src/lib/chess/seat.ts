@@ -13,9 +13,17 @@
  * which browsers never send to any server.
  */
 
-const PREFIX = 'stalemates:';
-const seatKey = (roomId: string) => `${PREFIX}seat:${roomId}`;
-const inviteKey = (roomId: string) => `${PREFIX}invite:${roomId}`;
+const SEAT_PREFIX = 'stalemates:seat:';
+const INVITE_PREFIX = 'stalemates:invite:';
+const seatKey = (roomId: string) => `${SEAT_PREFIX}${roomId}`;
+const inviteKey = (roomId: string) => `${INVITE_PREFIX}${roomId}`;
+/**
+ * Only seat/invite entries are ours to sweep: other features share the
+ * `stalemates:` namespace (`ai-game`, `sound`, `board-theme`) with values in
+ * their own formats (CR2-1).
+ */
+const isSeatEntryKey = (key: string) =>
+	key.startsWith(SEAT_PREFIX) || key.startsWith(INVITE_PREFIX);
 
 /**
  * How long an unused seat is remembered. The server reaps a room
@@ -71,7 +79,7 @@ function sweep(store: Storage): void {
 	const stale: string[] = [];
 	for (let i = 0; i < store.length; i++) {
 		const key = store.key(i);
-		if (key?.startsWith(PREFIX) && !fresh(parse(store.getItem(key)))) stale.push(key);
+		if (key && isSeatEntryKey(key) && !fresh(parse(store.getItem(key)))) stale.push(key);
 	}
 	for (const key of stale) store.removeItem(key);
 }
