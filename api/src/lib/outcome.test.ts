@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
-import { gameOutcome, hasMatingMaterial } from './outcome';
+import { gameOutcome, canStillCheckmate } from './outcome';
 
 describe('gameOutcome', () => {
 	it('returns null when the game is not over', () => {
@@ -36,15 +36,41 @@ describe('gameOutcome', () => {
 	});
 });
 
-describe('hasMatingMaterial', () => {
-	it('is false for a lone king and true for any other piece', () => {
-		const chess = new Chess('8/8/8/4k3/8/8/8/3QK3 w - - 0 1');
-		expect(hasMatingMaterial(chess, 'black')).toBe(false);
-		expect(hasMatingMaterial(chess, 'white')).toBe(true);
+describe('canStillCheckmate (FIDE 6.9, CR-6)', () => {
+	// `canStillCheckmate(chess, color)`: could `color` mate by ANY legal sequence?
+	const can = (fen: string, color: 'white' | 'black') => canStillCheckmate(new Chess(fen), color);
+
+	it('a lone king can never mate', () => {
+		expect(can('8/8/8/4k3/8/8/8/3QK3 w - - 0 1', 'black')).toBe(false);
 	});
 
-	it('counts a single minor piece as mating material (helpmates exist)', () => {
-		const chess = new Chess('8/8/8/4k3/8/8/2n5/3QK3 w - - 0 1');
-		expect(hasMatingMaterial(chess, 'black')).toBe(true);
+	it('K+N or K+B against a lone king cannot mate', () => {
+		expect(can('8/8/8/4k3/8/8/8/3NK3 w - - 0 1', 'white')).toBe(false);
+		expect(can('8/8/8/4k3/8/8/8/3BK3 w - - 0 1', 'white')).toBe(false);
+	});
+
+	it('bishops all on one square colour cannot mate a lone king', () => {
+		// c1 and e3 are both dark squares.
+		expect(can('8/8/8/4k3/8/4B3/8/2B1K3 w - - 0 1', 'white')).toBe(false);
+	});
+
+	it('bishops on both colours, two knights, or any major piece / pawn can', () => {
+		expect(can('8/8/8/4k3/8/8/8/2BBK3 w - - 0 1', 'white')).toBe(true);
+		expect(can('8/8/8/4k3/8/8/8/2NNK3 w - - 0 1', 'white')).toBe(true);
+		expect(can('8/8/8/4k3/8/8/8/3RK3 w - - 0 1', 'white')).toBe(true);
+		expect(can('8/8/8/4k3/8/8/4P3/4K3 w - - 0 1', 'white')).toBe(true);
+	});
+
+	it('a minor piece can still helpmate when the loser has material to block with', () => {
+		expect(can('8/8/8/4k3/8/8/2n5/3QK3 w - - 0 1', 'black')).toBe(true);
+		expect(can('8/8/8/4k3/8/8/4p3/3NK3 w - - 0 1', 'white')).toBe(true);
+		expect(can('8/8/3n4/4k3/8/8/8/3BK3 w - - 0 1', 'white')).toBe(true);
+	});
+
+	it('same-coloured bishops on both sides is a dead position', () => {
+		// White bishop c1 (dark), black bishop f8 (dark).
+		expect(can('5b2/8/8/4k3/8/8/8/2B1K3 w - - 0 1', 'white')).toBe(false);
+		// Black bishop on a light square: a helpmate exists.
+		expect(can('4b3/8/8/4k3/8/8/8/2B1K3 w - - 0 1', 'white')).toBe(true);
 	});
 });

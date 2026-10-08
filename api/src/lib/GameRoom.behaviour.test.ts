@@ -164,6 +164,27 @@ describe('flag fall (SM-1.4)', () => {
 		});
 	});
 
+	it('scores a timeout against K+N vs a lone king as a draw (CR-6)', () => {
+		const { room, black, clock } = setup(1);
+		// White flags; black has only K+N against white's lone king: no mate possible.
+		(room as unknown as { chess: Chess }).chess.load('8/8/8/4k3/8/8/2n5/4K3 w - - 0 1');
+		clock.advance(61_000);
+		room.onFlagFall();
+		expect(black.last('gameOver')).toMatchObject({
+			winner: 'draw',
+			reason: 'timeoutVsInsufficient'
+		});
+	});
+
+	it('clears the pending watchdog when a late move triggers the flag check (CR-7)', () => {
+		const { room, whiteId, clock } = setup(1);
+		expect(vi.getTimerCount()).toBe(1); // the flag watchdog for white
+		clock.advance(61_000); // fake clock only: the watchdog hasn't fired
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		expect(room.gameStarted).toBe(false);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	it('awards the win on time when the opponent has mating material', () => {
 		const { room, black, clock } = setup(1);
 		clock.advance(61_000);

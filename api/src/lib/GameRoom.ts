@@ -15,7 +15,7 @@ import {
 } from './types';
 import type { GameStateMessage } from './protocol';
 import { ClockMs, ClockSnapshot, buildSnapshot, clockAfterMove, remainingMs } from './clock';
-import { gameOutcome, hasMatingMaterial } from './outcome';
+import { gameOutcome, canStillCheckmate } from './outcome';
 
 /** How long a disconnected opponent has to come back before the other side may claim the win. */
 export const DEFAULT_DISCONNECT_GRACE_MS = 60_000;
@@ -415,7 +415,9 @@ export class GameRoom {
 
 	/** Exposed for tests: run the flag-fall check now. */
 	onFlagFall() {
-		this.flagTimer = null;
+		// Also reached directly from handleMove (a move after the deadline), when the
+		// watchdog is still pending: clear it, don't just forget it (CR-7).
+		this.clearFlagTimer();
 		if (!this.gameStarted || this.timeControl.isUnlimited) return;
 
 		const remaining = remainingMs(
@@ -436,7 +438,7 @@ export class GameRoom {
 		this.turnStartedAt = null;
 		const winner = opposite(this.currentTurn);
 		// Losing on time to a side that cannot possibly mate is a draw (FIDE 6.9).
-		if (!hasMatingMaterial(this.chess, winner)) {
+		if (!canStillCheckmate(this.chess, winner)) {
 			this.finishGame('draw', 'timeoutVsInsufficient');
 		} else {
 			this.finishGame(winner, 'timeout');
