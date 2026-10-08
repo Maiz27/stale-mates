@@ -137,10 +137,8 @@ export class ChessCore {
 			reason = 'threefold';
 		} else if (this.chess.isInsufficientMaterial()) {
 			reason = 'insufficient';
-		} else {
-			// Distinguish the fifty-move rule via the FEN halfmove clock (>= 100 ply).
-			const halfmoveClock = Number(this.chess.fen().split(' ')[4]);
-			reason = Number.isFinite(halfmoveClock) && halfmoveClock >= 100 ? 'fiftyMove' : 'draw';
+		} else if (this.chess.isDrawByFiftyMoves()) {
+			reason = 'fiftyMove';
 		}
 		return { isOver: true, winner: 'draw', reason };
 	}

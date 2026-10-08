@@ -6,7 +6,7 @@
       "name": "stale-mates",
       "dependencies": {
         "bits-ui": "^0.21.13",
-        "chess.js": "^1.0.0-beta.8",
+        "chess.js": "^1.4.0",
         "clsx": "^2.1.1",
         "mode-watcher": "^0.3.1",
         "svelte-chessground": "^2.0.3",
@@ -312,7 +312,7 @@
 
     "check-error": ["check-error@1.0.3", "", { "dependencies": { "get-func-name": "^2.0.2" } }, "sha512-iKEoDYaRmd1mxM90a2OEfWhjsjPpYPuQ+lMYsoxB126+t8fw7ySEO48nmDg5COTjxDI65/Y2OWpeEHk3ZOe8zg=="],
 
-    "chess.js": ["chess.js@1.0.0-beta.8", "", {}, "sha512-UngzUMXmexcQaQA/UEJuJj5vatEy34awYMD5YMOp/FW3HM7lqspp7ymYs5JAmquDq0WROtURRfSffoa/vrCCyw=="],
+    "chess.js": ["chess.js@1.4.0", "", {}, "sha512-BBJgrrtKQOzFLonR0l+k64A98NLemPwNsCskwb+29bRwobUa4iTm51E1kwGPbWXAcfdDa18nad6vpPPKPWarqw=="],
 
     "chessground": ["chessground@8.4.0", "", {}, "sha512-0LPdp2Ln/EzeH/T63fDO4Hn9KcSExoMOqkgz3fPjPiY1mSHDBqVuU3drbctHIdorl6hkyQC3qZPMmNHYgZjnsA=="],
 
