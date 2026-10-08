@@ -9,7 +9,7 @@
 
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import { Chessground } from 'svelte-chessground';
+	import Chessground from './Chessground.svelte';
 	import PromotionModal from './PromotionModal.svelte';
 	import type { Config } from 'chessground/config';
 	import type { Color, Key } from 'chessground/types';
@@ -171,7 +171,7 @@
 			{resultText}
 		</div>
 	{/if}
-	<Chessground bind:this={chessground} {config} {orientation} />
+	<Chessground bind:this={chessground} {config} />
 	{#if view.promotionMove}
 		<PromotionModal
 			bind:open={promotionModalOpen}
