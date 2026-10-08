@@ -301,3 +301,40 @@ describe('rematch colour swap (SM-6)', () => {
 		expect(fresh.last('seat')).toMatchObject({ color: 'black' });
 	});
 });
+
+describe('joining after the creator left (CR-3)', () => {
+	it("tells the joiner the creator is away, with grace measured from the creator's disconnect", () => {
+		let now = 1_000_000;
+		const room = new GameRoom({ time: 0, disconnectGraceMs: 60_000, now: () => now });
+		const tokens = room.initialTokens();
+		const creator = new FakeWs();
+		const creatorId = room.claimSeat(tokens.white, asWs(creator))!.id;
+		room.removePlayer(creatorId, asWs(creator));
+
+		now += 20_000;
+		const joiner = new FakeWs();
+		const joinerId = room.claimSeat(tokens.black, asWs(joiner))!.id;
+
+		expect(joiner.of('opponentJoined')).toHaveLength(0);
+		expect(joiner.last('gameStart')).toMatchObject({
+			opponentConnected: false,
+			opponentGraceMs: 40_000
+		});
+
+		now += 40_000;
+		room.handleMessage(joinerId, { type: 'claimVictory' });
+		expect(joiner.last('gameOver')).toMatchObject({ winner: 'black', reason: 'abandonment' });
+	});
+
+	it('reports a present creator as connected', () => {
+		const { white, black } = setup();
+		expect(white.last('gameStart')).toMatchObject({
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		expect(black.last('gameStart')).toMatchObject({
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+	});
+});

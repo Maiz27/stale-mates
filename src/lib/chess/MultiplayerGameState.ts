@@ -193,9 +193,16 @@ export class MultiplayerGameState extends GameModel {
 
 	private handleGameStart(data: ServerMessageOf<'gameStart'>) {
 		this.core.load(data.fen);
+		// The opponent may already be gone (the creator closed the waiting room
+		// before we joined): the server says so, with the grace time left (CR-3).
+		const opponentConnected = data.opponentConnected ?? true;
 		this.patch({
 			started: true,
-			opponentConnected: true,
+			opponentConnected,
+			opponentClaimableAt:
+				!opponentConnected && data.opponentGraceMs != null
+					? Date.now() + data.opponentGraceMs
+					: null,
 			moveHistory: [],
 			gameOver: { isOver: false, winner: null }
 		});

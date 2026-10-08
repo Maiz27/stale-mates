@@ -89,6 +89,10 @@ export type ServerMessage =
 			turn: Color;
 			timeControl: TimeControl;
 			clock: ClockSnapshot;
+			/** False when the opponent's seat is taken but they are disconnected (e.g. the creator left before you joined). */
+			opponentConnected: boolean;
+			/** Ms until a win by abandonment may be claimed; null while the opponent is connected. */
+			opponentGraceMs: number | null;
 	  }
 	| { type: 'clock'; clock: ClockSnapshot }
 	| { type: 'gameOver'; winner: Color | 'draw'; reason: GameOverReason; clock: ClockSnapshot }

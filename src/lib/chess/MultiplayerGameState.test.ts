@@ -116,7 +116,9 @@ describe('MultiplayerGameState resync (SM-1.5)', () => {
 			fen: START,
 			turn: 'white',
 			timeControl: unlimited,
-			clock: NO_CLOCK
+			clock: NO_CLOCK,
+			opponentConnected: true,
+			opponentGraceMs: null
 		});
 		game.makeMove({ from: 'e2', to: 'e4' });
 		expect(get(game).moveHistory).toHaveLength(1);
@@ -202,7 +204,9 @@ describe('MultiplayerGameState opponent presence (SM-1.6)', () => {
 			fen: START,
 			turn: 'white',
 			timeControl: unlimited,
-			clock: NO_CLOCK
+			clock: NO_CLOCK,
+			opponentConnected: true,
+			opponentGraceMs: null
 		});
 		socket.emit({ type: 'opponentDisconnected', graceMs: 60_000 });
 		expect(get(game).opponentConnected).toBe(false);
@@ -211,6 +215,24 @@ describe('MultiplayerGameState opponent presence (SM-1.6)', () => {
 		socket.emit({ type: 'opponentReconnected' });
 		expect(get(game).opponentConnected).toBe(true);
 		expect(get(game).opponentClaimableAt).toBeNull();
+	});
+
+	it('respects an absent opponent on gameStart (CR-3)', () => {
+		const { game, socket } = setup();
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK,
+			opponentConnected: false,
+			opponentGraceMs: 40_000
+		});
+		expect(get(game).started).toBe(true);
+		expect(get(game).opponentConnected).toBe(false);
+		expect(get(game).opponentClaimableAt).toBe(41_000);
 	});
 
 	it('sends a claimVictory frame', () => {
@@ -229,7 +251,9 @@ describe('MultiplayerGameState clock view', () => {
 			fen: START,
 			turn: 'white',
 			timeControl: { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false },
-			clock: { whiteMs: 180_000, blackMs: 180_000, running: 'white', serverTime: Date.now() }
+			clock: { whiteMs: 180_000, blackMs: 180_000, running: 'white', serverTime: Date.now() },
+			opponentConnected: true,
+			opponentGraceMs: null
 		});
 		expect(get(game).clock.lowTimeThreshold).toBe(30);
 		game.destroy();
@@ -278,7 +302,9 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 			fen: START,
 			turn: 'white',
 			timeControl: unlimited,
-			clock: NO_CLOCK
+			clock: NO_CLOCK,
+			opponentConnected: true,
+			opponentGraceMs: null
 		});
 
 	it('offers a draw once and shows an incoming offer', () => {

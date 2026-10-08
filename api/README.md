@@ -160,7 +160,8 @@ Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRema
 `acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`.
 
 Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
-`opponentReconnected`, `gameStart`, `opponentMove` (normalised), `clock`, `gameOver`
+`opponentReconnected`, `gameStart` (incl. opponent presence: `opponentConnected`,
+`opponentGraceMs` — the creator may have left before the friend joined), `opponentMove` (normalised), `clock`, `gameOver`
 (`winner`, `reason`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
 result, rematch and draw-offer state, opponent presence), `rematchOffer`,
 `rematchAccepted { color }` (colours swap on every rematch), `drawOffer`, `drawDeclined`.

@@ -122,6 +122,33 @@ test.describe('Multiplayer mode', () => {
 		await expect(page.getByRole('button', { name: 'Back to Home' })).toBeVisible();
 	});
 
+	test('joining after the creator left shows them as disconnected (CR-3)', async ({
+		browser,
+		page
+	}) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const creator = await a.newPage();
+			await creator.goto(seatUrl(room!, 'white'));
+			await expect(creator.getByText('Waiting for opponent to join…')).toBeVisible({
+				timeout: 15_000
+			});
+			await creator.close();
+
+			const friend = await b.newPage();
+			await friend.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(friend)).toBeVisible({ timeout: 20_000 });
+			await expect(friend.getByText('Opponent disconnected')).toBeVisible({ timeout: 15_000 });
+			await expect(friend.getByText(/You can claim the win in \d+s/)).toBeVisible();
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
 	test('a used invite link cannot take over the seat', async ({ browser, page }) => {
 		const room = await createRoom(page);
 		test.skip(room === null, 'API server not reachable');

@@ -136,7 +136,10 @@ export class GameRoom {
 		const opponent = this.opponentOf(player);
 		if (opponent) {
 			this.sendToPlayer(opponent, { type: 'opponentJoined' });
-			this.sendToPlayer(player, { type: 'opponentJoined' });
+			// The creator may have left the waiting room before the friend joined:
+			// only claim they're here if they are. `gameStart` carries their presence
+			// and the grace left (measured from their actual disconnect) (CR-3).
+			if (opponent.connected) this.sendToPlayer(player, { type: 'opponentJoined' });
 			this.startGame();
 		} else {
 			this.resyncPlayer(player);
@@ -554,7 +557,8 @@ export class GameRoom {
 				timeControl: this.timeControl,
 				fen: this.chess.fen(),
 				turn: this.currentTurn,
-				clock: this.currentSnapshot()
+				clock: this.currentSnapshot(),
+				...this.opponentPresence(player)
 			});
 		});
 		this.scheduleFlagTimer();
@@ -596,8 +600,6 @@ export class GameRoom {
 	 * state (audit SM-1.3), and opponent presence (audit SM-1.6).
 	 */
 	stateMessageFor(player: Player): GameStateMessage {
-		const opponent = this.opponentOf(player);
-		const opponentGone = opponent && !opponent.connected && opponent.disconnectedAt !== null;
 		return {
 			type: 'gameState',
 			started: this.gameStarted,
@@ -613,11 +615,27 @@ export class GameRoom {
 			},
 			drawOffer:
 				this.drawOffer === null ? null : this.drawOffer === player.color ? 'mine' : 'opponent',
+			...this.opponentPresence(player)
+		};
+	}
+
+	/**
+	 * Whether `player`'s opponent is connected and, if they are away, the ms left
+	 * until the win may be claimed (0 = claimable now), counted from the moment
+	 * they actually disconnected.
+	 */
+	private opponentPresence(player: Player): {
+		opponentConnected: boolean;
+		opponentGraceMs: number | null;
+	} {
+		const opponent = this.opponentOf(player);
+		const away = opponent && !opponent.connected ? opponent.disconnectedAt : null;
+		return {
 			opponentConnected: !!opponent && opponent.connected,
-			// Ms left until the win may be claimed (0 = claimable now), if the opponent is away.
-			opponentGraceMs: opponentGone
-				? Math.max(0, this.disconnectGraceMs - (this.now() - opponent.disconnectedAt!))
-				: null
+			opponentGraceMs:
+				away === null || away === undefined
+					? null
+					: Math.max(0, this.disconnectGraceMs - (this.now() - away))
 		};
 	}
 }
