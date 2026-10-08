@@ -7,16 +7,26 @@
 	// Displays the game's move history in standard algebraic notation (SAN),
 	// paired White/Black per row. Doubles as the screen-reader announcement
 	// host via the aria-live region below.
-	export let moves: string[] = [];
-	export let white = 'White';
-	export let black = 'Black';
-	export let result: GameOver = { isOver: false, winner: null };
-	export let event = 'Casual game';
+	let {
+		moves = [],
+		white = 'White',
+		black = 'Black',
+		result = { isOver: false, winner: null },
+		event = 'Casual game'
+	}: {
+		moves?: string[];
+		white?: string;
+		black?: string;
+		result?: GameOver;
+		event?: string;
+	} = $props();
 
-	$: rows = pairMoves(moves);
-	$: announcement = moves.length ? describeMove(moves.length - 1, moves[moves.length - 1]) : '';
+	const rows = $derived(pairMoves(moves));
+	const announcement = $derived(
+		moves.length ? describeMove(moves.length - 1, moves[moves.length - 1]) : ''
+	);
 
-	let feedback = '';
+	let feedback = $state('');
 	let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function pairMoves(list: string[]) {
@@ -66,7 +76,7 @@
 		<div class="flex items-center gap-1">
 			<button
 				class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-				on:click={copyPgn}
+				onclick={copyPgn}
 				disabled={moves.length === 0}
 				title="Copy PGN"
 			>
@@ -74,7 +84,7 @@
 			</button>
 			<button
 				class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-				on:click={downloadPgn}
+				onclick={downloadPgn}
 				disabled={moves.length === 0}
 				title="Download PGN"
 				aria-label="Download PGN"

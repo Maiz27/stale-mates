@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import QuestionMark from 'svelte-radix/QuestionMark.svelte';
 	import ThickArrowLeft from 'svelte-radix/ThickArrowLeft.svelte';
 	import Loop from 'svelte-radix/Loop.svelte';
@@ -18,16 +19,17 @@
 	const SAVE_KEY = 'stalemates:ai-game';
 
 	// The game state is itself a `Readable<GameView>` — `$gameState` is the view.
+	const initialSettings = get(settingsStore);
 	const gameState = new AIGameState({
-		player: $settingsStore.color || 'white',
-		difficulty: $settingsStore.difficulty,
+		player: initialSettings.color || 'white',
+		difficulty: initialSettings.difficulty,
 		debug: false
 	});
 
-	let boardFlipped = false;
+	let boardFlipped = $state(false);
 	// Don't persist until the saved game (if any) has been restored, or the initial
 	// empty board would overwrite it.
-	let hydrated = false;
+	let hydrated = $state(false);
 
 	// Resume an in-progress game after a refresh (SM-5).
 	onMount(() => {
@@ -41,7 +43,10 @@
 	});
 
 	// Persist after every change; finished or reset games clear the save.
-	$: if (hydrated) persist($gameState);
+	$effect(() => {
+		const view = $gameState;
+		if (hydrated) persist(view);
+	});
 	function persist(_view: unknown) {
 		void _view;
 		try {
@@ -84,21 +89,22 @@
 
 	// Derived from the model (not the settings store) so the board can never
 	// disagree with the side the AI thinks you're playing (SM-2.4).
-	$: canUndo = $gameState && $settingsStore.undo && gameState.canUndo();
-	$: canHint =
+	const canUndo = $derived($gameState && $settingsStore.undo && gameState.canUndo());
+	const canHint = $derived(
 		$gameState.started &&
-		$settingsStore.hints &&
-		!$gameState.gameOver.isOver &&
-		$gameState.turn === $gameState.player &&
-		!$gameState.hintPending;
-	$: inProgress = $gameState.started && !$gameState.gameOver.isOver;
+			$settingsStore.hints &&
+			!$gameState.gameOver.isOver &&
+			$gameState.turn === $gameState.player &&
+			!$gameState.hintPending
+	);
+	const inProgress = $derived($gameState.started && !$gameState.gameOver.isOver);
 
-	$: aiName = `Stockfish · ${getDifficultyLabel($settingsStore.difficulty)}`;
-	$: aiColor = ($gameState.player === 'white' ? 'black' : 'white') as 'white' | 'black';
+	const aiName = $derived(`Stockfish · ${getDifficultyLabel($settingsStore.difficulty)}`);
+	const aiColor = $derived<'white' | 'black'>($gameState.player === 'white' ? 'black' : 'white');
 	// The bar nearest you is "you" unless the board is flipped.
-	$: topIsAi = !boardFlipped;
-	$: whiteName = $gameState.player === 'white' ? 'You' : aiName;
-	$: blackName = $gameState.player === 'black' ? 'You' : aiName;
+	const topIsAi = $derived(!boardFlipped);
+	const whiteName = $derived($gameState.player === 'white' ? 'You' : aiName);
+	const blackName = $derived($gameState.player === 'black' ? 'You' : aiName);
 </script>
 
 <svelte:head>

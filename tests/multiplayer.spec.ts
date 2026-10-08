@@ -19,11 +19,11 @@ const API_URL = process.env.VITE_API_URL ?? 'http://localhost:3000';
  */
 type Room = { id: string; white: string; black: string };
 
-async function createRoom(page: Page): Promise<Room | null> {
+async function createRoom(page: Page, time = 0): Promise<Room | null> {
 	let res;
 	try {
 		res = await page.request.post(`${API_URL}/game/create`, {
-			data: { time: 0, color: 'white' },
+			data: { time, color: 'white' },
 			timeout: 5_000
 		});
 	} catch {
@@ -183,6 +183,43 @@ test.describe('Multiplayer mode', () => {
 			// Colours swap: the former black player is now white.
 			await expect(black.getByText('You are playing as')).toContainText('white');
 			await expect(white.getByText('You are playing as')).toContainText('black');
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
+	test('a running clock does not wipe arrows drawn on the board', async ({ browser, page }) => {
+		const room = await createRoom(page, 3);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await a.newPage();
+			const black = await b.newPage();
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+
+			// Right-drag e2 -> e4 draws a user arrow.
+			const box = (await white.locator('.cg-wrap').boundingBox())!;
+			const sq = box.width / 8;
+			const at = (file: number, rank: number) => ({
+				x: box.x + file * sq + sq / 2,
+				y: box.y + (7 - rank) * sq + sq / 2
+			});
+			const from = at(4, 1);
+			const to = at(4, 3);
+			await white.mouse.move(from.x, from.y);
+			await white.mouse.down({ button: 'right' });
+			await white.mouse.move(to.x, to.y, { steps: 5 });
+			await white.mouse.up({ button: 'right' });
+			const arrows = white.locator('.cg-shapes line, .cg-shapes path');
+			await expect(arrows.first()).toBeAttached();
+
+			// Several clock ticks later the arrow is still there.
+			await white.waitForTimeout(1500);
+			await expect(arrows.first()).toBeAttached();
 		} finally {
 			await a.close();
 			await b.close();

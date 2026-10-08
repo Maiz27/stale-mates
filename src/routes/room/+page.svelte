@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Copy from 'svelte-radix/Copy.svelte';
@@ -24,59 +24,64 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 
-	const id = $page.url.searchParams.get('id');
+	const id = page.url.searchParams.get('id');
 
-	let gameState: MultiplayerGameState | undefined;
-	let view: GameView | undefined;
-	let boardFlipped = false;
+	let gameState = $state.raw<MultiplayerGameState | undefined>(undefined);
+	// Raw: the view is an immutable snapshot replaced on every patch; deep-proxying
+	// it would defeat the board's reference-equality optimisation.
+	let view = $state.raw<GameView | undefined>(undefined);
+	let boardFlipped = $state(false);
 	// No seat token for this room in this tab (e.g. a link without its #seat=… part).
-	let missingSeat = false;
+	let missingSeat = $state(false);
 	// Only the creator's tab holds the opponent's invite token.
-	let opponentLink = '';
+	let opponentLink = $state('');
 	const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 	// Our colour is assigned by the server; until the `seat` arrives show white.
-	$: playerColor = view?.player ?? 'white';
+	const playerColor = $derived(view?.player ?? 'white');
 
 	// Everything the page renders is projected from the single view-model.
-	$: status = view?.connectionStatus ?? 'connecting';
-	$: started = view?.started ?? false;
-	$: opponentConnected = view?.opponentConnected ?? false;
-	$: reconnecting = status === 'reconnecting';
-	$: terminal = status === 'rejected' || status === 'replaced';
-	$: gameOver = view?.gameOver.isOver ?? false;
-	$: opponentOfferedRematch = view?.rematchOffer ?? false;
-	$: rematchOffered = view?.myRematchOffer ?? false;
-	$: isUnlimited = view?.clock.isUnlimited ?? true;
-	$: myTime = view?.clock.myClock ?? 0;
-	$: opponentTime = view?.clock.opponentClock ?? 0;
-	$: lowTime = view?.clock.lowTimeThreshold ?? 0;
-	$: sanHistory = view?.sanHistory ?? [];
+	const status = $derived(view?.connectionStatus ?? 'connecting');
+	const started = $derived(view?.started ?? false);
+	const opponentConnected = $derived(view?.opponentConnected ?? false);
+	const reconnecting = $derived(status === 'reconnecting');
+	const terminal = $derived(status === 'rejected' || status === 'replaced');
+	const gameOver = $derived(view?.gameOver.isOver ?? false);
+	const opponentOfferedRematch = $derived(view?.rematchOffer ?? false);
+	const rematchOffered = $derived(view?.myRematchOffer ?? false);
+	const isUnlimited = $derived(view?.clock.isUnlimited ?? true);
+	const myTime = $derived(view?.clock.myClock ?? 0);
+	const opponentTime = $derived(view?.clock.opponentClock ?? 0);
+	const lowTime = $derived(view?.clock.lowTimeThreshold ?? 0);
+	const sanHistory = $derived(view?.sanHistory ?? []);
 	// Before the first game starts (and with no result yet) we're waiting for the opponent.
-	$: waiting = !started && !gameOver && !opponentConnected;
+	const waiting = $derived(!started && !gameOver && !opponentConnected);
 	// Nothing heard from the server yet.
-	$: connecting = status === 'connecting' && waiting;
+	const connecting = $derived(status === 'connecting' && waiting);
 	// The opponent left mid-game: show a badge and, after the grace period, let me claim the win.
-	$: opponentAway = !waiting && !opponentConnected && !gameOver;
-	$: claimableAt = view?.opponentClaimableAt ?? null;
+	const opponentAway = $derived(!waiting && !opponentConnected && !gameOver);
+	const claimableAt = $derived(view?.opponentClaimableAt ?? null);
 
 	// 1 Hz clock for the abandonment countdown (started in onMount).
-	let now = Date.now();
+	let now = $state(Date.now());
 	let tick: ReturnType<typeof setInterval> | null = null;
-	$: claimInSeconds =
-		claimableAt === null ? null : Math.max(0, Math.ceil((claimableAt - now) / 1000));
+	const claimInSeconds = $derived(
+		claimableAt === null ? null : Math.max(0, Math.ceil((claimableAt - now) / 1000))
+	);
 
 	// Low-time warning uses the server's per-time-control threshold (not a hardcoded 10s).
 	const isLow = (seconds: number, threshold: number) => threshold > 0 && seconds <= threshold;
 
-	$: opponentColor = (playerColor === 'white' ? 'black' : 'white') as 'white' | 'black';
-	$: turn = view?.turn ?? 'white';
-	$: running = started && !gameOver;
-	$: opponentStatus = opponentAway ? 'Disconnected' : '';
-	$: whiteName = playerColor === 'white' ? 'You' : 'Opponent';
-	$: blackName = playerColor === 'black' ? 'You' : 'Opponent';
+	const opponentColor = $derived(
+		(playerColor === 'white' ? 'black' : 'white') as 'white' | 'black'
+	);
+	const turn = $derived(view?.turn ?? 'white');
+	const running = $derived(started && !gameOver);
+	const opponentStatus = $derived(opponentAway ? 'Disconnected' : '');
+	const whiteName = $derived(playerColor === 'white' ? 'You' : 'Opponent');
+	const blackName = $derived(playerColor === 'black' ? 'You' : 'Opponent');
 
-	let copied = false;
+	let copied = $state(false);
 
 	const offerRematch = () => gameState?.offerRematch();
 	const acceptRematch = () => gameState?.acceptRematch();
@@ -84,7 +89,7 @@
 	const offerDraw = () => gameState?.offerDraw();
 	const acceptDraw = () => gameState?.acceptDraw();
 	const declineDraw = () => gameState?.declineDraw();
-	$: drawOffer = view?.drawOffer ?? null;
+	const drawOffer = $derived(view?.drawOffer ?? null);
 	const reload = () => location.reload();
 
 	async function shareInvite() {

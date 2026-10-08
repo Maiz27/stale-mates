@@ -2,22 +2,33 @@
 	import { formatTime } from '$lib/utils';
 
 	/** Name + optional clock shown above/below the board. */
-	export let name: string;
-	export let color: 'white' | 'black';
-	/** Seconds remaining; omit for untimed games. */
-	export let clock: number | null = null;
-	/** This side is to move (its clock is running). */
-	export let active = false;
-	/** At or below the low-time threshold. */
-	export let low = false;
-	/** Optional status text, e.g. "Thinking…" or "Disconnected". */
-	export let status = '';
+	let {
+		name,
+		color,
+		clock = null,
+		active = false,
+		low = false,
+		status = ''
+	}: {
+		name: string;
+		color: 'white' | 'black';
+		/** Seconds remaining; omit for untimed games. */
+		clock?: number | null;
+		/** This side is to move (its clock is running). */
+		active?: boolean;
+		/** At or below the low-time threshold. */
+		low?: boolean;
+		/** Optional status text, e.g. "Thinking…" or "Disconnected". */
+		status?: string;
+	} = $props();
 
-	$: clockClass = low
-		? `bg-red-600 text-white ${active ? 'motion-safe:animate-pulse' : ''}`
-		: active
-			? 'bg-primary text-primary-foreground'
-			: 'bg-muted';
+	const clockClass = $derived(
+		low
+			? `bg-red-600 text-white ${active ? 'motion-safe:animate-pulse' : ''}`
+			: active
+				? 'bg-primary text-primary-foreground'
+				: 'bg-muted'
+	);
 </script>
 
 <div

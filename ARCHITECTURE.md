@@ -41,7 +41,8 @@ that it exposes via `subscribe`. The two modes `extend` it and add only mode-spe
 stubs methods it doesn't support. The route pages (`src/routes/ai/+page.svelte`,
 `src/routes/room/+page.svelte`) subscribe once to the view (`$gameState` / one `subscribe`) and
 call game methods _directly_; the board (`src/lib/components/chessBoard/ChessBoard.svelte`) is a
-presentational component — `view` in, `move`/`promotion` events out.
+presentational component — `view` in, `onmove`/`onpromotion` callbacks out (Svelte 5 runes;
+it wraps chessground 9 via the in-repo `Chessground.svelte`).
 
 The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` and is now
 **authoritative for outcomes and clocks**: game-over (and its reason) comes only from the rules

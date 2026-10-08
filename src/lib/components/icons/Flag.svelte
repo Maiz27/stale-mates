@@ -1,8 +1,6 @@
 <script lang="ts">
 	// Radix Icons has no flag glyph; a matching 15×15 stroke icon for "Resign".
-	let className = '';
-	export { className as class };
-	export let size = 15;
+	let { class: className = '', size = 15 }: { class?: string; size?: number } = $props();
 </script>
 
 <svg

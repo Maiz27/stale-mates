@@ -50,10 +50,10 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 
 ### Frontend
 
-- SvelteKit: For building a responsive and efficient user interface
-- Tailwind CSS: For rapid and customizable styling
-- shadcn-svelte: For pre-built, customizable UI components
-- svelte-chessground: For the interactive chessboard component
+- SvelteKit 2 + Svelte 5 (runes): the user interface
+- Tailwind CSS 4: styling
+- shadcn-svelte (bits-ui 2, vaul-svelte): accessible UI primitives
+- chessground 9 (via a small in-repo Svelte 5 wrapper): the interactive chessboard
 
 ### Backend
 

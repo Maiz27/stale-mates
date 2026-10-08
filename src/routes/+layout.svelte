@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import type { Snippet } from 'svelte';
+	import { page } from '$app/state';
 	import { ModeWatcher } from 'mode-watcher';
 	import Header from '$lib/components/header/Header.svelte';
 	import '../app.css';
+
+	let { children }: { children: Snippet } = $props();
 </script>
 
 <svelte:head>
@@ -19,7 +22,7 @@
 		property="og:description"
 		content="Welcome to Stale-Mates, where chess meets fun for all levels."
 	/>
-	<meta property="og:url" content={`https://stalemates.magedfaiz.xyz${$page.url.pathname}`} />
+	<meta property="og:url" content={`https://stalemates.magedfaiz.xyz${page.url.pathname}`} />
 	<meta property="og:image" content="https://stalemates.magedfaiz.xyz/imgs/og-image.png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
@@ -41,7 +44,7 @@
 	<Header />
 
 	<main class="flex-1">
-		<slot />
+		{@render children()}
 	</main>
 
 	<footer class="border-t py-6 text-center text-sm text-muted-foreground">
