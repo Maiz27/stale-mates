@@ -194,10 +194,19 @@ test.describe('AI mode', () => {
 		await expect(list.getByText('Nf3', { exact: true })).toBeVisible();
 	});
 
-	test('the engine worker reports WASM download progress (CR2-6)', async ({ page }) => {
+	test('the engine worker reports WASM download progress (CR2-6)', async ({ browser }) => {
 		// The engine's load watchdog is re-armed by these reports, so a slow but
 		// moving download isn't mistaken for a failure. Guard the Stockfish.js hook.
-		await page.goto('/ai');
+		// A real download is needed: from cache the whole file can arrive before the
+		// worker has picked up the port (fine in the app — readyok follows at once).
+		// So: no service worker, a fresh HTTP cache, and a wasm response held back.
+		const context = await browser.newContext({ serviceWorkers: 'block' });
+		const page = await context.newPage();
+		await page.route('**/*.wasm', async (route) => {
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			await route.continue();
+		});
+		await page.goto('/');
 		// Keep in sync with STOCKFISH_URL (src/lib/engine/Stockfish.ts).
 		const engineUrl = '/engine/stockfish-18.0.8/stockfish-18-lite-single.js';
 		const reports = await page.evaluate(async (url) => {
@@ -220,6 +229,7 @@ test.describe('AI mode', () => {
 			worker.terminate();
 			return seen;
 		}, engineUrl);
+		await context.close();
 		expect(reports.length).toBeGreaterThan(0);
 		expect(reports.at(-1)).toMatchObject({ loaded: reports.at(-1)!.total });
 	});
