@@ -7,8 +7,8 @@ import type {
 } from '$lib/chess/protocol';
 
 /**
- * - `rejected`: the server refused the join/reconnect (see {@link Rejection} for
- *   why) — terminal, retrying would just hammer it.
+ * - `rejected`: the server refused the join/reconnect, or we gave up reaching it
+ *   (see {@link Rejection} for why) — terminal, retrying would just hammer it.
  * - `replaced`: this seat was opened by a newer connection (another tab) — terminal.
  */
 export type ConnectionStatus =
@@ -27,9 +27,20 @@ export const CLOSE_TRY_AGAIN_LATER = 1013;
  * - `origin`: this site isn't allowed to talk to the game server.
  * - `other`: any other refusal (e.g. no join frame in time).
  * - `unconfigured`: this build has no game server URL (no connection attempted).
+ * - `unreachable`: not a refusal — reconnecting kept failing (server down, or
+ *   closing every connection, e.g. 1011) for the whole retry budget (CR2-7).
  */
 export type Rejection =
-	'notFound' | 'rateLimited' | 'tooManyConnections' | 'origin' | 'other' | 'unconfigured';
+	| 'notFound'
+	| 'rateLimited'
+	| 'tooManyConnections'
+	| 'origin'
+	| 'other'
+	| 'unconfigured'
+	| 'unreachable';
+
+/** How long to keep reconnecting through one outage before giving up. */
+export const DEFAULT_RECONNECT_BUDGET_MS = 2 * 60_000;
 
 const REJECTIONS: Partial<Record<CloseReason, Rejection>> = {
 	'Invalid game room': 'notFound',
@@ -68,6 +79,11 @@ export class WebSocketManager {
 
 	private intentionallyClosed = false;
 	private reconnectAttempts = 0;
+	// When the current outage began: the first drop since the server last sent us
+	// a frame. Reset by a frame, not by `open` — a server that accepts the upgrade
+	// and then closes (1011) would otherwise be retried every 500 ms forever.
+	private outageStartedAt: number | null = null;
+	private readonly reconnectBudgetMs: number;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly baseReconnectDelay = 500;
 	private readonly maxReconnectDelay = 10_000;
@@ -77,10 +93,16 @@ export class WebSocketManager {
 	/**
 	 * @param hello Frame sent first on every (re)connect — the seat `join`, so the
 	 *   credential travels in the message body, never in the URL (audit C3).
+	 * @param reconnectBudgetMs How long one outage may last before reconnecting
+	 *   stops with `rejected` / `unreachable`.
 	 */
-	constructor(url: string | (() => string), options: { hello?: () => ClientMessage | null } = {}) {
+	constructor(
+		url: string | (() => string),
+		options: { hello?: () => ClientMessage | null; reconnectBudgetMs?: number } = {}
+	) {
 		this.urlProvider = typeof url === 'string' ? () => url : url;
 		this.hello = options.hello ?? null;
+		this.reconnectBudgetMs = options.reconnectBudgetMs ?? DEFAULT_RECONNECT_BUDGET_MS;
 		this.connect();
 	}
 
@@ -98,7 +120,6 @@ export class WebSocketManager {
 
 		ws.onopen = () => {
 			if (!isCurrent()) return;
-			this.reconnectAttempts = 0;
 			const hello = this.hello?.();
 			if (hello) ws.send(JSON.stringify(hello));
 			this.setStatus('open');
@@ -114,6 +135,9 @@ export class WebSocketManager {
 				return;
 			}
 			if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+			// The server is talking to us: the connection works, so any outage is over.
+			this.reconnectAttempts = 0;
+			this.outageStartedAt = null;
 			const handler = this.messageHandlers.get(data.type);
 			if (handler) {
 				handler(data);
@@ -152,6 +176,14 @@ export class WebSocketManager {
 
 	private scheduleReconnect() {
 		if (this.reconnectTimer !== null) return;
+
+		const now = Date.now();
+		this.outageStartedAt ??= now;
+		if (now - this.outageStartedAt >= this.reconnectBudgetMs) {
+			this.rejection = 'unreachable';
+			this.setStatus('rejected');
+			return;
+		}
 
 		const delay = Math.min(
 			this.maxReconnectDelay,

@@ -123,4 +123,61 @@ describe('WebSocketManager', () => {
 		socket.onmessage?.({ data: JSON.stringify({ type: 'opponentJoined' }) });
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
+
+	describe('retry budget (CR2-7)', () => {
+		const latest = () => FakeBrowserSocket.instances.at(-1)!;
+
+		it('gives up on a server that keeps failing (1011) and reports it, retryable', () => {
+			const manager = new WebSocketManager('ws://x', { reconnectBudgetMs: 120_000 });
+			const seen: [ConnectionStatus, Rejection | null][] = [];
+			manager.onStatus((s, r) => seen.push([s, r]));
+			// Every attempt upgrades fine and is then closed with 1011 before any frame.
+			for (let i = 0; i < 100 && seen.at(-1)?.[0] !== 'rejected'; i++) {
+				latest().open();
+				latest().drop(1011, 'Internal server error');
+				vi.advanceTimersByTime(15_000);
+			}
+			expect(seen.at(-1)).toEqual(['rejected', 'unreachable']);
+			// Backed off (an `open` is not proof the session works) and stopped near the budget.
+			expect(FakeBrowserSocket.instances.length).toBeGreaterThan(5);
+			expect(FakeBrowserSocket.instances.length).toBeLessThan(20);
+			const attempts = FakeBrowserSocket.instances.length;
+			vi.advanceTimersByTime(10 * 60_000);
+			expect(FakeBrowserSocket.instances).toHaveLength(attempts);
+		});
+
+		it('gives up when the server stays unreachable', () => {
+			const manager = new WebSocketManager('ws://x', { reconnectBudgetMs: 120_000 });
+			const statuses = track(manager);
+			latest().open();
+			latest().onmessage?.({ data: JSON.stringify({ type: 'opponentJoined' }) });
+			const start = Date.now();
+			latest().drop();
+			while (statuses.at(-1) !== 'rejected' && Date.now() - start < 10 * 60_000) {
+				vi.advanceTimersByTime(1_000);
+				if (latest().readyState === 0) latest().drop();
+			}
+			expect(statuses.at(-1)).toBe('rejected');
+			expect(Date.now() - start).toBeGreaterThanOrEqual(120_000);
+			expect(Date.now() - start).toBeLessThan(150_000);
+		});
+
+		it('starts a fresh budget once the server talks to us again', () => {
+			const manager = new WebSocketManager('ws://x', { reconnectBudgetMs: 120_000 });
+			const statuses = track(manager);
+			latest().open();
+			latest().drop();
+			// 110 s into the outage, a reconnect gets through and the server answers.
+			vi.advanceTimersByTime(110_000);
+			latest().open();
+			latest().onmessage?.({ data: JSON.stringify({ type: 'opponentJoined' }) });
+			expect(statuses.at(-1)).toBe('open');
+			// A new drop, and a failed retry past the old outage's budget: still retrying.
+			latest().drop();
+			vi.advanceTimersByTime(15_000);
+			latest().drop();
+			expect(statuses.at(-1)).toBe('reconnecting');
+			expect(statuses).not.toContain('rejected');
+		});
+	});
 });

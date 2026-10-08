@@ -122,6 +122,12 @@
 			title: "Can't reach the game server",
 			detail: API_NOT_CONFIGURED_MESSAGE,
 			retry: false
+		},
+		unreachable: {
+			title: 'Lost connection to the game server',
+			detail:
+				"We couldn't reconnect for a couple of minutes. Check your connection and try again — your seat is kept.",
+			retry: true
 		}
 	};
 	const rejectionCopy = $derived(REJECTION_COPY[view?.rejection ?? 'notFound']);
