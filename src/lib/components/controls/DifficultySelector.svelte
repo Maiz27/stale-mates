@@ -5,7 +5,7 @@
 
 	export let difficulty: number = 7;
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ difficultyChange: { value: number } }>();
 
 	function handleDifficultyChange(selected: { value: number } | undefined) {
 		if (selected) {
@@ -26,7 +26,7 @@
 			<Select.Value placeholder="Select Difficulty" />
 		</Select.Trigger>
 		<Select.Content>
-			{#each DIFFICULTY_OPTIONS as option}
+			{#each DIFFICULTY_OPTIONS as option (option.value)}
 				<Select.Item value={option.value}>{option.label}</Select.Item>
 			{/each}
 		</Select.Content>

@@ -31,7 +31,7 @@
 		<DropdownMenu.Separator />
 		<DropdownMenu.Label>Board</DropdownMenu.Label>
 		<DropdownMenu.RadioGroup bind:value={board}>
-			{#each BOARD_THEMES as theme}
+			{#each BOARD_THEMES as theme (theme.value)}
 				<DropdownMenu.RadioItem value={theme.value}>{theme.label}</DropdownMenu.RadioItem>
 			{/each}
 		</DropdownMenu.RadioGroup>

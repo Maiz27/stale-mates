@@ -12,7 +12,7 @@
 
 	let options = extraOptions.length > 0 ? [...COLOR_OPTIONS, ...extraOptions] : COLOR_OPTIONS;
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ colorChange: { value: string } }>();
 
 	function handleColorChange(selected: { value: string } | undefined) {
 		if (selected) {
@@ -33,7 +33,7 @@
 			<Select.Value placeholder="Select Color" />
 		</Select.Trigger>
 		<Select.Content>
-			{#each options as option}
+			{#each options as option (option.value)}
 				<Select.Item value={option.value}>{option.label}</Select.Item>
 			{/each}
 		</Select.Content>

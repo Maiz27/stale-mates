@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Gear from 'svelte-radix/Gear.svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -28,7 +29,7 @@
 		if (isSave && onSettingsUpdate) {
 			onSettingsUpdate(settings);
 		} else {
-			goto('/ai');
+			goto(resolve('/ai'));
 		}
 
 		open = false;

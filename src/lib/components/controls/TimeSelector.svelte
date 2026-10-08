@@ -5,7 +5,7 @@
 
 	export let time = 0;
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ timeChange: { value: number } }>();
 
 	function handleTimeChange(selected: { value: number } | undefined) {
 		if (selected) {
@@ -26,7 +26,7 @@
 			<Select.Value placeholder="Select time control" />
 		</Select.Trigger>
 		<Select.Content>
-			{#each TIME_OPTIONS as option}
+			{#each TIME_OPTIONS as option (option.value)}
 				<Select.Item value={option.value}>{option.label}</Select.Item>
 			{/each}
 		</Select.Content>

@@ -39,7 +39,7 @@
 				</Dialog.Description>
 			</Dialog.Header>
 			<div class="flex justify-around">
-				{#each PROMOTION_OPTIONS as option}
+				{#each PROMOTION_OPTIONS as option (option.value)}
 					<Button on:click={() => handlePromotion(option.value)}>{option.label}</Button>
 				{/each}
 			</div>
@@ -55,7 +55,7 @@
 				</Drawer.Description>
 			</Drawer.Header>
 			<div class="flex flex-col space-y-2 px-4">
-				{#each PROMOTION_OPTIONS as option}
+				{#each PROMOTION_OPTIONS as option (option.value)}
 					<Button on:click={() => handlePromotion(option.value)}>{option.label}</Button>
 				{/each}
 			</div>

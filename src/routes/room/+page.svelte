@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Copy from 'svelte-radix/Copy.svelte';
 	import Share1 from 'svelte-radix/Share1.svelte';
 	import Loop from 'svelte-radix/Loop.svelte';
@@ -59,16 +60,9 @@
 	$: opponentAway = !waiting && !opponentConnected && !gameOver;
 	$: claimableAt = view?.opponentClaimableAt ?? null;
 
-	// 1 Hz tick for the abandonment countdown (only while the opponent is away).
+	// 1 Hz clock for the abandonment countdown (started in onMount).
 	let now = Date.now();
 	let tick: ReturnType<typeof setInterval> | null = null;
-	$: if (opponentAway && claimableAt !== null && !tick) {
-		now = Date.now();
-		tick = setInterval(() => (now = Date.now()), 1000);
-	} else if ((!opponentAway || claimableAt === null) && tick) {
-		clearInterval(tick);
-		tick = null;
-	}
 	$: claimInSeconds =
 		claimableAt === null ? null : Math.max(0, Math.ceil((claimableAt - now) / 1000));
 
@@ -114,10 +108,11 @@
 
 	const resign = () => gameState?.resign();
 	const flipBoard = () => (boardFlipped = !boardFlipped);
-	const leave = () => goto('/');
+	const leave = () => goto(resolve('/'));
 
 	onMount(() => {
 		if (!id) return; // invalid room — handled in markup
+		tick = setInterval(() => (now = Date.now()), 1000);
 
 		// An invite link carries the seat token in the fragment. Move it into this
 		// tab's sessionStorage and strip it from the address bar so it isn't left in

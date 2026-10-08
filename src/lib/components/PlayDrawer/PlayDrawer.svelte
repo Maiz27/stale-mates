@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -45,7 +46,10 @@
 			setSeatToken(id, you.token);
 			setInviteToken(id, invite.token);
 			open = false;
-			await goto(`/room?id=${encodeURIComponent(id)}`);
+			// The room id is a query param (the room page is prerendered), which
+			// resolve() can't express; the path part is still resolved.
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			await goto(`${resolve('/room')}?id=${encodeURIComponent(id)}`);
 		} catch (error) {
 			console.error('Error creating game:', error);
 			errorMessage = 'Failed to create game. Please try again.';
