@@ -138,7 +138,7 @@ export class GameRoom {
 			this.sendToPlayer(opponent, { type: 'opponentJoined' });
 			// The creator may have left the waiting room before the friend joined:
 			// only claim they're here if they are. `gameStart` carries their presence
-			// and the grace left (measured from their actual disconnect) (CR-3).
+			// and the grace left, which starts with the game (CR-3, CR2-3).
 			if (opponent.connected) this.sendToPlayer(player, { type: 'opponentJoined' });
 			this.startGame();
 		} else {
@@ -487,6 +487,7 @@ export class GameRoom {
 		this.result = null;
 		this.gameStarted = true;
 		this.initClocks();
+		this.restartAbsenceGrace();
 		this.scheduleFlagTimer();
 
 		this.players.forEach((player) => {
@@ -496,7 +497,8 @@ export class GameRoom {
 				fen: this.chess.fen(),
 				turn: this.currentTurn,
 				clock: this.currentSnapshot(),
-				color: player.color
+				color: player.color,
+				...this.opponentPresence(player)
 			});
 		});
 	}
@@ -561,6 +563,7 @@ export class GameRoom {
 		this.gameStarted = true;
 		this.result = null;
 		this.initClocks();
+		this.restartAbsenceGrace();
 		this.players.forEach((player) => {
 			this.sendToPlayer(player, {
 				type: 'gameStart',
@@ -572,6 +575,20 @@ export class GameRoom {
 			});
 		});
 		this.scheduleFlagTimer();
+	}
+
+	/**
+	 * A game that starts with a player already away (the creator closed the
+	 * waiting room before the friend joined, or left after offering a rematch)
+	 * gives them the full grace period from the start, not from when they left:
+	 * otherwise the opponent could claim a win by abandonment before a single
+	 * move could be played (CR2-3).
+	 */
+	private restartAbsenceGrace() {
+		const now = this.now();
+		for (const player of this.players) {
+			if (!player.connected) player.disconnectedAt = now;
+		}
 	}
 
 	/** Reset both clocks to the initial control and start white's clock now. */
@@ -632,7 +649,8 @@ export class GameRoom {
 	/**
 	 * Whether `player`'s opponent is connected and, if they are away, the ms left
 	 * until the win may be claimed (0 = claimable now), counted from the moment
-	 * they actually disconnected.
+	 * they disconnected, or from the start of the game if they were already gone
+	 * then (CR2-3).
 	 */
 	private opponentPresence(player: Player): {
 		opponentConnected: boolean;

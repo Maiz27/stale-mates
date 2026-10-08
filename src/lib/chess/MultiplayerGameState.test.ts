@@ -439,9 +439,33 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 			turn: 'white',
 			timeControl: unlimited,
 			clock: NO_CLOCK,
-			color: 'black'
+			color: 'black',
+			opponentConnected: true,
+			opponentGraceMs: null
 		});
 		expect(get(game).player).toBe('black');
 		expect(get(game).started).toBe(true);
+	});
+
+	it('restarts the abandonment countdown when a rematch starts with the opponent away (CR2-3)', () => {
+		const { game, socket } = setup();
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		// The opponent offered a rematch and left; the old countdown is long past.
+		socket.emit({ type: 'opponentDisconnected', graceMs: 60_000 });
+		vi.setSystemTime(500_000);
+		socket.emit({
+			type: 'rematchAccepted',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK,
+			color: 'black',
+			opponentConnected: false,
+			opponentGraceMs: 60_000
+		});
+		expect(get(game).opponentConnected).toBe(false);
+		expect(get(game).opponentClaimableAt).toBe(560_000);
+		vi.useRealTimers();
 	});
 });

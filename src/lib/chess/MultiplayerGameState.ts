@@ -22,6 +22,21 @@ export function canOfferDraw(view: GameView): boolean {
 	);
 }
 
+/**
+ * Opponent presence from a server frame: connected (servers that predate the
+ * field omit it) or away, with when the win may be claimed on this clock.
+ */
+function presence(
+	connected: boolean | undefined,
+	graceMs: number | null | undefined
+): Pick<GameView, 'opponentConnected' | 'opponentClaimableAt'> {
+	const opponentConnected = connected ?? true;
+	return {
+		opponentConnected,
+		opponentClaimableAt: !opponentConnected && graceMs != null ? Date.now() + graceMs : null
+	};
+}
+
 /** The slice of {@link WebSocketManager} the game mode uses (lets tests inject a fake). */
 export type GameSocket = Pick<
 	WebSocketManager,
@@ -207,7 +222,9 @@ export class MultiplayerGameState extends GameModel {
 			lastDrawOfferPly: null,
 			gameOver: { isOver: false, winner: null },
 			moveHistory: [],
-			started: true
+			started: true,
+			// The opponent may have left after offering; the grace restarts with the game (CR2-3).
+			...presence(data.opponentConnected, data.opponentGraceMs)
 		});
 		this.lowTimeWarned = false;
 		this.initializeClock(data.timeControl, data.clock);
@@ -238,14 +255,9 @@ export class MultiplayerGameState extends GameModel {
 		this.core.load(data.fen);
 		// The opponent may already be gone (the creator closed the waiting room
 		// before we joined): the server says so, with the grace time left (CR-3).
-		const opponentConnected = data.opponentConnected ?? true;
 		this.patch({
 			started: true,
-			opponentConnected,
-			opponentClaimableAt:
-				!opponentConnected && data.opponentGraceMs != null
-					? Date.now() + data.opponentGraceMs
-					: null,
+			...presence(data.opponentConnected, data.opponentGraceMs),
 			moveHistory: [],
 			drawOffer: null,
 			lastDrawOfferPly: null,
@@ -388,7 +400,6 @@ export class MultiplayerGameState extends GameModel {
 			: { isOver: false, winner: null };
 		if (data.gameOver) this.stopClockTick();
 
-		const opponentConnected = data.opponentConnected ?? true;
 		this.patch({
 			started: data.started,
 			moveHistory: this.core.moves(),
@@ -397,11 +408,7 @@ export class MultiplayerGameState extends GameModel {
 			rematchOffer: data.rematch?.opponent ?? false,
 			myRematchOffer: data.rematch?.mine ?? false,
 			drawOffer: data.drawOffer ?? null,
-			opponentConnected,
-			opponentClaimableAt:
-				!opponentConnected && data.opponentGraceMs != null
-					? Date.now() + data.opponentGraceMs
-					: null
+			...presence(data.opponentConnected, data.opponentGraceMs)
 		});
 		this.updateGameState();
 	}

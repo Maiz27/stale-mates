@@ -324,7 +324,7 @@ describe('rematch colour swap (SM-6)', () => {
 });
 
 describe('joining after the creator left (CR-3)', () => {
-	it("tells the joiner the creator is away, with grace measured from the creator's disconnect", () => {
+	it('tells the joiner the creator is away; the full grace runs from game start (CR2-3)', () => {
 		let now = 1_000_000;
 		const room = new GameRoom({ time: 0, disconnectGraceMs: 60_000, now: () => now });
 		const tokens = room.initialTokens();
@@ -332,19 +332,49 @@ describe('joining after the creator left (CR-3)', () => {
 		const creatorId = room.claimSeat(tokens.white, asWs(creator))!.id;
 		room.removePlayer(creatorId, asWs(creator));
 
-		now += 20_000;
+		// The creator left the waiting room well over a grace period ago.
+		now += 20 * 60_000;
 		const joiner = new FakeWs();
 		const joinerId = room.claimSeat(tokens.black, asWs(joiner))!.id;
 
 		expect(joiner.of('opponentJoined')).toHaveLength(0);
 		expect(joiner.last('gameStart')).toMatchObject({
 			opponentConnected: false,
-			opponentGraceMs: 40_000
+			opponentGraceMs: 60_000
 		});
+
+		// No instant win by abandonment before a move could even be played.
+		room.handleMessage(joinerId, { type: 'claimVictory' });
+		expect(joiner.of('gameOver')).toHaveLength(0);
+
+		now += 20_000;
+		expect(room.stateMessageFor(room.players[1])).toMatchObject({ opponentGraceMs: 40_000 });
+		room.handleMessage(joinerId, { type: 'claimVictory' });
+		expect(joiner.of('gameOver')).toHaveLength(0);
 
 		now += 40_000;
 		room.handleMessage(joinerId, { type: 'claimVictory' });
 		expect(joiner.last('gameOver')).toMatchObject({ winner: 'black', reason: 'abandonment' });
+	});
+
+	it('restarts the grace when a rematch starts with a player away (CR2-3)', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(0, { graceMs: 60_000 });
+		room.handleMessage(whiteId, { type: 'resign' });
+		room.handleMessage(whiteId, { type: 'offerRematch' });
+		room.handleMessage(blackId, { type: 'acceptRematch' });
+		room.handleMessage(whiteId, { type: 'resign' });
+		// Black offers a rematch and leaves; white accepts long after.
+		room.handleMessage(blackId, { type: 'offerRematch' });
+		room.removePlayer(blackId, asWs(black));
+		clock.advance(5 * 60_000);
+		white.clear();
+		room.handleMessage(whiteId, { type: 'acceptRematch' });
+		expect(white.of('rematchAccepted')).toHaveLength(1);
+		room.handleMessage(whiteId, { type: 'claimVictory' });
+		expect(white.of('gameOver')).toHaveLength(0);
+		clock.advance(60_000);
+		room.handleMessage(whiteId, { type: 'claimVictory' });
+		expect(white.last('gameOver')).toMatchObject({ reason: 'abandonment' });
 	});
 
 	it('reports a present creator as connected', () => {

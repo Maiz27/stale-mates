@@ -91,7 +91,11 @@ export type ServerMessage =
 			clock: ClockSnapshot;
 			/** False when the opponent's seat is taken but they are disconnected (e.g. the creator left before you joined). */
 			opponentConnected: boolean;
-			/** Ms until a win by abandonment may be claimed; null while the opponent is connected. */
+			/**
+			 * Ms until a win by abandonment may be claimed; null while the opponent is
+			 * connected. An opponent already away when the game starts gets the full
+			 * grace from the start, not from when they left.
+			 */
 			opponentGraceMs: number | null;
 	  }
 	| { type: 'clock'; clock: ClockSnapshot }
@@ -106,6 +110,13 @@ export type ServerMessage =
 			clock: ClockSnapshot;
 			/** Your colour for the new game — seats swap colours on every rematch. */
 			color: Color;
+			/** As in `gameStart`: the opponent may have left after offering the rematch. */
+			opponentConnected: boolean;
+			/**
+			 * As in `gameStart`: ms until a win by abandonment may be claimed (the full
+			 * grace, counted from the start of the game); null while connected.
+			 */
+			opponentGraceMs: number | null;
 	  }
 	/** The opponent offers a draw. */
 	| { type: 'drawOffer' }

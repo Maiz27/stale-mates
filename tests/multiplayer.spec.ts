@@ -123,7 +123,7 @@ test.describe('Multiplayer mode', () => {
 		await expect(page.getByRole('button', { name: 'Back to Home' })).toBeVisible();
 	});
 
-	test('joining after the creator left shows them as disconnected (CR-3)', async ({
+	test('joining after the creator left shows them as disconnected, with the full grace (CR-3)', async ({
 		browser,
 		page
 	}) => {
@@ -138,12 +138,19 @@ test.describe('Multiplayer mode', () => {
 				timeout: 15_000
 			});
 			await creator.close();
+			// The creator has been gone a while before the friend joins...
+			await page.waitForTimeout(8_000);
 
 			const friend = await b.newPage();
 			await friend.goto(seatUrl(room!, 'black'));
 			await expect(boardLocator(friend)).toBeVisible({ timeout: 20_000 });
 			await expect(friend.getByText('Opponent disconnected')).toBeVisible({ timeout: 15_000 });
-			await expect(friend.getByText(/You can claim the win in \d+s/)).toBeVisible();
+			// ...but the joiner still waits the full grace (60 s), counted from the
+			// start of the game, not from the creator's disconnect (CR2-3).
+			const countdown = friend.getByText(/You can claim the win in \d+s/);
+			await expect(countdown).toBeVisible();
+			const seconds = Number((await countdown.innerText()).match(/in (\d+)s/)![1]);
+			expect(seconds).toBeGreaterThan(56);
 		} finally {
 			await a.close();
 			await b.close();

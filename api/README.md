@@ -168,10 +168,12 @@ Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRema
 
 Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
 `opponentReconnected`, `gameStart` (incl. opponent presence: `opponentConnected`,
-`opponentGraceMs` — the creator may have left before the friend joined), `opponentMove` (normalised), `clock`, `gameOver`
+`opponentGraceMs` — the creator may have left before the friend joined; a player already
+away when a game starts gets the full grace from the start), `opponentMove` (normalised), `clock`, `gameOver`
 (`winner`, `reason`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
 result, rematch and draw-offer state, opponent presence), `rematchOffer`,
-`rematchAccepted { color }` (colours swap on every rematch), `drawOffer`, `drawDeclined`.
+`rematchAccepted { color, opponentConnected, opponentGraceMs }` (colours swap on every
+rematch), `drawOffer`, `drawDeclined`.
 
 Draw offers are server-authoritative: an offer stands until the opponent accepts,
 declines or moves (an implicit decline); both sides offering is an agreement; a side can
