@@ -7,7 +7,7 @@
 
 	const dispatch = createEventDispatcher();
 
-	function handleColorChange(selected: { value: number } | undefined) {
+	function handleTimeChange(selected: { value: number } | undefined) {
 		if (selected) {
 			const { value } = selected;
 			dispatch('timeChange', { value });
@@ -16,14 +16,14 @@
 </script>
 
 <div class="flex items-center gap-2">
-	<label for="color">Time: </label>
+	<label for="time-select">Time control: </label>
 	<Select.Root
 		items={TIME_OPTIONS}
-		onSelectedChange={handleColorChange}
+		onSelectedChange={handleTimeChange}
 		selected={TIME_OPTIONS.find((option) => option.value === time)}
 	>
-		<Select.Trigger class="w-[180px]">
-			<Select.Value placeholder="Select Color" />
+		<Select.Trigger id="time-select" class="w-[180px]">
+			<Select.Value placeholder="Select time control" />
 		</Select.Trigger>
 		<Select.Content>
 			{#each TIME_OPTIONS as option}

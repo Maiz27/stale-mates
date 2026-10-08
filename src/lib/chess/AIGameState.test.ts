@@ -172,3 +172,37 @@ describe('AIGameState hints (SM-2.5)', () => {
 		expect(get(game).hint).toBeNull();
 	});
 });
+
+describe('AIGameState persistence (SM-5)', () => {
+	it('round-trips an in-progress game and resumes the AI if it is its turn', () => {
+		const { game } = setup();
+		game.newGame();
+		game.makeMove({ from: 'e2', to: 'e4' });
+		const saved = game.serialize();
+		expect(saved).toEqual({ version: 1, player: 'white', moves: ['e2e4'] });
+
+		const { game: restored, engine: engine2 } = setup('black');
+		expect(restored.restore(JSON.parse(JSON.stringify(saved)))).toBe(true);
+		const view = get(restored);
+		expect(view.player).toBe('white');
+		expect(view.sanHistory).toEqual(['e4']);
+		expect(view.started).toBe(true);
+		expect(engine2().goCalls).toBe(1); // black (AI) to move
+	});
+
+	it('rejects corrupt saves', () => {
+		const { game } = setup();
+		expect(game.restore({ version: 1, player: 'white', moves: ['e2e5'] })).toBe(false);
+		expect(game.restore({ version: 2 })).toBe(false);
+		expect(game.restore('nope')).toBe(false);
+		expect(get(game).started).toBe(false);
+	});
+
+	it('does not save finished or unstarted games', () => {
+		const { game } = setup();
+		expect(game.serialize()).toBeNull();
+		game.newGame();
+		game.resign();
+		expect(game.serialize()).toBeNull();
+	});
+});

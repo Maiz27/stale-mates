@@ -31,6 +31,7 @@ export class MultiplayerGameState extends GameModel {
 	private serverOffset = 0; // serverTime - local Date.now(), to align the snapshot
 	private unlimited = true; // mirrors the active time control for clock patches
 	private lowTimeThreshold = 0;
+	private lowTimeWarned = false; // play the low-time cue once per game
 
 	roomId: string;
 	private token: string | null;
@@ -54,7 +55,10 @@ export class MultiplayerGameState extends GameModel {
 		const ws = this.wsManager;
 		ws.addMessageHandler('seat', (data) => this.handleSeat(data.color, data.token));
 		ws.addMessageHandler('opponentMove', (data) => this.handleOpponentMove(data.move));
-		ws.addMessageHandler('opponentJoined', () => this.handleOpponentPresent());
+		ws.addMessageHandler('opponentJoined', () => {
+			this.handleOpponentPresent();
+			this.playCue('notify');
+		});
 		ws.addMessageHandler('opponentReconnected', () => this.handleOpponentPresent());
 		ws.addMessageHandler('opponentDisconnected', (data) =>
 			this.handleOpponentDisconnected(data.graceMs)
@@ -133,8 +137,10 @@ export class MultiplayerGameState extends GameModel {
 			moveHistory: [],
 			started: true
 		});
+		this.lowTimeWarned = false;
 		this.initializeClock(data.timeControl, data.clock);
 		this.updateGameState();
+		this.playCue('game-start');
 	}
 
 	private handleOpponentPresent() {
@@ -164,8 +170,10 @@ export class MultiplayerGameState extends GameModel {
 			moveHistory: [],
 			gameOver: { isOver: false, winner: null }
 		});
+		this.lowTimeWarned = false;
 		this.initializeClock(data.timeControl, data.clock);
 		this.updateGameState();
+		this.playCue('game-start');
 	}
 
 	private handleOpponentMove(move: ChessMove) {
@@ -214,6 +222,17 @@ export class MultiplayerGameState extends GameModel {
 
 	/** Project white/black seconds into the player-relative clock view. */
 	private setClock(whiteSeconds: number, blackSeconds: number) {
+		const mine = this.player === 'white' ? whiteSeconds : blackSeconds;
+		if (
+			!this.lowTimeWarned &&
+			!this.unlimited &&
+			this.clockSnapshot?.running === this.player &&
+			mine > 0 &&
+			mine <= this.lowTimeThreshold
+		) {
+			this.lowTimeWarned = true;
+			this.playCue('low-time');
+		}
 		this.patch({
 			clock: {
 				isUnlimited: this.unlimited,

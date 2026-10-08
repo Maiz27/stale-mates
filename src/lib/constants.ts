@@ -7,7 +7,9 @@ export const MOVE_AUDIOS_PATHS = {
 	check: '/audio/move-check.mp3',
 	promote: '/audio/promote.mp3',
 	'game-start': '/audio/game-start.mp3',
-	'game-end': '/audio/game-end.mp3'
+	'game-end': '/audio/game-end.mp3',
+	notify: '/audio/notify.mp3',
+	'low-time': '/audio/ten-seconds.mp3'
 };
 
 export const DIFFICULTY_OPTIONS = [
@@ -25,11 +27,12 @@ export const COLOR_OPTIONS = [
 	{ value: 'black', label: 'Black' }
 ];
 
+// Labels show base minutes + increment seconds, matching the server's time controls.
 export const TIME_OPTIONS = [
 	{ value: 0, label: 'Unlimited' },
-	{ value: 1, label: '1 Minute Game' },
-	{ value: 3, label: '3 Minutes Game' },
-	{ value: 10, label: '10 Minutes Game' }
+	{ value: 1, label: '1+3 · Bullet' },
+	{ value: 3, label: '3+4 · Blitz' },
+	{ value: 10, label: '10+5 · Rapid' }
 ];
 
 export const PROMOTION_OPTIONS = [

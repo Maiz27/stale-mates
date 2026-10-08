@@ -186,3 +186,22 @@ referenced from commit messages.
 | SM-3.3 | Two tabs in one browser shared the seat cookie and fought over it; reconnect never checked colour. Seats are now token-bound and per-tab (`sessionStorage`); colour comes from the seat                                                                                                                                                            | ✅     |
 | SM-3.4 | `new URL(req.url)` outside the try (a malformed URL threw in the connection handler); no WebSocket `Origin` check (CSWSH). Now parsed safely and checked against `ORIGIN` (permissive for localhost outside production)                                                                                                                            | ✅     |
 | SM-3.5 | **C3 seat tokens**: per-seat secrets minted at creation, sent in the first frame (never the URL), single-use invite tokens rotated on first claim, server-assigned colours (incl. `random`). Remaining: HttpOnly creator cookie (see plan doc)                                                                                                     | ✅     |
+
+### SM-5 — UX
+
+| #       | Finding                                                                                                                                                    | Status |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| SM-5.1  | Resign had no confirmation (both modes) — now a shared `ConfirmAction` (dialog / drawer), also used for End Game                                           | ✅     |
+| SM-5.2  | Opponent / AI moves weren't highlighted — `lastMove` passed to chessground                                                                                 | ✅     |
+| SM-5.3  | No player bars; time-control labels hid the increment — name + clock bars above/below the board (respecting flip), labels "1+3 / 3+4 / 10+5"               | ✅     |
+| SM-5.4  | The 250 ms clock tick rebuilt the chessground config, calling `set({fen})` 4×/s and wiping user-drawn arrows — board is `immutable` with sliced deps       | ✅     |
+| SM-5.5  | A11y: unlabeled gear/hint/undo buttons, broken `<label for>` ids (TimeSelector copy-paste "Select Color"), Dialog.Title inside Drawer, terse announcements | ✅     |
+| SM-5.6  | PGN lacked headers/result; no copy feedback; no download — Seven Tag Roster + result token, status feedback, `.pgn` download                               | ✅     |
+| SM-5.7  | AI mode: no thinking indicator, no "play again / swap colours", a refresh lost the game — all added (game persisted to `localStorage`)                     | ✅     |
+| SM-5.8  | Invite flow: disabled link input, no `navigator.share`, Create→Join two-step — creating now lands in the waiting room with a readonly link, copy + share   | ✅     |
+| SM-5.9  | Sound: no mute, no game start/end cues, unused `notify`/`ten-seconds` assets — persisted mute toggle; start/end, opponent-joined and low-time cues         | ✅     |
+| SM-5.10 | Mobile: AI control row didn't wrap; footer outside the min-height layout                                                                                   | ✅     |
+| SM-5.11 | `@iconify/svelte` fetched every icon at runtime from a CDN — replaced with bundled `svelte-radix` icons (+ an inline flag); dependency removed             | ✅     |
+| SM-5.12 | Header loaded the 145 KB 1024px logo for a 48px slot — 96px WebP (1.4 KB) / PNG (5 KB)                                                                     | ✅     |
+| SM-5.13 | SEO: `/room` in the sitemap and indexable; static og:url/title; square logo as og:image — removed + `noindex`, per-page og:url/title, 1200×630 og-image    | ✅     |
+| SM-5.14 | README hero image hot-linked from Google Drive — repo-hosted `static/imgs/screenshot-ai.png`                                                               | ✅     |

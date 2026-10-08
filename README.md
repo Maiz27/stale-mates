@@ -2,7 +2,7 @@
 
 Stalemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Stalemates Now](https://stalemates.magedfaiz.xyz/)
 
-![Portfolio Website Overview](https://drive.google.com/thumbnail?id=1KQZ-_uU-5ii0VdVfKHqHwvgC8G5luN5X&sz=w1024&t=1681358800&mime=image/png)
+![Stale Mates — playing the AI](static/imgs/screenshot-ai.png)
 
 ## Table of Contents
 
@@ -35,11 +35,13 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 
 ## Features
 
-- Play against an AI opponent with adjustable difficulty levels
-- Engage in real-time multiplayer chess games
-- Receive hints to improve your game play
-- Take back moves in AI games for learning and practice
-- Enjoy a responsive and intuitive chessboard interface
+- Play against an AI opponent (Stockfish) with adjustable difficulty, hints and takebacks;
+  in-progress AI games survive a page refresh
+- Real-time multiplayer with a one-step invite link, server-authoritative clocks and
+  results, reconnect handling and rematches
+- Move list with PGN copy/download, last-move highlighting, sound cues (with a mute
+  toggle) and screen-reader move announcements
+- A responsive chessboard with player bars, clocks and light/dark themes
 
 ## Tech Stack
 

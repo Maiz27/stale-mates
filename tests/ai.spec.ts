@@ -72,4 +72,35 @@ test.describe('AI mode', () => {
 			)
 			.toBeGreaterThanOrEqual(2);
 	});
+
+	test('resigning asks for confirmation, then offers play again / swap colours', async ({
+		page
+	}) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await page.getByRole('button', { name: 'Resign game' }).click();
+		await expect(page.getByRole('dialog')).toBeVisible();
+		await page.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+
+		await expect(page.getByText('Game Over: Black wins by resignation')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+		await page.getByRole('button', { name: 'Swap colors' }).click();
+		await expect(page.getByText('Player: Black')).toBeVisible();
+	});
+
+	test('an in-progress game survives a reload', async ({ page }) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await expect(page.locator('cg-board piece')).toHaveCount(32);
+		await clickMove(page, 'e2', 'e4', 'white');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect(list.getByText('e4', { exact: true })).toBeVisible();
+
+		await page.reload();
+		await expect(list.getByText('e4', { exact: true })).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole('button', { name: 'Start New Game' })).toHaveCount(0);
+	});
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Icon from '@iconify/svelte';
+	import Gear from 'svelte-radix/Gear.svelte';
 	import { goto } from '$app/navigation';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -38,9 +38,14 @@
 {#if $isDesktop}
 	<Dialog.Root bind:open>
 		<Dialog.Trigger asChild let:builder>
-			<Button builders={[builder]} variant={isSave ? 'outline' : 'default'}>
+			<Button
+				builders={[builder]}
+				variant={isSave ? 'outline' : 'default'}
+				aria-label={isSave ? 'Game settings' : undefined}
+				title={isSave ? 'Game settings' : undefined}
+			>
 				{#if isSave}
-					<Icon icon="radix-icons:gear" />
+					<Gear aria-hidden="true" />
 				{:else}
 					{title}
 				{/if}
@@ -59,9 +64,14 @@
 {:else}
 	<Drawer.Root bind:open>
 		<Drawer.Trigger asChild let:builder>
-			<Button builders={[builder]} variant={isSave ? 'outline' : 'default'}>
+			<Button
+				builders={[builder]}
+				variant={isSave ? 'outline' : 'default'}
+				aria-label={isSave ? 'Game settings' : undefined}
+				title={isSave ? 'Game settings' : undefined}
+			>
 				{#if isSave}
-					<Icon icon="radix-icons:gear" />
+					<Gear aria-hidden="true" />
 				{:else}
 					{title}
 				{/if}

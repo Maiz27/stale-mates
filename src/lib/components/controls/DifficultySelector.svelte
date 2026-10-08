@@ -16,13 +16,13 @@
 </script>
 
 <div class="flex items-center gap-2">
-	<label for="difficulty">Difficulty: </label>
+	<label for="difficulty-select">Difficulty: </label>
 	<Select.Root
 		items={DIFFICULTY_OPTIONS}
 		onSelectedChange={handleDifficultyChange}
 		selected={DIFFICULTY_OPTIONS.find((option) => option.value === difficulty)}
 	>
-		<Select.Trigger class="w-[180px]">
+		<Select.Trigger id="difficulty-select" class="w-[180px]">
 			<Select.Value placeholder="Select Difficulty" />
 		</Select.Trigger>
 		<Select.Content>

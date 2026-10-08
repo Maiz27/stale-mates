@@ -25,7 +25,15 @@ export type ChessMove = {
 };
 
 export type MoveType =
-	'normal' | 'capture' | 'castle' | 'check' | 'promote' | 'game-start' | 'game-end';
+	| 'normal'
+	| 'capture'
+	| 'castle'
+	| 'check'
+	| 'promote'
+	| 'game-start'
+	| 'game-end'
+	| 'notify'
+	| 'low-time';
 
 // Player-relative clock for display. The game modes resolve white/black into
 // "mine" vs "the opponent's" so consumers never branch on player color.

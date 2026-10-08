@@ -23,13 +23,13 @@
 </script>
 
 <div class="flex items-center gap-2">
-	<label for="color">Color: </label>
+	<label for="color-select">Color: </label>
 	<Select.Root
 		items={options}
 		onSelectedChange={handleColorChange}
 		selected={options.find((option) => option.value === color)}
 	>
-		<Select.Trigger class="w-[180px]">
+		<Select.Trigger id="color-select" class="w-[180px]">
 			<Select.Value placeholder="Select Color" />
 		</Select.Trigger>
 		<Select.Content>

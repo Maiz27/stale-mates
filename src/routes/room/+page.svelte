@@ -2,7 +2,12 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import Icon from '@iconify/svelte';
+	import Copy from 'svelte-radix/Copy.svelte';
+	import Share1 from 'svelte-radix/Share1.svelte';
+	import Loop from 'svelte-radix/Loop.svelte';
+	import Flag from '$lib/components/icons/Flag.svelte';
+	import ConfirmAction from '$lib/components/controls/ConfirmAction.svelte';
+	import PlayerBar from '$lib/components/game/PlayerBar.svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { GameView } from '$lib/chess/types';
@@ -14,7 +19,6 @@
 		seatTokenFromHash,
 		setSeatToken
 	} from '$lib/chess/seat';
-	import { formatTime } from '$lib/utils';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 
@@ -69,6 +73,13 @@
 
 	// Low-time warning uses the server's per-time-control threshold (not a hardcoded 10s).
 	const isLow = (seconds: number, threshold: number) => threshold > 0 && seconds <= threshold;
+
+	$: opponentColor = (playerColor === 'white' ? 'black' : 'white') as 'white' | 'black';
+	$: turn = view?.turn ?? 'white';
+	$: running = started && !gameOver;
+	$: opponentStatus = opponentAway ? 'Disconnected' : '';
+	$: whiteName = playerColor === 'white' ? 'You' : 'Opponent';
+	$: blackName = playerColor === 'black' ? 'You' : 'Opponent';
 
 	let copied = false;
 
@@ -133,6 +144,9 @@
 
 <svelte:head>
 	<title>Play a Friend · Stale Mates</title>
+	<!-- Rooms are private, ephemeral and token-gated: keep them out of search results. -->
+	<meta name="robots" content="noindex, nofollow" />
+	<meta property="og:title" content="Play a Friend · Stale Mates" />
 	<meta
 		name="description"
 		content="Play a real-time game of chess against a friend with a shareable invite link and optional time controls."
@@ -210,10 +224,12 @@
 							/>
 							<div class="flex flex-wrap items-center justify-center gap-2">
 								{#if canShare}
-									<Button on:click={shareInvite}>Share invite</Button>
+									<Button on:click={shareInvite}>
+										<Share1 class="mr-2" aria-hidden="true" /> Share invite
+									</Button>
 								{/if}
 								<Button variant="outline" on:click={copyInvite} aria-label="Copy invite link">
-									<Icon icon="radix-icons:copy" class="mr-2" />
+									<Copy class="mr-2" aria-hidden="true" />
 									{copied ? 'Link copied!' : 'Copy invite link'}
 								</Button>
 								<Button variant="ghost" on:click={leave}>Leave</Button>
@@ -240,43 +256,29 @@
 							{/if}
 						</div>
 					{/if}
-					<div class="mx-auto grid w-4/5 grid-flow-row place-items-center gap-y-2 md:grid-flow-col">
-						{#if !isUnlimited}
-							<div>
-								My Time: <span
-									class={isLow(myTime, lowTime)
-										? 'font-semibold text-red-600 motion-safe:animate-pulse dark:text-red-400'
-										: 'font-semibold text-primary'}
-								>
-									{formatTime(myTime)}
-								</span>
-							</div>
-							<div>
-								Opponent Time: <span
-									class={isLow(opponentTime, lowTime)
-										? 'font-semibold text-red-600 motion-safe:animate-pulse dark:text-red-400'
-										: 'font-semibold text-primary'}
-								>
-									{formatTime(opponentTime)}
-								</span>
-							</div>
-						{:else}
-							<div>Time: <span class="text-primary">Unlimited</span></div>
-						{/if}
-					</div>
+					{#if isUnlimited}
+						<p class="text-sm text-muted-foreground">Untimed game</p>
+					{/if}
 				{/if}
 			{/if}
 		</div>
 
 		<div class="flex flex-wrap items-center justify-center gap-2">
 			{#if gameState && !waiting && !terminal}
-				<Button variant="outline" on:click={flipBoard} aria-label="Flip board" title="Flip Board">
-					<Icon icon="radix-icons:loop" />
+				<Button variant="outline" on:click={flipBoard} aria-label="Flip board" title="Flip board">
+					<Loop aria-hidden="true" />
 				</Button>
 				{#if started && !gameOver}
-					<Button variant="outline" on:click={resign} aria-label="Resign game" title="Resign">
-						<Icon icon="radix-icons:flag" class="mr-2" /> Resign
-					</Button>
+					<ConfirmAction
+						onConfirm={resign}
+						triggerLabel="Resign"
+						triggerVariant="outline"
+						title="Resign"
+						description="Resign this game? Your opponent will be awarded the win."
+						confirmLabel="Resign"
+					>
+						<Flag slot="icon" class="mr-2" />
+					</ConfirmAction>
 				{/if}
 			{/if}
 			{#if gameOver && !terminal}
@@ -294,15 +296,59 @@
 
 	{#if gameState && view && !waiting && !terminal}
 		<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
-			<ChessBoard
-				{view}
-				{playerColor}
-				{boardFlipped}
-				on:move={(e) => gameState?.handlePlayerMove(e.detail)}
-				on:promotion={(e) => gameState?.completePromotion(e.detail)}
-				on:promotionCancel={() => gameState?.clearPromotion()}
+			<div class="mx-auto w-full max-w-2xl space-y-2">
+				{#if !boardFlipped}
+					<PlayerBar
+						name="Opponent"
+						color={opponentColor}
+						clock={isUnlimited ? null : opponentTime}
+						active={running && turn === opponentColor}
+						low={!isUnlimited && isLow(opponentTime, lowTime)}
+						status={opponentStatus}
+					/>
+				{:else}
+					<PlayerBar
+						name="You"
+						color={playerColor}
+						clock={isUnlimited ? null : myTime}
+						active={running && turn === playerColor}
+						low={!isUnlimited && isLow(myTime, lowTime)}
+					/>
+				{/if}
+				<ChessBoard
+					{view}
+					{playerColor}
+					{boardFlipped}
+					on:move={(e) => gameState?.handlePlayerMove(e.detail)}
+					on:promotion={(e) => gameState?.completePromotion(e.detail)}
+					on:promotionCancel={() => gameState?.clearPromotion()}
+				/>
+				{#if !boardFlipped}
+					<PlayerBar
+						name="You"
+						color={playerColor}
+						clock={isUnlimited ? null : myTime}
+						active={running && turn === playerColor}
+						low={!isUnlimited && isLow(myTime, lowTime)}
+					/>
+				{:else}
+					<PlayerBar
+						name="Opponent"
+						color={opponentColor}
+						clock={isUnlimited ? null : opponentTime}
+						active={running && turn === opponentColor}
+						low={!isUnlimited && isLow(opponentTime, lowTime)}
+						status={opponentStatus}
+					/>
+				{/if}
+			</div>
+			<MoveList
+				moves={sanHistory}
+				white={whiteName}
+				black={blackName}
+				result={view.gameOver}
+				event="Stale Mates · friendly game"
 			/>
-			<MoveList moves={sanHistory} />
 		</div>
 	{/if}
 </div>

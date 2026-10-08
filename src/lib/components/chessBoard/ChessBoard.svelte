@@ -1,9 +1,18 @@
+<!--
+	immutable: props are compared by reference. The view is a new object on every
+	patch (including the 250 ms clock tick), but the board-relevant fields keep
+	their identity unless they really change — so the chessground config is only
+	rebuilt (and `set`, which wipes user-drawn arrows) when the position, turn,
+	legal moves or orientation change (audit SM-5 perf).
+-->
+<svelte:options immutable={true} />
+
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { Chessground } from 'svelte-chessground';
 	import PromotionModal from './PromotionModal.svelte';
 	import type { Config } from 'chessground/config';
-	import type { Color } from 'chessground/types';
+	import type { Color, Key } from 'chessground/types';
 	import type { GameView } from '$lib/chess/types';
 	import type { DrawShape } from 'chessground/draw';
 	import { formatResult } from '$lib/chess/formatResult';
@@ -52,11 +61,30 @@
 		updateHintShape();
 	}
 
+	// Board-relevant slices of the view. Primitives/refs only invalidate `config`
+	// when they actually change.
+	$: turn = view.turn;
+	$: inCheck = view.checkState.inCheck;
+	$: dests = view.destinations;
+	$: moveHistory = view.moveHistory;
+	$: movableColor = (
+		view.started && !view.gameOver.isOver && view.turn === playerColor && !view.promotionMove
+			? playerColor
+			: undefined
+	) as Color | undefined;
+	// Highlight the last move (ours or the opponent's/AI's).
+	$: lastMove = (
+		moveHistory.length
+			? [moveHistory[moveHistory.length - 1].from, moveHistory[moveHistory.length - 1].to]
+			: undefined
+	) as Key[] | undefined;
+
 	$: config = {
 		fen: displayFen,
 		orientation,
-		turnColor: view.turn,
-		check: view.checkState.inCheck,
+		turnColor: turn,
+		check: inCheck,
+		lastMove,
 		highlight: {
 			lastMove: true,
 			check: true
@@ -74,11 +102,9 @@
 		},
 		movable: {
 			// Lock input while a promotion choice is pending so a second drag can't fire a move.
-			color:
-				view.started && !view.gameOver.isOver && view.turn === playerColor && !view.promotionMove
-					? playerColor
-					: undefined,
-			dests: view.destinations,
+			// Locked while a promotion choice is pending and after game over.
+			color: movableColor,
+			dests,
 			free: false,
 			showDests: true
 		},

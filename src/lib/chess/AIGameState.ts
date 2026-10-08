@@ -27,6 +27,9 @@ export interface AIGameStateOptions {
 	createEngine?: (onMessage: (message: string) => void, difficulty: number) => AIEngine;
 }
 
+/** What's persisted to resume an AI game after a refresh. */
+export type SavedAIGame = { version: 1; player: Color; moves: string[] };
+
 export class AIGameState extends GameModel {
 	private engine: AIEngine;
 	private difficulty: number;
@@ -163,6 +166,44 @@ export class AIGameState extends GameModel {
 		super.destroy();
 	}
 
+	/** Snapshot of an in-progress game for persistence, or null if nothing to save. */
+	serialize(): SavedAIGame | null {
+		const view = this.snapshot();
+		if (!view.started || view.gameOver.isOver) return null;
+		return {
+			version: 1,
+			player: this.player,
+			moves: view.moveHistory.map((m) => `${m.from}${m.to}${m.promotion ?? ''}`)
+		};
+	}
+
+	/**
+	 * Resume a saved game: replay its moves, take the saved side and, if it's the
+	 * AI's turn, let it move. Returns false (leaving a fresh board) if the save
+	 * is invalid.
+	 */
+	restore(saved: unknown): boolean {
+		if (!isSavedAIGame(saved)) return false;
+		if (!this.core.replay(saved.moves) || this.core.isGameOver()) {
+			this.core.reset();
+			this.updateGameState();
+			return false;
+		}
+		this.player = saved.player;
+		this.patch({
+			player: saved.player,
+			started: true,
+			gameOver: { isOver: false, winner: null },
+			moveHistory: this.core.moves(),
+			promotionMove: null,
+			hint: null
+		});
+		this.updateGameState();
+		this.resetEngine();
+		this.triggerAiMove();
+		return true;
+	}
+
 	private resetEngine() {
 		this.hintToken++;
 		this.engine.stop();
@@ -203,4 +244,15 @@ export class AIGameState extends GameModel {
 			: { from, to };
 		this.makeMove(move);
 	}
+}
+
+function isSavedAIGame(value: unknown): value is SavedAIGame {
+	if (!value || typeof value !== 'object') return false;
+	const v = value as Record<string, unknown>;
+	return (
+		v.version === 1 &&
+		(v.player === 'white' || v.player === 'black') &&
+		Array.isArray(v.moves) &&
+		v.moves.every((m) => typeof m === 'string' && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(m))
+	);
 }
