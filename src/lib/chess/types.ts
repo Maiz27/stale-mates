@@ -14,7 +14,9 @@ export type GameOverReason =
 	| 'fiftyMove'
 	| 'draw'
 	| 'timeout'
-	| 'resignation';
+	| 'timeoutVsInsufficient'
+	| 'resignation'
+	| 'abandonment';
 
 export type GameOver = {
 	isOver: boolean;
@@ -58,6 +60,7 @@ export type ClockView = {
 	isUnlimited: boolean;
 	myClock: number; // seconds
 	opponentClock: number; // seconds
+	lowTimeThreshold: number; // seconds; the server's per-time-control "low time" level
 };
 
 // The single immutable view-model every consumer renders from. Replaces the
@@ -77,7 +80,12 @@ export type GameView = {
 	sanHistory: string[];
 	// Multiplayer-only.
 	opponentConnected: boolean;
+	/** Local `Date.now()` after which a win by abandonment may be claimed; null while the opponent is present. */
+	opponentClaimableAt: number | null;
 	connectionStatus: ConnectionStatus;
+	/** The opponent has offered a rematch. */
 	rematchOffer: boolean;
+	/** I have offered a rematch (server-confirmed on resync). */
+	myRematchOffer: boolean;
 	clock: ClockView;
 };

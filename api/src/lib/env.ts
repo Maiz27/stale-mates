@@ -12,6 +12,7 @@ export interface EnvInput {
 	PORT?: string;
 	ORIGIN?: string;
 	ROOM_TTL_MS?: string;
+	DISCONNECT_GRACE_MS?: string;
 	NODE_ENV?: string;
 }
 
@@ -48,6 +49,16 @@ export function validateEnv(env: EnvInput): EnvValidationResult {
 		const ttl = Number(env.ROOM_TTL_MS);
 		if (!Number.isInteger(ttl) || ttl <= 0) {
 			errors.push(`ROOM_TTL_MS must be a positive integer in ms (got "${env.ROOM_TTL_MS}")`);
+		}
+	}
+
+	// DISCONNECT_GRACE_MS: optional, but if present it must be a non-negative integer.
+	if (env.DISCONNECT_GRACE_MS !== undefined && env.DISCONNECT_GRACE_MS.trim() !== '') {
+		const grace = Number(env.DISCONNECT_GRACE_MS);
+		if (!Number.isInteger(grace) || grace < 0) {
+			errors.push(
+				`DISCONNECT_GRACE_MS must be a non-negative integer in ms (got "${env.DISCONNECT_GRACE_MS}")`
+			);
 		}
 	}
 

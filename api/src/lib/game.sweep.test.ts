@@ -7,10 +7,12 @@ import {
 	createGame,
 	getGameRoom,
 	getRoomCount,
-	addPlayerToGame
+	addPlayerToGame,
+	removePlayerFromGame,
+	reconnectPlayerToGame
 } from './game';
 
-const fakeWs = () => ({ send: () => {} }) as unknown as WebSocket;
+const fakeWs = () => ({ send: () => {}, close: () => {} }) as unknown as WebSocket;
 
 const TTL = 30 * 60 * 1000;
 
@@ -35,7 +37,35 @@ describe('isRoomExpired', () => {
 		const room = new GameRoom({ time: 0 });
 		const id = room.addPlayer('white', fakeWs());
 		room.removePlayer(id);
-		expect(isRoomExpired(room, room.createdAt + TTL, TTL)).toBe(true);
+		expect(isRoomExpired(room, room.lastActivityAt + TTL, TTL)).toBe(true);
+	});
+
+	it('measures the grace period from the last activity, not creation (SM-1.2)', () => {
+		let now = 0;
+		const room = new GameRoom({ time: 0, now: () => now });
+		const id = room.addPlayer('white', fakeWs());
+		// The creator waits on the page for longer than the TTL, then refreshes.
+		now = TTL * 2;
+		room.removePlayer(id);
+		// Immediately after the refresh's disconnect the room must survive.
+		expect(isRoomExpired(room, now + 1000, TTL)).toBe(false);
+		expect(isRoomExpired(room, now + TTL, TTL)).toBe(true);
+	});
+});
+
+describe('removePlayerFromGame', () => {
+	it('keeps the room when every player disconnects so they can reconnect (SM-1.2)', () => {
+		const id = createGame({ time: 0 });
+		const ws = fakeWs();
+		const playerId = addPlayerToGame(id, 'white', ws)!;
+		removePlayerFromGame(id, playerId, ws);
+		expect(getGameRoom(id)).toBeDefined();
+		expect(reconnectPlayerToGame(id, playerId, fakeWs())).toBe(true);
+		// cleanup
+		const room = getGameRoom(id)!;
+		room.players.forEach((p) => room.removePlayer(p.id));
+		sweepAbandonedRooms(room.lastActivityAt + TTL, TTL);
+		expect(getGameRoom(id)).toBeUndefined();
 	});
 });
 
@@ -49,7 +79,7 @@ describe('sweepAbandonedRooms', () => {
 		const activeId = createGame({ time: 0 });
 		addPlayerToGame(activeId, 'white', fakeWs());
 
-		const createdAt = getGameRoom(abandonedId)!.createdAt;
+		const createdAt = getGameRoom(abandonedId)!.lastActivityAt;
 		const swept = sweepAbandonedRooms(createdAt + TTL, TTL);
 
 		expect(swept).toBeGreaterThanOrEqual(1);

@@ -19,41 +19,54 @@
 	let gameState: MultiplayerGameState | undefined;
 	let view: GameView | undefined;
 	let boardFlipped = false;
-	let rematchOffered = false; // local: whether *I* have offered a rematch
 
 	// Everything the page renders is projected from the single view-model.
+	$: status = view?.connectionStatus ?? 'connecting';
 	$: started = view?.started ?? false;
 	$: opponentConnected = view?.opponentConnected ?? false;
-	$: reconnecting = view?.connectionStatus === 'reconnecting';
+	$: reconnecting = status === 'reconnecting';
+	$: terminal = status === 'rejected' || status === 'replaced';
 	$: gameOver = view?.gameOver.isOver ?? false;
 	$: opponentOfferedRematch = view?.rematchOffer ?? false;
+	$: rematchOffered = view?.myRematchOffer ?? false;
 	$: isUnlimited = view?.clock.isUnlimited ?? true;
 	$: myTime = view?.clock.myClock ?? 0;
 	$: opponentTime = view?.clock.opponentClock ?? 0;
+	$: lowTime = view?.clock.lowTimeThreshold ?? 0;
 	$: sanHistory = view?.sanHistory ?? [];
+	// Before the first game starts (and with no result yet) we're waiting for the opponent.
+	$: waiting = !started && !gameOver && !opponentConnected;
+	// Nothing heard from the server yet.
+	$: connecting = status === 'connecting' && waiting;
+	// The opponent left mid-game: show a badge and, after the grace period, let me claim the win.
+	$: opponentAway = !waiting && !opponentConnected && !gameOver;
+	$: claimableAt = view?.opponentClaimableAt ?? null;
 
-	// Clear *my* stale offer once, on the transition into game-over, so the next
-	// game-over starts from "Offer Rematch" rather than a leftover "Offered".
-	let wasGameOver = false;
-	$: {
-		if (gameOver && !wasGameOver) rematchOffered = false;
-		wasGameOver = gameOver;
+	// 1 Hz tick for the abandonment countdown (only while the opponent is away).
+	let now = Date.now();
+	let tick: ReturnType<typeof setInterval> | null = null;
+	$: if (opponentAway && claimableAt !== null && !tick) {
+		now = Date.now();
+		tick = setInterval(() => (now = Date.now()), 1000);
+	} else if ((!opponentAway || claimableAt === null) && tick) {
+		clearInterval(tick);
+		tick = null;
 	}
+	$: claimInSeconds =
+		claimableAt === null ? null : Math.max(0, Math.ceil((claimableAt - now) / 1000));
+
+	// Low-time warning uses the server's per-time-control threshold (not a hardcoded 10s).
+	const isLow = (seconds: number, threshold: number) => threshold > 0 && seconds <= threshold;
 
 	let copied = false;
 
 	// Link to share with the opponent so they join as the other color.
 	$: opponentLink = id ? `${$page.url.origin}/room?id=${id}&color=${opponentColor}` : '';
 
-	function offerRematch() {
-		gameState?.offerRematch();
-		rematchOffered = true;
-	}
-
-	function acceptRematch() {
-		gameState?.acceptRematch();
-		rematchOffered = false;
-	}
+	const offerRematch = () => gameState?.offerRematch();
+	const acceptRematch = () => gameState?.acceptRematch();
+	const claimVictory = () => gameState?.claimVictory();
+	const reload = () => location.reload();
 
 	async function copyInvite() {
 		if (!navigator.clipboard) return;
@@ -80,6 +93,7 @@
 	});
 
 	onDestroy(() => {
+		if (tick) clearInterval(tick);
 		gameState?.destroy();
 	});
 </script>
@@ -114,12 +128,33 @@
 					</p>
 					<Button on:click={leave}>Back to Home</Button>
 				</div>
+			{:else if status === 'rejected'}
+				<div class="space-y-3" role="alert">
+					<p class="font-semibold">Room not found or full</p>
+					<p class="text-muted-foreground">
+						This game has expired, already has two players, or the link is invalid.
+					</p>
+					<Button on:click={leave}>Back to Home</Button>
+				</div>
+			{:else if status === 'replaced'}
+				<div class="space-y-3" role="alert">
+					<p class="font-semibold">This game is open somewhere else</p>
+					<p class="text-muted-foreground">Your seat was taken over by another tab or window.</p>
+					<div class="flex justify-center gap-2">
+						<Button on:click={reload}>Play here instead</Button>
+						<Button variant="ghost" on:click={leave}>Back to Home</Button>
+					</div>
+				</div>
+			{:else if gameState && connecting}
+				<p role="status" aria-live="polite" class="text-muted-foreground motion-safe:animate-pulse">
+					Connecting…
+				</p>
 			{:else if gameState}
 				<p class="text-sm text-muted-foreground">
 					You are playing as <span class="font-semibold text-primary">{playerColor}</span>
 				</p>
 
-				{#if !opponentConnected}
+				{#if waiting}
 					<div class="mx-auto max-w-md space-y-3">
 						<p>Waiting for opponent to join…</p>
 						<div class="flex items-center justify-center gap-2">
@@ -136,11 +171,23 @@
 						</p>
 					</div>
 				{:else}
+					{#if opponentAway}
+						<div role="status" aria-live="polite" class="mx-auto max-w-md space-y-2">
+							<p class="font-semibold text-amber-600 dark:text-amber-400">Opponent disconnected</p>
+							{#if claimInSeconds !== null && claimInSeconds > 0}
+								<p class="text-sm text-muted-foreground">
+									You can claim the win in {claimInSeconds}s if they don't return.
+								</p>
+							{:else if claimInSeconds === 0}
+								<Button on:click={claimVictory}>Claim victory</Button>
+							{/if}
+						</div>
+					{/if}
 					<div class="mx-auto grid w-4/5 grid-flow-row place-items-center gap-y-2 md:grid-flow-col">
 						{#if !isUnlimited}
 							<div>
 								My Time: <span
-									class={myTime <= 10
+									class={isLow(myTime, lowTime)
 										? 'font-semibold text-red-600 motion-safe:animate-pulse dark:text-red-400'
 										: 'font-semibold text-primary'}
 								>
@@ -149,7 +196,7 @@
 							</div>
 							<div>
 								Opponent Time: <span
-									class={opponentTime <= 10
+									class={isLow(opponentTime, lowTime)
 										? 'font-semibold text-red-600 motion-safe:animate-pulse dark:text-red-400'
 										: 'font-semibold text-primary'}
 								>
@@ -165,7 +212,7 @@
 		</div>
 
 		<div class="flex flex-wrap items-center justify-center gap-2">
-			{#if gameState && (opponentConnected || started)}
+			{#if gameState && !waiting && !terminal}
 				<Button variant="outline" on:click={flipBoard} aria-label="Flip board" title="Flip Board">
 					<Icon icon="radix-icons:loop" />
 				</Button>
@@ -175,20 +222,20 @@
 					</Button>
 				{/if}
 			{/if}
-			{#if gameOver}
+			{#if gameOver && !terminal}
 				{#if opponentOfferedRematch}
 					<Button on:click={acceptRematch}>Accept Rematch</Button>
 				{:else if rematchOffered}
 					<Button disabled>Rematch Offered</Button>
 				{:else}
-					<Button on:click={offerRematch}>Offer Rematch</Button>
+					<Button on:click={offerRematch} disabled={!opponentConnected}>Offer Rematch</Button>
 				{/if}
 				<Button variant="ghost" on:click={leave}>Leave</Button>
 			{/if}
 		</div>
 	</section>
 
-	{#if gameState && view && (opponentConnected || started)}
+	{#if gameState && view && !waiting && !terminal}
 		<div class="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
 			<ChessBoard
 				{view}

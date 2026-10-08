@@ -1,0 +1,203 @@
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { get } from 'svelte/store';
+import { MultiplayerGameState, type GameSocket } from './MultiplayerGameState';
+import type { ClientMessage, ServerMessage } from './protocol';
+import type { ConnectionStatus } from '../websocket/WebSocketManager';
+
+beforeAll(() => {
+	vi.stubGlobal(
+		'Audio',
+		class {
+			volume = 0;
+			src = '';
+			load() {}
+			pause() {}
+			play() {
+				return Promise.resolve();
+			}
+		}
+	);
+});
+
+/** In-memory stand-in for the WebSocketManager: records sends, lets tests push server frames. */
+class FakeSocket implements GameSocket {
+	sent: ClientMessage[] = [];
+	open = true;
+	private handlers = new Map<string, (data: ServerMessage) => void>();
+	private status: ((s: ConnectionStatus) => void) | null = null;
+
+	addMessageHandler(type: string, handler: (data: never) => void) {
+		this.handlers.set(type, handler as (data: ServerMessage) => void);
+	}
+	sendMessage(message: ClientMessage) {
+		if (!this.open) return false;
+		this.sent.push(message);
+		return true;
+	}
+	onStatus(handler: (s: ConnectionStatus) => void) {
+		this.status = handler;
+		handler('connecting');
+	}
+	close() {}
+	emit(message: ServerMessage) {
+		this.handlers.get(message.type)?.(message);
+	}
+	setStatus(s: ConnectionStatus) {
+		this.status?.(s);
+	}
+}
+
+const unlimited = { initial: 0, lowTimeThreshold: 0, increment: 0, isUnlimited: true };
+
+function setup(player: 'white' | 'black' = 'white') {
+	const socket = new FakeSocket();
+	const game = new MultiplayerGameState({
+		player,
+		roomId: 'room1',
+		connect: () => socket as unknown as GameSocket
+	});
+	return { game, socket };
+}
+
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe('MultiplayerGameState resync (SM-1.5)', () => {
+	it('keeps the SAN move list across a gameState resync', () => {
+		const { game, socket } = setup();
+		socket.emit({
+			type: 'gameState',
+			started: true,
+			fen: AFTER_E4_E5,
+			turn: 'white',
+			moves: ['e2e4', 'e7e5'],
+			timeControl: unlimited
+		});
+		const view = get(game);
+		expect(view.sanHistory).toEqual(['e4', 'e5']);
+		expect(view.moveHistory.map((m) => `${m.from}${m.to}`)).toEqual(['e2e4', 'e7e5']);
+		expect(view.fen).toBe(AFTER_E4_E5);
+	});
+
+	it('drops a rejected optimistic move when the server resyncs', () => {
+		const { game, socket } = setup();
+		socket.emit({ type: 'gameStart', fen: START, turn: 'white', timeControl: unlimited });
+		game.makeMove({ from: 'e2', to: 'e4' });
+		expect(get(game).moveHistory).toHaveLength(1);
+
+		// Server rejected it (e.g. flagged): resync to the start position.
+		socket.emit({
+			type: 'gameState',
+			started: true,
+			fen: START,
+			turn: 'white',
+			moves: [],
+			timeControl: unlimited
+		});
+		expect(get(game).moveHistory).toEqual([]);
+		expect(get(game).sanHistory).toEqual([]);
+	});
+
+	it('falls back to the FEN when the move list does not reproduce it', () => {
+		const { game, socket } = setup();
+		socket.emit({
+			type: 'gameState',
+			started: true,
+			fen: AFTER_E4_E5,
+			turn: 'white',
+			moves: ['e2e5'],
+			timeControl: unlimited
+		});
+		expect(get(game).fen).toBe(AFTER_E4_E5);
+	});
+});
+
+describe('MultiplayerGameState finished-game reconnect (SM-1.3)', () => {
+	it('shows the result and rematch state from the resync payload', () => {
+		const { game, socket } = setup();
+		socket.emit({
+			type: 'gameState',
+			started: false,
+			fen: START,
+			turn: 'white',
+			moves: [],
+			timeControl: unlimited,
+			gameOver: { winner: 'black', reason: 'resignation' },
+			rematch: { mine: true, opponent: false },
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		const view = get(game);
+		expect(view.gameOver).toEqual({ isOver: true, winner: 'black', reason: 'resignation' });
+		expect(view.myRematchOffer).toBe(true);
+		expect(view.rematchOffer).toBe(false);
+	});
+});
+
+describe('MultiplayerGameState opponent presence (SM-1.6)', () => {
+	it('does not assume the opponent is connected on resync', () => {
+		const { game, socket } = setup();
+		vi.useFakeTimers();
+		vi.setSystemTime(10_000);
+		socket.emit({
+			type: 'gameState',
+			started: true,
+			fen: START,
+			turn: 'white',
+			moves: [],
+			timeControl: unlimited,
+			opponentConnected: false,
+			opponentGraceMs: 5_000
+		});
+		expect(get(game).opponentConnected).toBe(false);
+		expect(get(game).opponentClaimableAt).toBe(15_000);
+	});
+
+	it('tracks disconnect / reconnect messages', () => {
+		const { game, socket } = setup();
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		socket.emit({ type: 'gameStart', fen: START, turn: 'white', timeControl: unlimited });
+		socket.emit({ type: 'opponentDisconnected', graceMs: 60_000 });
+		expect(get(game).opponentConnected).toBe(false);
+		expect(get(game).opponentClaimableAt).toBe(61_000);
+
+		socket.emit({ type: 'opponentReconnected' });
+		expect(get(game).opponentConnected).toBe(true);
+		expect(get(game).opponentClaimableAt).toBeNull();
+	});
+
+	it('sends a claimVictory frame', () => {
+		const { game, socket } = setup();
+		game.claimVictory();
+		expect(socket.sent).toContainEqual({ type: 'claimVictory' });
+	});
+});
+
+describe('MultiplayerGameState clock view', () => {
+	it('exposes the server low-time threshold (SM-2.10)', () => {
+		const { game, socket } = setup();
+		vi.useFakeTimers();
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false },
+			clock: { whiteMs: 180_000, blackMs: 180_000, running: 'white', serverTime: Date.now() }
+		});
+		expect(get(game).clock.lowTimeThreshold).toBe(30);
+		game.destroy();
+	});
+});
+
+describe('MultiplayerGameState connection status (SM-1.7)', () => {
+	it('mirrors terminal socket statuses into the view', () => {
+		const { game, socket } = setup();
+		socket.setStatus('rejected');
+		expect(get(game).connectionStatus).toBe('rejected');
+	});
+});

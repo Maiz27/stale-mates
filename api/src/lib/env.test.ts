@@ -68,3 +68,12 @@ describe('assertValidEnv', () => {
 		expect(() => assertValidEnv({ PORT: 'bad' })).toThrow(/Invalid environment configuration/);
 	});
 });
+
+describe('validateEnv DISCONNECT_GRACE_MS', () => {
+	it('accepts a non-negative integer and rejects anything else', () => {
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '0' }).ok).toBe(true);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '60000' }).ok).toBe(true);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '-1' }).ok).toBe(false);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: 'soon' }).ok).toBe(false);
+	});
+});

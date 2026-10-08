@@ -78,9 +78,31 @@ test.describe('Multiplayer mode', () => {
 			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible({
 				timeout: 15_000
 			});
+
+			// Reconnect: reloading keeps the seat and the move list (SM-1.5) and the
+			// opponent sees the disconnect/reconnect (SM-1.6).
+			await black.reload();
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible({
+				timeout: 15_000
+			});
+			await expect(white.getByText('Opponent disconnected')).toHaveCount(0, { timeout: 15_000 });
+
+			// Black can still move after reconnecting.
+			await clickMove(black, 'e7', 'e5', 'black');
+			await expect(white.getByRole('list').getByText('e5', { exact: true })).toBeVisible({
+				timeout: 15_000
+			});
 		} finally {
 			await whiteCtx.close();
 			await blackCtx.close();
 		}
+	});
+
+	test('an unknown room shows a not-found state instead of a dead end', async ({ page }) => {
+		const probe = await createRoom(page);
+		test.skip(probe === null, 'API server not reachable');
+		await page.goto('/room?id=does-not-exist&color=white');
+		await expect(page.getByText('Room not found or full')).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole('button', { name: 'Back to Home' })).toBeVisible();
 	});
 });

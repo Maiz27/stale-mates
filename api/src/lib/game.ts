@@ -14,15 +14,24 @@ function resolveRoomTtlMs(): number {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_ROOM_TTL_MS;
 }
 
+function resolveDisconnectGraceMs(): number | undefined {
+	const raw = process.env.DISCONNECT_GRACE_MS;
+	if (!raw || raw.trim() === '') return undefined;
+	const parsed = Number(raw);
+	return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 /**
  * Pure predicate (audit H4): a room is "abandoned" — eligible for sweeping —
- * when it is older than the TTL AND has no connected players. This covers both
- * never-joined rooms (created via POST but no WS ever connected) and
- * long-finished/empty rooms whose players have all disconnected. Side-effect
- * free so it can be unit-tested without timers.
+ * when nobody is connected AND nothing has happened in it (no join, leave or
+ * message) for the TTL. Measuring from the last activity rather than creation
+ * gives players who all dropped at once (e.g. the creator refreshing the
+ * waiting page) the full TTL to come back (audit SM-1.2). Rooms are never
+ * deleted on disconnect — only by this sweep. Side-effect free so it can be
+ * unit-tested without timers.
  */
 export function isRoomExpired(room: GameRoom, now: number, ttlMs: number): boolean {
-	return now - room.createdAt >= ttlMs && !room.hasConnectedPlayers();
+	return !room.hasConnectedPlayers() && now - room.lastActivityAt >= ttlMs;
 }
 
 /**
@@ -59,7 +68,7 @@ export function startRoomSweep(intervalMs: number = 5 * 60 * 1000): ReturnType<t
 }
 
 export function createGame({ time }: { time: TimeOption }): string {
-	const room = new GameRoom({ time });
+	const room = new GameRoom({ time, disconnectGraceMs: resolveDisconnectGraceMs() });
 	gameRooms.set(room.id, room);
 	return room.id;
 }
@@ -84,14 +93,13 @@ export function addPlayerToGame(
 	}
 }
 
-export function removePlayerFromGame(gameId: string, playerId: string) {
-	const room = getGameRoom(gameId);
-	if (room) {
-		room.removePlayer(playerId);
-		if (room.players.every((p) => !p.connected)) {
-			gameRooms.delete(gameId);
-		}
-	}
+/**
+ * A player's socket closed. `ws` is the socket that closed, so a stale socket
+ * that was already replaced by a reconnect can't unseat the new one. The room
+ * itself is kept (players may reconnect) and is reaped by the TTL sweep.
+ */
+export function removePlayerFromGame(gameId: string, playerId: string, ws?: WebSocket) {
+	getGameRoom(gameId)?.removePlayer(playerId, ws);
 }
 
 export function reconnectPlayerToGame(gameId: string, playerId: string, ws: WebSocket): boolean {

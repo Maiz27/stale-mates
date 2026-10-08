@@ -7,6 +7,8 @@ export type Player = {
 	color: Color;
 	ws: WebSocket | null;
 	connected: boolean;
+	/** Server time (ms) the player's socket dropped, or null while connected. */
+	disconnectedAt: number | null;
 };
 
 export type TimeOption = 0 | 1 | 3 | 10;
@@ -30,12 +32,18 @@ export type GameOverReason =
 	| 'fiftyMove'
 	| 'draw'
 	| 'timeout'
-	| 'resignation';
+	| 'timeoutVsInsufficient'
+	| 'resignation'
+	| 'abandonment';
+
+/** A finished game's result. `winner` is 'draw' for every drawn ending. */
+export type GameResult = { winner: Color | 'draw'; reason: GameOverReason };
 
 // Inbound (client -> server). NOTE: there is deliberately no client 'gameOver'
 // / 'timeout' message — outcomes are decided server-side only (audit F1).
 export type GameMessage =
-	| { type: 'move'; playerId: string; move: { from: string; to: string; promotion?: string } }
-	| { type: 'offerRematch'; playerId: string }
-	| { type: 'acceptRematch'; playerId: string }
-	| { type: 'resign'; playerId?: string };
+	| { type: 'move'; move: { from: string; to: string; promotion?: string } }
+	| { type: 'offerRematch' }
+	| { type: 'acceptRematch' }
+	| { type: 'resign' }
+	| { type: 'claimVictory' };

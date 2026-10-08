@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
-import { gameOutcome } from './outcome';
+import { gameOutcome, hasMatingMaterial } from './outcome';
 
 describe('gameOutcome', () => {
 	it('returns null when the game is not over', () => {
@@ -33,5 +33,18 @@ describe('gameOutcome', () => {
 		// halfmove clock at 100 makes it a fifty-move-rule draw.
 		const chess = new Chess('4k3/8/8/8/8/8/4P3/4K3 w - - 100 60');
 		expect(gameOutcome(chess)).toEqual({ reason: 'fiftyMove' });
+	});
+});
+
+describe('hasMatingMaterial', () => {
+	it('is false for a lone king and true for any other piece', () => {
+		const chess = new Chess('8/8/8/4k3/8/8/8/3QK3 w - - 0 1');
+		expect(hasMatingMaterial(chess, 'black')).toBe(false);
+		expect(hasMatingMaterial(chess, 'white')).toBe(true);
+	});
+
+	it('counts a single minor piece as mating material (helpmates exist)', () => {
+		const chess = new Chess('8/8/8/4k3/8/8/2n5/3QK3 w - - 0 1');
+		expect(hasMatingMaterial(chess, 'black')).toBe(true);
 	});
 });

@@ -5,7 +5,16 @@ import type {
 	ServerMessageType
 } from '$lib/chess/protocol';
 
-export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
+/**
+ * - `rejected`: the server refused the join/reconnect (room gone, full, or a bad
+ *   seat) — terminal, retrying would just hammer it.
+ * - `replaced`: this seat was opened by a newer connection (another tab) — terminal.
+ */
+export type ConnectionStatus =
+	'connecting' | 'open' | 'reconnecting' | 'closed' | 'rejected' | 'replaced';
+
+/** Close code the server uses when a newer socket takes over this seat. */
+export const CLOSE_REPLACED = 4000;
 type StatusHandler = (status: ConnectionStatus) => void;
 /** A handler bound to one server message type, receiving that exact variant. */
 type ServerMessageHandler<T extends ServerMessageType> = (data: ServerMessageOf<T>) => void;
@@ -44,15 +53,27 @@ export class WebSocketManager {
 	}
 
 	private setupEventListeners() {
-		if (!this.ws) return;
+		const ws = this.ws;
+		if (!ws) return;
+		// Events from a socket we've already moved on from must not drive state.
+		const isCurrent = () => this.ws === ws;
 
-		this.ws.onopen = () => {
+		ws.onopen = () => {
+			if (!isCurrent()) return;
 			this.reconnectAttempts = 0;
 			this.setStatus('open');
 		};
 
-		this.ws.onmessage = (event) => {
-			const data = JSON.parse(event.data) as ServerMessage;
+		ws.onmessage = (event) => {
+			if (!isCurrent()) return;
+			let data: ServerMessage;
+			try {
+				data = JSON.parse(event.data) as ServerMessage;
+			} catch {
+				console.error('Dropping malformed server frame');
+				return;
+			}
+			if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
 			const handler = this.messageHandlers.get(data.type);
 			if (handler) {
 				handler(data);
@@ -61,11 +82,12 @@ export class WebSocketManager {
 			}
 		};
 
-		this.ws.onerror = (error) => {
+		ws.onerror = (error) => {
 			console.error('WebSocket error:', error);
 		};
 
-		this.ws.onclose = (event) => {
+		ws.onclose = (event) => {
+			if (!isCurrent()) return;
 			if (this.intentionallyClosed) {
 				this.setStatus('closed');
 				return;
@@ -73,7 +95,12 @@ export class WebSocketManager {
 			// 1008 (policy violation) = the server rejected the join/reconnect
 			// (e.g. the room is gone or full). Retrying would just hammer it.
 			if (event.code === 1008) {
-				this.setStatus('closed');
+				this.setStatus('rejected');
+				return;
+			}
+			// Another connection took over this seat; fighting it would ping-pong.
+			if (event.code === CLOSE_REPLACED) {
+				this.setStatus('replaced');
 				return;
 			}
 			this.scheduleReconnect();

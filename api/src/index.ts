@@ -5,7 +5,7 @@ import http from 'http';
 
 import app from './app';
 import WebSocket from 'ws';
-import { handleWebSocketConnection } from './lib/websocket';
+import { handleWebSocketConnection, startHeartbeat } from './lib/websocket';
 import { assertValidEnv } from './lib/env';
 import { startRoomSweep } from './lib/game';
 
@@ -28,6 +28,10 @@ const wss = new WebSocket.Server({ server });
 
 // Handle WebSocket connections
 wss.on('connection', handleWebSocketConnection);
+
+// Ping every client periodically and terminate the ones that stop answering, so
+// dead connections are noticed and the opponent is told (audit SM-1.1).
+startHeartbeat(wss);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

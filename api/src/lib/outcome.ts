@@ -28,3 +28,17 @@ export function gameOutcome(chess: Chess): { winner?: Color; reason: GameOverRea
 	}
 	return { reason: 'draw' };
 }
+
+/**
+ * Whether `color` still has material that could ever deliver mate. Used when a
+ * flag falls: losing on time to a side that can't possibly checkmate (a lone
+ * king) is a draw, not a loss (FIDE 6.9). Any piece besides the king counts as
+ * potential mating material — even K+N vs K+Q has a legal helpmate.
+ */
+export function hasMatingMaterial(chess: Chess, color: Color): boolean {
+	const side = color === 'white' ? 'w' : 'b';
+	return chess
+		.board()
+		.flat()
+		.some((sq) => sq !== null && sq.color === side && sq.type !== 'k');
+}

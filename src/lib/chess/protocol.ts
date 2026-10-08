@@ -28,9 +28,17 @@ export type ServerMessage =
 			started: boolean;
 			fen: string;
 			turn: Color;
+			/** Every move so far in UCI ("e2e4", "e7e8q"); replayed so history survives a resync. */
+			moves?: string[];
 			clock?: ClockSnapshot;
 			timeControl?: TimeControl;
+			gameOver?: { winner: Color | 'draw'; reason: GameOverReason } | null;
+			rematch?: { mine: boolean; opponent: boolean };
+			opponentConnected?: boolean;
+			/** Ms until a win by abandonment may be claimed; null while the opponent is connected. */
+			opponentGraceMs?: number | null;
 	  }
+	| { type: 'opponentDisconnected'; graceMs: number }
 	| { type: 'rematchOffer' }
 	| {
 			type: 'rematchAccepted';
@@ -55,4 +63,5 @@ export type ClientMessage =
 	| { type: 'move'; move: { from: string; to: string; promotion?: string } }
 	| { type: 'offerRematch' }
 	| { type: 'acceptRematch' }
-	| { type: 'resign' };
+	| { type: 'resign' }
+	| { type: 'claimVictory' };

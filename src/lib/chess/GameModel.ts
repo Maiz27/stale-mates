@@ -3,11 +3,11 @@ import type { Move } from 'chess.js';
 import { ChessCore } from './ChessCore';
 import { AudioCue } from './AudioCue';
 import { STARTING_FEN } from '../constants';
-import type { ChessMove, GameMode, GameView } from './types';
+import type { ChessMove, GameMode, GameView, MoveType } from './types';
 import type { Color } from 'chessground/types';
 
 /** Default clock for single-player / pre-game: no timer running. */
-const NO_CLOCK = { isUnlimited: true, myClock: 0, opponentClock: 0 };
+const NO_CLOCK = { isUnlimited: true, myClock: 0, opponentClock: 0, lowTimeThreshold: 0 };
 
 /**
  * The shared game core. Composes the pure rules ({@link ChessCore}) and the
@@ -50,8 +50,10 @@ export class GameModel implements Readable<GameView> {
 			moveHistory: [],
 			sanHistory: [],
 			opponentConnected: false,
+			opponentClaimableAt: null,
 			connectionStatus: 'connecting',
 			rematchOffer: false,
+			myRematchOffer: false,
 			clock: NO_CLOCK
 		});
 		this.subscribe = this.store.subscribe;
@@ -149,5 +151,10 @@ export class GameModel implements Readable<GameView> {
 
 	protected determineMoveType(move: Move): void {
 		this.audio.play(this.core.moveType(move));
+	}
+
+	/** Play a non-move cue (game start/end, notifications). */
+	protected playCue(cue: MoveType): void {
+		this.audio.play(cue);
 	}
 }

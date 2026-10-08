@@ -149,3 +149,15 @@ referenced from commit messages.
 | SM-4.5 | CI: no api lint, no concurrency/cancel, duplicate push+PR runs, e2e on Node 20, no dependabot, no build step                                   | ✅     |
 | SM-4.6 | `@eslint/js` missing from root devDeps; `@types/js-cookie` in dependencies; DaisyUI `bg-base-100` leftover; stub `tests/test.ts`; dead helpers | ✅     |
 | SM-4.7 | `CONTEXT.md` described the deleted `GameState.ts`/per-field stores; README lacked testing/Node/`ROOM_TTL_MS`/Stockfish GPL notes               | ✅     |
+
+### SM-1 — Multiplayer game-breaking bugs
+
+| #      | Finding                                                                                                                                                                                                                                          | Status |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| SM-1.1 | Reconnect race: the old socket's late `close` ran `removePlayer(playerId)` and nulled the **new** socket (player deaf, room possibly deleted). Now socket-identity checked, old socket closed with 4000, ping/pong heartbeat                     | ✅     |
+| SM-1.2 | Room deleted the instant every player disconnected (creator refreshing the waiting page killed it). Rooms are now only reaped by the TTL sweep, measured from last activity                                                                      | ✅     |
+| SM-1.3 | Reconnecting into a finished game showed no result. `gameState` now carries `gameOver` + rematch state                                                                                                                                           | ✅     |
+| SM-1.4 | Server accepted a move after the mover's flag fell (watchdog latency). Moves now check remaining time first; flagging vs a lone king is a draw (`timeoutVsInsufficient`)                                                                         | ✅     |
+| SM-1.5 | Move list/PGN wiped on every resync (`core.load(fen)` clears history); rejected optimistic moves lingered. `gameState` now carries the UCI move list, which the client replays                                                                   | ✅     |
+| SM-1.6 | Opponent disconnects were never shown (`gameState` forced `opponentConnected: true`). New `opponentDisconnected`/`opponentReconnected`, a badge, and a server-verified `claimVictory` after a grace period (`DISCONNECT_GRACE_MS`, default 60 s) | ✅     |
+| SM-1.7 | A rejected/expired/full room left a dead-end page (status `closed`, nothing rendered). New `rejected`/`replaced` statuses with "Room not found or full" + Home, and a "Connecting…" state                                                        | ✅     |

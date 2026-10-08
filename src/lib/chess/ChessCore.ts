@@ -24,6 +24,37 @@ export class ChessCore {
 		this.chess.reset();
 	}
 
+	/**
+	 * Rebuild the game from the standard start by replaying UCI moves
+	 * ("e2e4", "e7e8q"). Unlike `load(fen)` this keeps the move history, so the
+	 * SAN list / PGN survive a server resync. Returns false (leaving the board
+	 * reset to the start) if any move is illegal.
+	 */
+	replay(uciMoves: string[]): boolean {
+		this.chess.reset();
+		for (const uci of uciMoves) {
+			const move = this.move({
+				from: uci.slice(0, 2),
+				to: uci.slice(2, 4),
+				promotion: uci.length > 4 ? uci.slice(4, 5) : undefined
+			});
+			if (!move) {
+				this.chess.reset();
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** The verbose move history as `{from,to,promotion}` triples. */
+	moves(): ChessMove[] {
+		return this.chess.history({ verbose: true }).map((m) => ({
+			from: m.from,
+			to: m.to,
+			promotion: m.promotion
+		}));
+	}
+
 	fen(): string {
 		return this.chess.fen();
 	}
