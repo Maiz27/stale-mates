@@ -2,15 +2,16 @@ import { expect, test, type Page } from '@playwright/test';
 import { boardLocator, clickMove } from './helpers/board';
 
 /**
- * Multiplayer mode (`/room?id=...&color=...`) needs the API server (port 3000)
- * and the frontend build must have been compiled with VITE_API_URL /
- * VITE_API_WS_URL pointing at it (see repo-root .env). The Playwright config
- * starts both servers, but if the API build/start failed (or the env vars were
- * not baked into the frontend build), we skip rather than fail — the AI spec is
- * the guaranteed-green target. The check below probes the API once.
+ * Multiplayer mode (`/room?id=…#seat=<token>`) needs the API server on :3000.
+ * The Playwright config starts it and builds the frontend with VITE_API_URL /
+ * VITE_API_WS_URL pointing at it (defaults, unless already exported), so this
+ * runs on a clean checkout with no .env. Each test creates its room through the
+ * API first; only if the API itself is unreachable (it failed to build or
+ * start, e.g. against a reused external preview server) does a test skip. A
+ * frontend that can't reach a running API fails the test.
  */
 
-const API_URL = process.env.VITE_API_URL ?? 'http://localhost:3000';
+const API_URL = process.env.VITE_API_URL || 'http://localhost:3000';
 
 /**
  * POST /game/create -> { id }. Returns null ONLY when the API is unreachable
@@ -56,7 +57,7 @@ test.describe('Multiplayer mode', () => {
 			room === null,
 			'API server at ' +
 				API_URL +
-				' not reachable (or frontend build lacks VITE_API_URL). ' +
+				' not reachable. ' +
 				'Multiplayer requires the api/ server on :3000 with ORIGIN allowing the preview origin.'
 		);
 

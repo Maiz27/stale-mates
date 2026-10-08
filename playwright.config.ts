@@ -2,10 +2,13 @@ import type { PlaywrightTestConfig } from '@playwright/test';
 
 // Where the previewed SvelteKit app is served. `npm run preview` (vite preview)
 // defaults to port 4173. The frontend reads VITE_API_URL / VITE_API_WS_URL at
-// *build* time (see .env), so the multiplayer spec relies on the api server
-// running at http://localhost:3000.
+// *build* time, and a production build without them has no game server (CR2-2),
+// so the build below is pointed at the API server this config starts — unless
+// the caller already exported them.
 const PREVIEW_PORT = 4173;
 const API_PORT = 3000;
+const API_URL = process.env.VITE_API_URL || `http://localhost:${API_PORT}`;
+const API_WS_URL = process.env.VITE_API_WS_URL || API_URL.replace(/^http/, 'ws');
 
 const config: PlaywrightTestConfig = {
 	testDir: 'tests',
@@ -36,14 +39,16 @@ const config: PlaywrightTestConfig = {
 			: {}
 	},
 
-	// Two servers: the SvelteKit preview (built with the .env API URLs baked in)
-	// and the API server the multiplayer spec needs. The AI spec only needs the
+	// Two servers: the SvelteKit preview (built with the API URLs baked in) and
+	// the API server the multiplayer spec needs. The AI spec only needs the
 	// preview server. `reuseExistingServer` lets a dev keep both running between
 	// runs locally; CI always starts fresh.
 	webServer: [
 		{
 			command: 'npm run build && npm run preview',
 			port: PREVIEW_PORT,
+			// Merged over process.env; vite gives these precedence over any .env file.
+			env: { VITE_API_URL: API_URL, VITE_API_WS_URL: API_WS_URL },
 			reuseExistingServer: !process.env.CI,
 			timeout: 180_000
 		},

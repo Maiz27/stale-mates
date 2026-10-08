@@ -6,6 +6,7 @@ import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
 import { clearSeat, getSeatToken, setSeatToken, touchSeat } from './seat';
 import type { GameView } from './types';
+import { apiUrls } from '../apiConfig';
 
 /**
  * Whether the "Offer draw" control is live: a game in progress, no offer pending,
@@ -33,7 +34,21 @@ export interface MultiplayerGameStateOptions {
 	token?: string | null;
 	/** Factory for the socket; defaults to a real reconnecting {@link WebSocketManager}. */
 	connect?: (url: string, hello: () => ClientMessage | null) => GameSocket;
+	/**
+	 * WebSocket base URL of the game server; defaults to this build's
+	 * ({@link apiUrls}). `null` = not configured: no socket is opened and the view
+	 * reports `rejected` / `unconfigured` (CR2-2).
+	 */
+	serverUrl?: string | null;
 }
+
+/** Stands in for the socket when there is no server to talk to. */
+const unconfiguredSocket: GameSocket = {
+	addMessageHandler() {},
+	sendMessage: () => false,
+	onStatus: (handler) => handler('rejected', 'unconfigured'),
+	close() {}
+};
 
 export class MultiplayerGameState extends GameModel {
 	private wsManager: GameSocket;
@@ -51,17 +66,22 @@ export class MultiplayerGameState extends GameModel {
 	roomId: string;
 	private token: string | null;
 
-	constructor({ roomId, token, connect }: MultiplayerGameStateOptions) {
+	constructor({ roomId, token, connect, serverUrl = apiUrls.ws }: MultiplayerGameStateOptions) {
 		// Our colour is assigned by the server (`seat`); white is only a placeholder.
 		super('pvp', 'white');
 		this.roomId = roomId;
 		this.token = token ?? getSeatToken(roomId);
 		// The room id is public; the seat token goes in the first frame, never the URL.
-		const url = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${encodeURIComponent(roomId)}`;
+		const url = `${serverUrl}/game/join?id=${encodeURIComponent(roomId)}`;
 		// Re-evaluated on every reconnect so it presents the latest (rotated) token.
 		const hello = (): ClientMessage | null =>
 			this.token ? { type: 'join', token: this.token } : null;
-		this.wsManager = connect ? connect(url, hello) : new WebSocketManager(url, { hello });
+		this.wsManager =
+			serverUrl === null
+				? unconfiguredSocket
+				: connect
+					? connect(url, hello)
+					: new WebSocketManager(url, { hello });
 		this.wsManager.onStatus((status, rejection) => {
 			// The room is gone or the token is dead: don't keep offering it (CR-5).
 			if (rejection === 'notFound') clearSeat(roomId);

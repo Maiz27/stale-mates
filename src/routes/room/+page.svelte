@@ -18,6 +18,7 @@
 	import { getInviteToken, inviteLink, resolveSeatToken, seatTokenFromHash } from '$lib/chess/seat';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { API_NOT_CONFIGURED_MESSAGE } from '$lib/apiConfig';
 
 	const id = page.url.searchParams.get('id');
 
@@ -116,6 +117,11 @@
 			title: "Couldn't join the game",
 			detail: 'The server refused the connection.',
 			retry: true
+		},
+		unconfigured: {
+			title: "Can't reach the game server",
+			detail: API_NOT_CONFIGURED_MESSAGE,
+			retry: false
 		}
 	};
 	const rejectionCopy = $derived(REJECTION_COPY[view?.rejection ?? 'notFound']);

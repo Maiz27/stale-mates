@@ -139,8 +139,9 @@ Backend (`api/`): `bun run dev`, `bun run build`, `bun run start`, `bun run test
   reconnects, draw offers, rematch), the clock/outcome modules, env validation, the
   rate limiter, the room sweep and the inbound message validator.
 - **End-to-end:** `bun run test:e2e`. The Playwright config builds and previews the
-  frontend and starts the API on :3000, so `VITE_API_URL`/`VITE_API_WS_URL` must point
-  at `http://localhost:3000` / `ws://localhost:3000` (copy `.env.example` to `.env`).
+  frontend and starts the API on :3000, building the frontend with
+  `VITE_API_URL`/`VITE_API_WS_URL` pointed at it (unless you export your own), so no
+  `.env` is needed.
   Install a browser once with `bunx playwright install chromium` (or point
   `PW_CHROMIUM_EXECUTABLE` at an existing Chromium).
 
@@ -167,6 +168,9 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 
 - `VITE_API_URL` — HTTPS base URL of the deployed backend (e.g. `https://stalemates-api.fly.dev`)
 - `VITE_API_WS_URL` — WebSocket base URL of the deployed backend (e.g. `wss://stalemates-api.fly.dev`)
+  (optional: derived from `VITE_API_URL` when unset). A dev server with neither falls back
+  to `http://localhost:3000`; a production build with neither shows "no game server
+  configured" instead of trying to connect.
 
 **Backend (Fly secrets / container env):**
 

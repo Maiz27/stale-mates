@@ -10,6 +10,7 @@
 	import TimeSelector from '../controls/TimeSelector.svelte';
 	import type { CreateGameResponse } from '$lib/chess/protocol';
 	import { setInviteToken, setSeatToken } from '$lib/chess/seat';
+	import { API_NOT_CONFIGURED_MESSAGE, apiUrls } from '$lib/apiConfig';
 
 	let open = $state(false);
 	let color = $state<Color | 'random'>('white');
@@ -31,10 +32,14 @@
 	async function createGame() {
 		if (loading) return;
 
+		if (!apiUrls.http) {
+			errorMessage = API_NOT_CONFIGURED_MESSAGE;
+			return;
+		}
 		loading = true;
 		errorMessage = '';
 		try {
-			const response = await fetch(`${import.meta.env.VITE_API_URL}/game/create`, {
+			const response = await fetch(`${apiUrls.http}/game/create`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ time, color })

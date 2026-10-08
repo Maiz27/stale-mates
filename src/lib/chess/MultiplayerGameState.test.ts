@@ -296,6 +296,45 @@ describe('MultiplayerGameState connection status (SM-1.7)', () => {
 		socket.setStatus('rejected', 'rateLimited');
 		expect(get(game).rejection).toBe('rateLimited');
 	});
+	it('connects to the configured game server, never "undefined/…" (CR2-2)', () => {
+		const urls: string[] = [];
+		new MultiplayerGameState({
+			roomId: 'room 1',
+			token: 'seat-token-123',
+			serverUrl: 'wss://api.example.com',
+			connect: (url) => {
+				urls.push(url);
+				return new FakeSocket() as unknown as GameSocket;
+			}
+		});
+		// Default (this build's URL; vitest runs in dev, so the local API fallback).
+		new MultiplayerGameState({
+			roomId: 'room1',
+			token: 'seat-token-123',
+			connect: (url) => {
+				urls.push(url);
+				return new FakeSocket() as unknown as GameSocket;
+			}
+		});
+		expect(urls).toEqual([
+			'wss://api.example.com/game/join?id=room%201',
+			'ws://localhost:3000/game/join?id=room1'
+		]);
+	});
+
+	it('reports a missing server URL instead of connecting to "undefined" (CR2-2)', () => {
+		const connect = vi.fn();
+		const game = new MultiplayerGameState({
+			roomId: 'room1',
+			token: 'seat-token-123',
+			serverUrl: null,
+			connect
+		});
+		expect(connect).not.toHaveBeenCalled();
+		expect(get(game).connectionStatus).toBe('rejected');
+		expect(get(game).rejection).toBe('unconfigured');
+		game.destroy();
+	});
 });
 
 describe('MultiplayerGameState seats (SM-3)', () => {

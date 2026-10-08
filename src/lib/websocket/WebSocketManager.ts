@@ -26,8 +26,10 @@ export const CLOSE_TRY_AGAIN_LATER = 1013;
  * - `tooManyConnections`: too many open connections from this IP.
  * - `origin`: this site isn't allowed to talk to the game server.
  * - `other`: any other refusal (e.g. no join frame in time).
+ * - `unconfigured`: this build has no game server URL (no connection attempted).
  */
-export type Rejection = 'notFound' | 'rateLimited' | 'tooManyConnections' | 'origin' | 'other';
+export type Rejection =
+	'notFound' | 'rateLimited' | 'tooManyConnections' | 'origin' | 'other' | 'unconfigured';
 
 const REJECTIONS: Partial<Record<CloseReason, Rejection>> = {
 	'Invalid game room': 'notFound',

@@ -107,10 +107,9 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
-    # The frontend reads these at BUILD time (vite bakes import.meta.env.*). The
-    # local-dev .env is gitignored, so set them here so the previewed build can
-    # reach the API server the Playwright webServer starts on :3000. Without
-    # these the multiplayer spec's WS URL would be undefined.
+    # The frontend reads these at BUILD time (vite bakes import.meta.env.*).
+    # playwright.config.ts defaults them to the API server it starts on :3000;
+    # they're spelled out here so the CI build's target is explicit.
     env:
       VITE_API_URL: http://localhost:3000
       VITE_API_WS_URL: ws://localhost:3000
