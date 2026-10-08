@@ -160,5 +160,6 @@ messages by `type` to registered handlers, and sends outbound messages.
 It **reconnects automatically** with exponential backoff + jitter, sends the seat `join`
 frame first on every (re)connect, and exposes connection status via `onStatus`
 (`connecting`/`open`/`reconnecting`/`closed`, plus the terminal `rejected` — room gone,
-full or bad seat — and `replaced` — the seat was opened elsewhere). The server-side counterpart is the connection plumbing in
+full or bad seat, or `unreachable` after a 2-minute outage with no frame from the server —
+and `replaced` — the seat was opened elsewhere). The server-side counterpart is the connection plumbing in
 `api/src/lib/websocket.ts`.
