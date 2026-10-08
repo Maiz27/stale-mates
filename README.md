@@ -175,6 +175,11 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
   default `1800000` = 30 min). Disconnected players can rejoin until then.
 - `DISCONNECT_GRACE_MS` — how long a disconnected player has before the opponent may
   claim the win (ms, default `60000`).
+- `TRUST_PROXY` — how many reverse-proxy hops to trust for the client IP in
+  `X-Forwarded-For` (default `1`, right for Fly.io's edge proxy). Set `0` when the server
+  is exposed directly, or clients can spoof their IP past the per-IP limits.
+- `MAX_WS_CONNECTIONS_PER_IP` — concurrent WebSocket connections allowed from one client
+  IP (default `20`); extra connections are closed with `1013`.
 
 ### Deploying the Frontend (Vercel)
 

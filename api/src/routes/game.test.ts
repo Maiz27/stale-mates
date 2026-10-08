@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'http';
 import type { AddressInfo } from 'net';
-import app from '../app';
+import app, { createApp } from '../app';
 
 let server: http.Server;
 let base = '';
@@ -46,5 +46,12 @@ describe('POST /game/create (Express 5)', () => {
 	it('serves /health', async () => {
 		const res = await fetch(`${base}/health`);
 		expect(await res.json()).toMatchObject({ status: 'ok' });
+	});
+});
+
+describe('trust proxy (CR-8)', () => {
+	it('is configurable via TRUST_PROXY (default: one hop)', () => {
+		expect(createApp({}).get('trust proxy')).toBe(1);
+		expect(createApp({ TRUST_PROXY: '0' }).get('trust proxy')).toBe(0);
 	});
 });

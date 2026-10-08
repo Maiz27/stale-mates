@@ -4,6 +4,7 @@ import { URL } from 'url';
 import { getGameRoom, removePlayerFromGame } from './game';
 import { parseClientMessage } from './validate';
 import type { Player } from './types';
+import { maxWsConnectionsPerIp, trustProxyHops } from './env';
 
 /** How long a socket may stay open without presenting a seat token. */
 export const JOIN_TIMEOUT_MS = 10_000;
@@ -155,6 +156,33 @@ export interface WebSocketServerOptions {
 	env?: ConnectionEnv;
 	/** Heartbeat interval; 0 disables it (tests). */
 	heartbeatMs?: number;
+	/** Concurrent sockets allowed per client IP (MAX_WS_CONNECTIONS_PER_IP). */
+	maxConnectionsPerIp?: number;
+	/** Reverse-proxy hops trusted for X-Forwarded-For (TRUST_PROXY). */
+	trustProxyHops?: number;
+}
+
+/** Close code for a connection refused because its IP has too many open (1013 Try Again Later). */
+export const CLOSE_TRY_AGAIN_LATER = 1013;
+
+/**
+ * The client IP for a request, trusting `hops` reverse proxies: the address
+ * list is the socket peer followed by X-Forwarded-For read right to left, and
+ * the entry `hops` steps in is the client (Express's numeric `trust proxy`).
+ * Entries further left are client-controlled and never used.
+ */
+export function clientIp(req: IncomingMessage, hops: number): string {
+	const forwarded = req.headers['x-forwarded-for'];
+	const header = Array.isArray(forwarded) ? forwarded.join(',') : (forwarded ?? '');
+	const chain = [
+		req.socket.remoteAddress ?? 'unknown',
+		...header
+			.split(',')
+			.map((part) => part.trim())
+			.filter(Boolean)
+			.reverse()
+	];
+	return chain[Math.min(hops, chain.length - 1)];
 }
 
 /**
@@ -163,7 +191,13 @@ export interface WebSocketServerOptions {
  */
 export function createWebSocketServer(
 	server: HttpServer,
-	{ maxPayload = 4096, env = process.env, heartbeatMs = 30_000 }: WebSocketServerOptions = {}
+	{
+		maxPayload = 4096,
+		env = process.env,
+		heartbeatMs = 30_000,
+		maxConnectionsPerIp = maxWsConnectionsPerIp(process.env),
+		trustProxyHops: hops = trustProxyHops(process.env)
+	}: WebSocketServerOptions = {}
 ): WebSocketServer {
 	// maxPayload: the largest legitimate frame is a ~100-byte move/join; anything
 	// bigger is abuse and is refused by `ws` itself (close 1009) before parsing.
@@ -171,7 +205,25 @@ export function createWebSocketServer(
 	// Server-level errors (e.g. the underlying HTTP server failing to listen) are
 	// re-emitted here; without a listener they would be thrown.
 	wss.on('error', (error) => console.error('WebSocket server error:', error));
-	wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req, env));
+	// Open sockets per client IP: one source can't exhaust the process's sockets
+	// and memory by opening (and idling) thousands of connections (CR-8).
+	const perIp = new Map<string, number>();
+	wss.on('connection', (ws, req) => {
+		const ip = clientIp(req, hops);
+		const open = perIp.get(ip) ?? 0;
+		if (open >= maxConnectionsPerIp) {
+			ws.on('error', (error) => onSocketError(ws, error));
+			closeConnection(ws, CLOSE_TRY_AGAIN_LATER, 'Too many connections');
+			return;
+		}
+		perIp.set(ip, open + 1);
+		ws.on('close', () => {
+			const left = (perIp.get(ip) ?? 1) - 1;
+			if (left > 0) perIp.set(ip, left);
+			else perIp.delete(ip);
+		});
+		handleWebSocketConnection(ws, req, env);
+	});
 	if (heartbeatMs > 0) startHeartbeat(wss, heartbeatMs);
 	return wss;
 }

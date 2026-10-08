@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateEnv, assertValidEnv } from './env';
+import { validateEnv, assertValidEnv, maxWsConnectionsPerIp, trustProxyHops } from './env';
 
 describe('validateEnv', () => {
 	it('accepts a fully empty env (all defaults apply)', () => {
@@ -75,5 +75,26 @@ describe('validateEnv DISCONNECT_GRACE_MS', () => {
 		expect(validateEnv({ DISCONNECT_GRACE_MS: '60000' }).ok).toBe(true);
 		expect(validateEnv({ DISCONNECT_GRACE_MS: '-1' }).ok).toBe(false);
 		expect(validateEnv({ DISCONNECT_GRACE_MS: 'soon' }).ok).toBe(false);
+	});
+});
+
+describe('TRUST_PROXY / MAX_WS_CONNECTIONS_PER_IP (CR-8)', () => {
+	it('defaults to one trusted proxy hop and 20 sockets per IP', () => {
+		expect(trustProxyHops({})).toBe(1);
+		expect(maxWsConnectionsPerIp({})).toBe(20);
+	});
+
+	it('parses configured values', () => {
+		expect(trustProxyHops({ TRUST_PROXY: '0' })).toBe(0);
+		expect(trustProxyHops({ TRUST_PROXY: '2' })).toBe(2);
+		expect(maxWsConnectionsPerIp({ MAX_WS_CONNECTIONS_PER_IP: '5' })).toBe(5);
+	});
+
+	it('rejects invalid values', () => {
+		expect(validateEnv({ TRUST_PROXY: 'yes' }).ok).toBe(false);
+		expect(validateEnv({ TRUST_PROXY: '-1' }).ok).toBe(false);
+		expect(validateEnv({ MAX_WS_CONNECTIONS_PER_IP: '0' }).ok).toBe(false);
+		expect(validateEnv({ MAX_WS_CONNECTIONS_PER_IP: '2.5' }).ok).toBe(false);
+		expect(validateEnv({ TRUST_PROXY: '0', MAX_WS_CONNECTIONS_PER_IP: '10' }).ok).toBe(true);
 	});
 });

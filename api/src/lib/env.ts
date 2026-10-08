@@ -13,7 +13,35 @@ export interface EnvInput {
 	ORIGIN?: string;
 	ROOM_TTL_MS?: string;
 	DISCONNECT_GRACE_MS?: string;
+	TRUST_PROXY?: string;
+	MAX_WS_CONNECTIONS_PER_IP?: string;
 	NODE_ENV?: string;
+}
+
+/** Default number of reverse-proxy hops trusted for the client IP (Fly.io's edge = 1). */
+export const DEFAULT_TRUST_PROXY_HOPS = 1;
+/** Default cap on concurrent WebSocket connections from one client IP. */
+export const DEFAULT_MAX_WS_CONNECTIONS_PER_IP = 20;
+
+const isSet = (value: string | undefined): value is string =>
+	value !== undefined && value.trim() !== '';
+
+/**
+ * How many reverse proxies in front of the server to trust when deriving the
+ * client IP from X-Forwarded-For (Express `trust proxy` hop count; also used for
+ * WebSocket connections). 0 = use the socket address and ignore the header —
+ * right when the server is exposed directly, where trusting a hop would let a
+ * client spoof its IP past the per-IP limits.
+ */
+export function trustProxyHops(env: EnvInput): number {
+	return isSet(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : DEFAULT_TRUST_PROXY_HOPS;
+}
+
+/** Concurrent WebSocket connections allowed per client IP. */
+export function maxWsConnectionsPerIp(env: EnvInput): number {
+	return isSet(env.MAX_WS_CONNECTIONS_PER_IP)
+		? Number(env.MAX_WS_CONNECTIONS_PER_IP)
+		: DEFAULT_MAX_WS_CONNECTIONS_PER_IP;
 }
 
 export interface EnvValidationResult {
@@ -58,6 +86,26 @@ export function validateEnv(env: EnvInput): EnvValidationResult {
 		if (!Number.isInteger(grace) || grace < 0) {
 			errors.push(
 				`DISCONNECT_GRACE_MS must be a non-negative integer in ms (got "${env.DISCONNECT_GRACE_MS}")`
+			);
+		}
+	}
+
+	// TRUST_PROXY: optional hop count, a non-negative integer.
+	if (isSet(env.TRUST_PROXY)) {
+		const hops = Number(env.TRUST_PROXY);
+		if (!Number.isInteger(hops) || hops < 0) {
+			errors.push(
+				`TRUST_PROXY must be a non-negative integer (proxy hops) (got "${env.TRUST_PROXY}")`
+			);
+		}
+	}
+
+	// MAX_WS_CONNECTIONS_PER_IP: optional, a positive integer.
+	if (isSet(env.MAX_WS_CONNECTIONS_PER_IP)) {
+		const max = Number(env.MAX_WS_CONNECTIONS_PER_IP);
+		if (!Number.isInteger(max) || max <= 0) {
+			errors.push(
+				`MAX_WS_CONNECTIONS_PER_IP must be a positive integer (got "${env.MAX_WS_CONNECTIONS_PER_IP}")`
 			);
 		}
 	}

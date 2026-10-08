@@ -116,6 +116,7 @@ This server is intentionally simple and runs as a **single instance**:
   restart policy, Docker `restart:`) starts a clean process — the in-memory games are
   lost either way, but a half-updated room is never served. Unhandled promise
   rejections are logged and the process keeps running.
+- **Concurrent WebSockets are capped per IP** (`MAX_WS_CONNECTIONS_PER_IP`, default 20).
 - **Room creation is rate-limited per IP** (default ~30 creates / 10 min) to prevent
   spam; this limiter is also in-memory and therefore per-instance.
 
@@ -123,12 +124,14 @@ This server is intentionally simple and runs as a **single instance**:
 
 Environment variables (validated at startup; the server fails fast on invalid values):
 
-| Variable              | Required           | Default                 | Notes                                                                                                                    |
-| --------------------- | ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `PORT`                | No                 | `3000`                  | Must be an integer 1-65535 if set.                                                                                       |
-| `ORIGIN`              | In production only | `http://localhost:5173` | Allowed frontend origin(s), comma-separated. Used for CORS **and** the WebSocket `Origin` check. Required in production. |
-| `ROOM_TTL_MS`         | No                 | `1800000` (30 min)      | How long a room with nobody connected is kept (measured from its last activity) before the sweep reaps it.               |
-| `DISCONNECT_GRACE_MS` | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win.                                      |
+| Variable                    | Required           | Default                 | Notes                                                                                                                                                                                                                             |
+| --------------------------- | ------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | No                 | `3000`                  | Must be an integer 1-65535 if set.                                                                                                                                                                                                |
+| `ORIGIN`                    | In production only | `http://localhost:5173` | Allowed frontend origin(s), comma-separated. Used for CORS **and** the WebSocket `Origin` check. Required in production.                                                                                                          |
+| `ROOM_TTL_MS`               | No                 | `1800000` (30 min)      | How long a room with nobody connected is kept (measured from its last activity) before the sweep reaps it.                                                                                                                        |
+| `DISCONNECT_GRACE_MS`       | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win.                                                                                                                                               |
+| `TRUST_PROXY`               | No                 | `1`                     | Reverse-proxy hops trusted for the client IP in `X-Forwarded-For` (Express `trust proxy`; also used for WebSockets). `1` fits Fly.io's edge; use `0` when exposed directly, or clients can spoof their IP past the per-IP limits. |
+| `MAX_WS_CONNECTIONS_PER_IP` | No                 | `20`                    | Concurrent WebSocket connections per client IP; extra ones are closed with `1013` ("Too many connections").                                                                                                                       |
 
 Outside production the WebSocket `Origin` check also accepts any `localhost` origin
 and origin-less clients, so local tools work.

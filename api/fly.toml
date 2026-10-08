@@ -12,6 +12,8 @@ primary_region = "fra"
 
 [env]
   PORT = "3000"
+  # Fly's edge proxy is one hop in front of the app (client IP from X-Forwarded-For).
+  TRUST_PROXY = "1"
   # ORIGIN (deployed frontend origin) is set as a secret/runtime env, not here:
   #   fly secrets set ORIGIN=https://stalemates.magedfaiz.xyz
 
