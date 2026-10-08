@@ -16,6 +16,12 @@
  *   more of `[a-z0-9-]` (never a dot), and the fixed domain after that label
  *   must have at least two labels. So `https://*.vercel.app` (anyone's app) and
  *   `https://x-*.com` (any domain) are rejected at startup.
+ *
+ *   On a shared hosting suffix such as `vercel.app` a pattern is only a soft
+ *   guard: anyone can create a project there whose name makes `<name>.vercel.app`
+ *   match it (project names are free-form `[a-z0-9-]`), so the server logs a
+ *   warning for such patterns at startup (see `originWarnings`). Only a domain
+ *   you control (a custom preview domain) is a hard boundary.
  */
 
 export interface OriginEnv {
@@ -32,6 +38,8 @@ export interface OriginPattern {
 	source: string;
 	/** Matches a whole `URL.host` (lowercase, no port). */
 	regex: RegExp;
+	/** The fixed domain after the wildcard label, e.g. `vercel.app`. */
+	domain: string;
 }
 
 export interface ParsedOrigins {
@@ -107,7 +115,7 @@ export function parseOriginPattern(entry: string): { pattern: OriginPattern } | 
 	const regex = new RegExp(
 		`^${escape(prefix)}[a-z0-9-]+${escape(suffix)}\\.${escape(domain.join('.'))}$`
 	);
-	return { pattern: { source: entry, regex } };
+	return { pattern: { source: entry, regex, domain: domain.join('.') } };
 }
 
 /** Parse `ORIGIN` / `ORIGIN_PATTERNS`, collecting every problem. */
@@ -151,6 +159,42 @@ export function originMatcher(env: OriginEnv): (origin: string | undefined) => b
 		if (url.protocol !== 'https:' || url.port || url.origin !== origin) return false;
 		return patterns.some((p) => p.regex.test(url.hostname));
 	};
+}
+
+/**
+ * Public suffixes where anyone can register a subdomain by naming a project:
+ * an `ORIGIN_PATTERNS` entry directly under one of them can be matched by
+ * someone else's deployment.
+ */
+export const SHARED_HOSTING_SUFFIXES = [
+	'vercel.app',
+	'netlify.app',
+	'pages.dev',
+	'fly.dev',
+	'onrender.com',
+	'herokuapp.com',
+	'github.io',
+	'web.app',
+	'firebaseapp.com',
+	'workers.dev',
+	'deno.dev',
+	'railway.app',
+	'surge.sh',
+	'glitch.me'
+];
+
+/**
+ * Startup warnings for the parsed allowlist: each pattern whose fixed domain is
+ * a shared hosting suffix only keeps other projects out as long as nobody
+ * picks a matching project name, which anyone can.
+ */
+export function originWarnings(env: OriginEnv): string[] {
+	return parseOrigins(env)
+		.patterns.filter((p) => SHARED_HOSTING_SUFFIXES.includes(p.domain))
+		.map(
+			(p) =>
+				`ORIGIN_PATTERNS entry "${p.source}" is on the shared domain ${p.domain}: anyone can create a project there whose URL matches it, so it is only a soft guard. Prefer leaving VITE_API_URL unset for previews, or a preview domain you control.`
+		);
 }
 
 /** One line for the startup log. */

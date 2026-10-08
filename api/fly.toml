@@ -21,7 +21,9 @@ kill_timeout = 10
   TRUST_PROXY = "1"
   # ORIGIN (deployed frontend origin) is set as a secret/runtime env, not here:
   #   fly secrets set ORIGIN=https://stalemates.magedfaiz.xyz
-  # Optional, to let this project's Vercel previews play multiplayer (see README):
+  # Optional, to let this project's Vercel previews play multiplayer (see README). Only a
+  # soft guard: any Vercel account can name a project so <name>.vercel.app matches it.
+  # Recommended: leave VITE_API_URL unset for Vercel Preview instead (previews AI-only).
   #   fly secrets set ORIGIN_PATTERNS='https://stale-mates-*-maiz27s-projects.vercel.app'
 
 [http_service]

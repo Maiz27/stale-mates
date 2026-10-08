@@ -7,7 +7,7 @@ import app from './app';
 import { createWebSocketServer } from './lib/websocket';
 import type { CloseReason } from './lib/protocol';
 import { assertValidEnv } from './lib/env';
-import { describeOrigins } from './lib/origins';
+import { describeOrigins, originWarnings } from './lib/origins';
 import { SHUTDOWN_FORCE_EXIT_MS } from './lib/shutdown';
 import { startRoomSweep } from './lib/game';
 
@@ -21,6 +21,7 @@ try {
 // The parsed browser-origin allowlist (CORS + WebSocket), so a misconfigured
 // ORIGIN is visible in the deploy logs (CR3-1).
 console.log(describeOrigins(process.env));
+for (const warning of originWarnings(process.env)) console.warn(`Warning: ${warning}`);
 
 const server = http.createServer(app);
 

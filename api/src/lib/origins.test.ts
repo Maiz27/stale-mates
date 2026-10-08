@@ -3,6 +3,7 @@ import {
 	allowedOrigins,
 	describeOrigins,
 	originMatcher,
+	originWarnings,
 	parseOriginPattern,
 	parseOrigins
 } from './origins';
@@ -131,5 +132,25 @@ describe('ORIGIN_PATTERNS (CR3-2)', () => {
 	it('accepts a project-scoped pattern', () => {
 		expect(validateEnv(env)).toEqual({ ok: true, errors: [] });
 		expect('pattern' in parseOriginPattern('https://myapp-*.example.com')).toBe(true);
+	});
+});
+
+describe('originWarnings: patterns on shared hosting domains', () => {
+	it('warns for a pattern directly under a shared suffix such as vercel.app', () => {
+		const warnings = originWarnings({
+			ORIGIN_PATTERNS:
+				'https://stale-mates-*-maiz27s-projects.vercel.app,https://app-*.netlify.app,https://x-*.pages.dev,https://y-*.fly.dev'
+		});
+		expect(warnings).toHaveLength(4);
+		expect(warnings[0]).toContain('vercel.app');
+		expect(warnings[0]).toContain('soft guard');
+	});
+
+	it('does not warn for a domain you control, or without patterns', () => {
+		expect(originWarnings({ ORIGIN_PATTERNS: 'https://pr-*.preview.example.com' })).toEqual([]);
+		expect(originWarnings({ ORIGIN_PATTERNS: 'https://pr-*.team.vercel.app.example.com' })).toEqual(
+			[]
+		);
+		expect(originWarnings({ ORIGIN: 'https://stalemates.example' })).toEqual([]);
 	});
 });

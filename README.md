@@ -182,7 +182,8 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
   WebSocket `Origin` allowlist (e.g. `https://stalemates.magedfaiz.xyz`). Each entry is
   normalised (`https://site/` → `https://site`); an entry with a path, query or fragment,
   or a non-http(s) scheme, stops the server at startup. The parsed allowlist is logged.
-- `ORIGIN_PATTERNS` — optional, for Vercel preview deployments (see below).
+- `ORIGIN_PATTERNS` — optional, for preview deployments; only a soft guard on a shared
+  domain such as `vercel.app` (see below).
 - `PORT` — port the server listens on (defaults to `3000`)
 - `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
   default `1800000` = 30 min). Disconnected players can rejoin until then.
@@ -207,7 +208,8 @@ Connect the repository to a Vercel project, set `VITE_API_URL` and `VITE_API_WS_
 - **Leave previews without a game server** (simplest, safest): set `VITE_API_URL` /
   `VITE_API_WS_URL` for the _Production_ environment only. Preview builds then show "no
   game server configured" on the multiplayer page; single-player works.
-- **Allow this project's previews** on the backend with an opt-in pattern:
+- **Allow this project's previews** on the backend with an opt-in pattern (a soft guard
+  on `vercel.app` — see the caveat below):
 
   ```bash
   fly secrets set ORIGIN_PATTERNS='https://stale-mates-*-maiz27s-projects.vercel.app'
@@ -216,11 +218,19 @@ Connect the repository to a Vercel project, set `VITE_API_URL` and `VITE_API_WS_
   and set `VITE_API_URL` / `VITE_API_WS_URL` for the _Preview_ environment too. A pattern
   is https-only with exactly one `*` in the first host label, after a non-empty literal
   prefix (`https://*.vercel.app` is refused at startup — it would admit everyone's apps);
-  the `*` never matches a dot. Keep the team suffix (`-maiz27s-projects`) in it: Vercel
-  preview hosts are `<project>-<hash>-<team>.vercel.app`, and the suffix is what keeps
-  other people's deployments out. It is defence in depth (seat tokens never leave the
-  site's own storage), but an unscoped pattern would still let another site open game
-  sockets from its visitors' browsers.
+  the `*` never matches a dot.
+
+  **On `vercel.app` this is only a soft guard.** Vercel project names are free-form
+  (`[a-z0-9-]`), and a production deployment is served at `<project-name>.vercel.app`, so
+  _any_ Vercel account can create a project named, say,
+  `stale-mates-x-maiz27s-projects` and get a host the pattern above accepts. The team
+  suffix only keeps out deployments that don't try. Seat tokens never leave the site's own
+  storage, so such a site can't take over existing games, but it can open game sockets
+  and create rooms from its visitors' browsers. The server logs a startup warning for any
+  pattern directly under a shared hosting domain (`vercel.app`, `netlify.app`, `pages.dev`,
+  `fly.dev`, …). For a hard boundary, leave `VITE_API_URL` unset in the Preview
+  environment (previews are AI-only — the recommended setup), or serve previews from a
+  custom preview domain you control (e.g. `https://pr-*.preview.example.com`).
 
 ### Deploying the Backend (Fly.io / Docker)
 
