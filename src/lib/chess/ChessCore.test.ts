@@ -31,7 +31,7 @@ describe('ChessCore', () => {
 		expect(core.moveType(core.move({ from: 'e4', to: 'd5' })!)).toBe('capture');
 	});
 
-	it('reports checkmate outcome with the winner (fool\'s mate)', () => {
+	it("reports checkmate outcome with the winner (fool's mate)", () => {
 		const core = new ChessCore();
 		core.move({ from: 'f2', to: 'f3' });
 		core.move({ from: 'e7', to: 'e5' });
@@ -60,5 +60,26 @@ describe('ChessCore', () => {
 		core.reset();
 		expect(core.turn()).toBe('white');
 		expect(core.history()).toEqual([]);
+	});
+});
+
+describe('ChessCore engine position (CR2-9)', () => {
+	it('reports the start FEN and the UCI moves played from it', () => {
+		const core = new ChessCore();
+		expect(core.startFen()).toBe(core.fen());
+		expect(core.uciMoves()).toEqual([]);
+		const start = core.fen();
+		core.move({ from: 'e2', to: 'e4' });
+		core.move({ from: 'e7', to: 'e5' });
+		expect(core.startFen()).toBe(start);
+		expect(core.uciMoves()).toEqual(['e2e4', 'e7e5']);
+	});
+
+	it('uses a custom starting position when the game began from a FEN', () => {
+		const fen = '8/P6k/8/8/8/8/8/K7 w - - 0 1';
+		const core = new ChessCore(fen);
+		core.move({ from: 'a7', to: 'a8', promotion: 'q' });
+		expect(core.startFen()).toBe(fen);
+		expect(core.uciMoves()).toEqual(['a7a8q']);
 	});
 });

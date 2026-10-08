@@ -1,18 +1,20 @@
 <script lang="ts">
-	import { Drawer as DrawerPrimitive } from "vaul-svelte";
-	import { cn } from "$lib/utils.js";
+	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
+	import { cn } from '$lib/utils.js';
 
-	type $$Props = DrawerPrimitive.OverlayProps;
-
-	export let el: $$Props["el"] = undefined;
-	let className: $$Props["class"] = undefined;
-	export { className as class };
+	let {
+		ref = $bindable(null),
+		class: className,
+		...restProps
+	}: DrawerPrimitive.OverlayProps = $props();
 </script>
 
 <DrawerPrimitive.Overlay
-	bind:el
-	class={cn("fixed inset-0 z-50 bg-black/80", className)}
-	{...$$restProps}
->
-	<slot />
-</DrawerPrimitive.Overlay>
+	bind:ref
+	data-slot="drawer-overlay"
+	class={cn(
+		'fixed inset-0 z-50 bg-black/10 data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0 supports-backdrop-filter:backdrop-blur-xs',
+		className
+	)}
+	{...restProps}
+/>

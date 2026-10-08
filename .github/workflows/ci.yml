@@ -1,9 +1,22 @@
 name: CI
 
 on:
+  # Run on pushes to the default branch and on every PR. Feature-branch pushes
+  # are covered by their PR, so they don't run the whole matrix twice.
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run for the same branch/PR instead of queueing it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in sync with api/Dockerfile (oven/bun image tag).
+  BUN_VERSION: 1.4.2
+  NODE_VERSION: '22.x'
 
 # Least privilege: this workflow only reads the repo to lint/typecheck/test.
 permissions:
@@ -19,33 +32,51 @@ jobs:
         with:
           persist-credentials: false
 
+      # SvelteKit 3 needs Node >= 22.17 (bunx runs the CLIs on the runner's Node).
+      - name: Setup Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       # The project standardises on Bun (see package.json scripts) and Vercel
-      # deploys with Bun. npm install fails here on the svelte-chessground peer
-      # dependency (it wants svelte@3 while the app is on svelte@4); Bun resolves
-      # it the same way the deploy does.
+      # deploys with Bun, so CI installs from bun.lock the same way the deploy does.
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Sync SvelteKit
         run: bunx svelte-kit sync
 
-      # eslint + svelte-check are run directly rather than the `lint` npm script,
-      # because that script also runs `prettier --check .`, which can fail on
-      # pre-existing formatting unrelated to these changes.
+      - name: Format (prettier)
+        run: bunx prettier --check .
+
+      - name: Shared protocol copies match
+        run: node scripts/sync-protocol.mjs --check
+
       - name: Lint
         run: bunx eslint .
 
+      # tsconfig.json extends `$app/tsconfig`, which `svelte-kit sync` (above)
+      # generates into node_modules on a clean checkout. The service worker has
+      # its own config (src/service-worker/tsconfig.json, WebWorker lib).
       - name: Type-check (svelte-check)
         run: bunx svelte-check --tsconfig ./tsconfig.json
+
+      - name: Type-check (service worker)
+        run: bunx tsc -p src/service-worker
 
       - name: Unit tests
         run: bunx vitest run
 
+      - name: Build
+        run: bun run build
+
   api:
-    name: API (type-check, unit tests)
+    name: API (lint, type-check, unit tests)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -58,9 +89,14 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bunx eslint .
 
       - name: Type-check
         run: bunx tsc --noEmit
@@ -71,10 +107,9 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
-    # The frontend reads these at BUILD time (vite bakes import.meta.env.*). The
-    # local-dev .env is gitignored, so set them here so the previewed build can
-    # reach the API server the Playwright webServer starts on :3000. Without
-    # these the multiplayer spec's WS URL would be undefined.
+    # The frontend reads these at BUILD time (vite bakes import.meta.env.*).
+    # playwright.config.ts defaults them to the API server it starts on :3000;
+    # they're spelled out here so the CI build's target is explicit.
     env:
       VITE_API_URL: http://localhost:3000
       VITE_API_WS_URL: ws://localhost:3000
@@ -86,21 +121,23 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       # Node is needed by the Playwright webServer commands (`npm run build`,
       # `npm run preview`, `npx tsc`, `node api/dist/index.js`). Bun installs
-      # deps (it resolves the svelte-chessground peer dep the way the deploy
-      # does); Node runs the previewed app and the API server.
+      # deps from bun.lock (as the deploy does); Node runs the previewed app and
+      # the API server.
       - name: Setup Node
         uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Install API dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
         working-directory: api
 
       - name: Install Playwright browser (chromium)

@@ -1,0 +1,58 @@
+import { expect, test } from '@playwright/test';
+
+test.describe('home', () => {
+	test('desktop: the Play AI dialog starts a game', async ({ page }) => {
+		await page.goto('/');
+		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+		await page.getByRole('button', { name: 'Play AI: Adaptive Challenge' }).click();
+		await expect(page.getByRole('dialog')).toBeVisible();
+		await page.getByRole('button', { name: 'Start Game' }).click();
+		await expect(page).toHaveURL(/\/ai$/);
+	});
+
+	test('mobile: the Play AI drawer starts a game', async ({ browser }) => {
+		const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+		const page = await context.newPage();
+		try {
+			await page.goto('/');
+			await page.getByRole('button', { name: 'Play AI: Adaptive Challenge' }).click();
+			await expect(page.getByRole('dialog')).toBeVisible();
+			await page.getByRole('button', { name: 'Start Game' }).click();
+			await expect(page).toHaveURL(/\/ai$/);
+		} finally {
+			await context.close();
+		}
+	});
+
+	test('theme menu switches the board colours', async ({ page }) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Toggle theme' }).click();
+		await page.getByRole('menuitemradio', { name: 'Green' }).click();
+		await expect(page.locator('[data-board-theme="green"]')).toBeVisible();
+		await page.reload();
+		await expect(page.locator('[data-board-theme="green"]')).toBeVisible();
+	});
+
+	test('dark mode toggle applies and persists', async ({ page }) => {
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Toggle theme' }).click();
+		await page.getByRole('menuitem', { name: 'Dark' }).click();
+		await expect(page.locator('html')).toHaveClass(/dark/);
+		await page.reload();
+		await expect(page.locator('html')).toHaveClass(/dark/);
+	});
+});
+
+test('old <roomId>-playerId cookies are removed on load (CR3-8)', async ({
+	page,
+	context,
+	baseURL
+}) => {
+	await context.addCookies([
+		{ name: 'V1StGXR8_Z5jdHi6B-myT-playerId', value: '%7B%7D', url: baseURL },
+		{ name: 'keep-me', value: '1', url: baseURL }
+	]);
+	await page.goto('/');
+	await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+	await expect.poll(async () => (await context.cookies()).map((c) => c.name)).toEqual(['keep-me']);
+});

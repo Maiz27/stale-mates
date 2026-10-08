@@ -1,24 +1,26 @@
 # syntax=docker/dockerfile:1
 
-# ---- Build stage ----
-# Compile TypeScript (src/) to JavaScript (dist/) with all deps available.
-FROM node:22-alpine AS build
+# ---- Dependencies / build stage ----
+# Bun installs exactly what api/bun.lock pins (--frozen-lockfile fails the build
+# if package.json and the lockfile disagree), then tsc compiles src/ -> dist/.
+# Keep the Bun version in sync with .github/workflows/ci.yml (BUN_VERSION).
+FROM oven/bun:1.4.2-alpine AS build
 
 WORKDIR /app
 
-# Install all dependencies (incl. devDependencies for tsc).
-COPY package.json ./
-RUN npm install
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-# Copy source and compile (tsc -> dist/, per tsconfig.json outDir).
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN bun run build
 
-# Prune to production-only dependencies for the runtime image.
-RUN npm prune --omit=dev
+# Reinstall production-only dependencies (still lockfile-pinned) for the runtime image.
+RUN rm -rf node_modules && bun install --frozen-lockfile --production
 
 # ---- Runtime stage ----
+# The compiled server runs on plain Node (the target the code is written and
+# tested for); Bun is only the package manager.
 FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production
@@ -26,7 +28,6 @@ ENV PORT=3000
 
 WORKDIR /app
 
-# Copy production node_modules and compiled output from the build stage.
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./

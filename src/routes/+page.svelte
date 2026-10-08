@@ -1,16 +1,21 @@
 <script lang="ts">
-	import Icon from '@iconify/svelte';
+	import Globe from 'svelte-radix/Globe.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import PlayAiDrawer from '$lib/components/PlayAiDrawer/PlayAiDrawer.svelte';
 	import PlayDrawer from '$lib/components/PlayDrawer/PlayDrawer.svelte';
 </script>
 
+<svelte:head>
+	<meta property="og:title" content="Stale Mates - Play Chess Online" />
+	<link rel="canonical" href="https://stalemates.magedfaiz.xyz/" />
+</svelte:head>
+
 <section class="grid min-h-[calc(100dvh-100px)] w-full place-items-center">
 	<div class="flex max-w-6xl flex-col items-center justify-center space-y-8 p-6 text-center">
 		<Badge variant="secondary" class="gap-2 px-4 py-2 font-semibold">
-			<Icon icon="radix-icons:globe" /> Pushing Chess to the Edge
+			<Globe aria-hidden="true" /> Pushing Chess to the Edge
 		</Badge>
-		<h1 class="flex flex-col items-center text-4xl font-black leading-tight md:text-5xl">
+		<h1 class="flex flex-col items-center text-4xl leading-tight font-black md:text-5xl">
 			<span class="mb-2">Where Chess Gets a</span>
 			<span class="text-primary">Checkmate on Boredom</span>
 		</h1>

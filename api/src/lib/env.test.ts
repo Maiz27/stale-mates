@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateEnv, assertValidEnv } from './env';
+import { validateEnv, assertValidEnv, maxWsConnectionsPerIp, trustProxyHops } from './env';
 
 describe('validateEnv', () => {
 	it('accepts a fully empty env (all defaults apply)', () => {
@@ -66,5 +66,50 @@ describe('assertValidEnv', () => {
 
 	it('throws a readable aggregated message on invalid env', () => {
 		expect(() => assertValidEnv({ PORT: 'bad' })).toThrow(/Invalid environment configuration/);
+	});
+});
+
+describe('validateEnv DISCONNECT_GRACE_MS', () => {
+	it('accepts a non-negative integer and rejects anything else', () => {
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '0' }).ok).toBe(true);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '60000' }).ok).toBe(true);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: '-1' }).ok).toBe(false);
+		expect(validateEnv({ DISCONNECT_GRACE_MS: 'soon' }).ok).toBe(false);
+	});
+});
+
+describe('TRUST_PROXY / MAX_WS_CONNECTIONS_PER_IP (CR-8)', () => {
+	it('defaults to trusting no proxy (CR2-5) and 20 sockets per IP', () => {
+		// Exposed directly, a trusted hop would let clients spoof X-Forwarded-For;
+		// deploys behind a proxy (fly.toml) opt in with TRUST_PROXY=1.
+		expect(trustProxyHops({})).toBe(0);
+		expect(trustProxyHops({ TRUST_PROXY: '' })).toBe(0);
+		expect(maxWsConnectionsPerIp({})).toBe(20);
+	});
+
+	it('parses configured values', () => {
+		expect(trustProxyHops({ TRUST_PROXY: '0' })).toBe(0);
+		expect(trustProxyHops({ TRUST_PROXY: '1' })).toBe(1);
+		expect(trustProxyHops({ TRUST_PROXY: '2' })).toBe(2);
+		expect(maxWsConnectionsPerIp({ MAX_WS_CONNECTIONS_PER_IP: '5' })).toBe(5);
+	});
+
+	it('rejects invalid values', () => {
+		expect(validateEnv({ TRUST_PROXY: 'yes' }).ok).toBe(false);
+		expect(validateEnv({ TRUST_PROXY: '-1' }).ok).toBe(false);
+		expect(validateEnv({ MAX_WS_CONNECTIONS_PER_IP: '0' }).ok).toBe(false);
+		expect(validateEnv({ MAX_WS_CONNECTIONS_PER_IP: '2.5' }).ok).toBe(false);
+		expect(validateEnv({ TRUST_PROXY: '0', MAX_WS_CONNECTIONS_PER_IP: '10' }).ok).toBe(true);
+	});
+});
+
+describe('validateEnv FIRST_MOVE_TIMEOUT_MS (CR3-4)', () => {
+	it('accepts a positive integer and rejects anything else', () => {
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '30000' }).ok).toBe(true);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '' }).ok).toBe(true);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '0' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '-5' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '1.5' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: 'soon' }).ok).toBe(false);
 	});
 });

@@ -72,4 +72,165 @@ test.describe('AI mode', () => {
 			)
 			.toBeGreaterThanOrEqual(2);
 	});
+
+	test('resigning asks for confirmation, then offers play again / swap colours', async ({
+		page
+	}) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await page.getByRole('button', { name: 'Resign game' }).click();
+		await expect(page.getByRole('dialog')).toBeVisible();
+		await page.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+
+		await expect(page.getByText('Game Over: Black wins by resignation')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+		await page.getByRole('button', { name: 'Swap colors' }).click();
+		await expect(page.getByText('Player: Black')).toBeVisible();
+	});
+
+	test('an in-progress game survives a reload', async ({ page }) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await expect(page.locator('cg-board piece')).toHaveCount(32);
+		await clickMove(page, 'e2', 'e4', 'white');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect(list.getByText('e4', { exact: true })).toBeVisible();
+
+		await page.reload();
+		await expect(list.getByText('e4', { exact: true })).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole('button', { name: 'Start New Game' })).toHaveCount(0);
+	});
+
+	test('works offline once visited (service worker)', async ({ page, context }) => {
+		await page.goto('/ai');
+		await page.evaluate(async () => {
+			await navigator.serviceWorker.ready;
+		});
+		// Reload while controlled so the engine (wasm) is fetched through the SW and cached.
+		await page.reload();
+		await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+		// Wait until the engine's wasm has been runtime-cached by the service worker.
+		await expect
+			.poll(
+				() =>
+					page.evaluate(async () => {
+						for (const key of await caches.keys()) {
+							const requests = await (await caches.open(key)).keys();
+							if (requests.some((r) => r.url.endsWith('.wasm'))) return true;
+						}
+						return false;
+					}),
+				{ timeout: 30_000 }
+			)
+			.toBe(true);
+
+		await context.setOffline(true);
+		try {
+			await page.reload();
+			await page.getByRole('button', { name: 'Start New Game' }).click();
+			await expect(page.locator('cg-board piece')).toHaveCount(32);
+			await clickMove(page, 'e2', 'e4', 'white');
+			const list = page
+				.locator('div')
+				.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+				.getByRole('list');
+			// The engine replies with no network.
+			await expect
+				.poll(
+					async () =>
+						(await list.innerText()).split(/\s+/).filter((t) => t && !/^\d+\.$/.test(t)).length,
+					{
+						timeout: 30_000
+					}
+				)
+				.toBeGreaterThanOrEqual(2);
+		} finally {
+			await context.setOffline(false);
+		}
+	});
+
+	test('an engine that fails to load shows an error and can be retried (CR-10)', async ({
+		page
+	}) => {
+		await page.route('**/engine/**', (route) => route.abort());
+		await page.goto('/ai');
+		await expect(page.getByText('Engine failed to load.')).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute('**/engine/**');
+		await page.getByRole('button', { name: 'Retry' }).click();
+		await expect(page.getByText('Engine failed to load.')).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await clickMove(page, 'e2', 'e4', 'white');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect
+			.poll(
+				async () =>
+					(await list.innerText()).split(/\s+/).filter((t) => t && !/^\d+\.$/.test(t)).length,
+				{ timeout: 30_000 }
+			)
+			.toBeGreaterThanOrEqual(2);
+	});
+
+	test('a move can be typed instead of dragged', async ({ page }) => {
+		await page.goto('/ai');
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		const input = page.getByLabel('Type a move:');
+		await input.fill('e5');
+		await input.press('Enter');
+		await expect(page.getByText('e5 is not a legal move here.')).toBeVisible();
+		await input.fill('Nf3');
+		await input.press('Enter');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect(list.getByText('Nf3', { exact: true })).toBeVisible();
+	});
+
+	test('the engine worker reports WASM download progress (CR2-6)', async ({ browser }) => {
+		// The engine's load watchdog is re-armed by these reports, so a slow but
+		// moving download isn't mistaken for a failure. Guard the Stockfish.js hook.
+		// A real download is needed: from cache the whole file can arrive before the
+		// worker has picked up the port (fine in the app — readyok follows at once).
+		// So: no service worker, a fresh HTTP cache, and a wasm response held back.
+		const context = await browser.newContext({ serviceWorkers: 'block' });
+		const page = await context.newPage();
+		await page.route('**/*.wasm', async (route) => {
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			await route.continue();
+		});
+		await page.goto('/');
+		// Keep in sync with STOCKFISH_URL (src/lib/engine/Stockfish.ts).
+		const engineUrl = '/engine/stockfish-18.0.8/stockfish-18-lite-single.js';
+		const reports = await page.evaluate(async (url) => {
+			const worker = new Worker(url);
+			const channel = new MessageChannel();
+			const seen: { loaded: number; total: number; percent: number }[] = [];
+			// Resolves on the final report (or after 20 s, failing the assertions below).
+			await new Promise<void>((resolve) => {
+				const timer = setTimeout(resolve, 20_000);
+				channel.port1.onmessage = (event) => {
+					seen.push(event.data);
+					if (event.data.percent >= 1) {
+						clearTimeout(timer);
+						resolve();
+					}
+				};
+				worker.postMessage({ progressPort: channel.port2 }, [channel.port2]);
+				worker.postMessage('uci');
+			});
+			worker.terminate();
+			return seen;
+		}, engineUrl);
+		await context.close();
+		expect(reports.length).toBeGreaterThan(0);
+		expect(reports.at(-1)).toMatchObject({ loaded: reports.at(-1)!.total });
+	});
 });

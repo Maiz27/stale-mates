@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { untrack } from 'svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -7,40 +7,42 @@
 	import ColorSelector from '../controls/ColorSelector.svelte';
 	import type { GameSettings } from '$lib/stores/gameSettings';
 
-	export let isGameStarted = false;
-	export let settings: GameSettings;
-	export let CTA = isGameStarted ? 'Update Settings' : 'Start Game';
+	let {
+		isGameStarted = false,
+		settings,
+		CTA = 'Start Game',
+		onsubmit
+	}: {
+		isGameStarted?: boolean;
+		settings: GameSettings;
+		CTA?: string;
+		onsubmit: (settings: GameSettings) => void;
+	} = $props();
 
-	const dispatch = createEventDispatcher();
+	// Edit a private copy taken when the form opens; the store only changes on
+	// submit (SM-2.9 — the old form mutated $settingsStore in place).
+	const draft = $state<GameSettings>(untrack(() => ({ ...settings })));
 
-	const handleColorChange = (event: CustomEvent) => {
-		settings.color = event.detail.value;
-	};
-
-	const handleDifficultyChange = (event: CustomEvent) => {
-		settings.difficulty = event.detail.value;
-	};
-
-	const handleSubmit = () => {
-		dispatch('submit', settings);
-	};
+	function handleSubmit(event: SubmitEvent) {
+		event.preventDefault();
+		onsubmit({ ...draft });
+	}
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="grid items-start gap-4 px-4 md:px-0">
+<form onsubmit={handleSubmit} class="grid items-start gap-4 px-4 md:px-0">
 	{#if !isGameStarted}
-		<ColorSelector on:colorChange={handleColorChange} color={settings.color} />
+		<ColorSelector
+			bind:value={() => draft.color ?? 'white', (v) => (draft.color = v as 'white' | 'black')}
+		/>
 	{/if}
-	<DifficultySelector
-		on:difficultyChange={handleDifficultyChange}
-		difficulty={settings.difficulty}
-	/>
+	<DifficultySelector bind:value={draft.difficulty} />
 	<div class="flex items-center gap-2">
 		<Label for="hints">Allow Hints:</Label>
-		<Switch id="hints" bind:checked={settings.hints} />
+		<Switch id="hints" bind:checked={draft.hints} />
 	</div>
 	<div class="flex items-center gap-2">
 		<Label for="undo">Allow Undo:</Label>
-		<Switch id="undo" bind:checked={settings.undo} />
+		<Switch id="undo" bind:checked={draft.undo} />
 	</div>
 	<Button type="submit">{CTA}</Button>
 </form>

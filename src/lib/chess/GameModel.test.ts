@@ -73,3 +73,23 @@ describe('GameModel', () => {
 		expect(view.gameOver.isOver).toBe(false);
 	});
 });
+
+describe('GameModel.submitMove (keyboard play)', () => {
+	it('only accepts moves on the player turn in a running game', () => {
+		const model = new GameModel('pve', 'white');
+		expect(model.submitMove({ from: 'e2', to: 'e4' })).toBe(false); // not started
+		model.newGame();
+		expect(model.submitMove({ from: 'e2', to: 'e4' })).toBe(true);
+		expect(model.submitMove({ from: 'e7', to: 'e5' })).toBe(false); // black's turn
+	});
+
+	it('opens the promotion chooser when no piece is given', () => {
+		const promo = new GameModel('pve', 'white', '8/P6k/8/8/8/8/8/K7 w - - 0 1');
+		// Start the game without resetting the board to the initial position.
+		(promo as unknown as { patch: (p: object) => void }).patch({ started: true });
+		expect(promo.submitMove({ from: 'a7', to: 'a8' })).toBe(true);
+		expect(get(promo).promotionMove).toEqual({ from: 'a7', to: 'a8' });
+		expect(promo.completePromotion({ from: 'a7', to: 'a8', piece: 'n' })).toBe(true);
+		expect(get(promo).sanHistory).toEqual(['a8=N']);
+	});
+});

@@ -3,11 +3,11 @@ import type { Move } from 'chess.js';
 import { ChessCore } from './ChessCore';
 import { AudioCue } from './AudioCue';
 import { STARTING_FEN } from '../constants';
-import type { ChessMove, GameMode, GameView } from './types';
+import type { ChessMove, GameMode, GameView, MoveType } from './types';
 import type { Color } from 'chessground/types';
 
 /** Default clock for single-player / pre-game: no timer running. */
-const NO_CLOCK = { isUnlimited: true, myClock: 0, opponentClock: 0 };
+const NO_CLOCK = { isUnlimited: true, myClock: 0, opponentClock: 0, lowTimeThreshold: 0 };
 
 /**
  * The shared game core. Composes the pure rules ({@link ChessCore}) and the
@@ -38,6 +38,7 @@ export class GameModel implements Readable<GameView> {
 		this.player = player;
 		this.audio = new AudioCue();
 		this.store = writable<GameView>({
+			player,
 			fen,
 			turn: this.core.turn(),
 			started: false,
@@ -47,12 +48,22 @@ export class GameModel implements Readable<GameView> {
 			destinations: this.core.destinations(),
 			promotionMove: null,
 			hint: null,
+			hintPending: false,
+			thinking: false,
+			engineError: false,
 			moveHistory: [],
 			sanHistory: [],
 			opponentConnected: false,
+			opponentClaimableAt: null,
 			connectionStatus: 'connecting',
+			rejection: null,
 			rematchOffer: false,
-			clock: NO_CLOCK
+			myRematchOffer: false,
+			drawOffer: null,
+			lastDrawOfferPly: null,
+			clock: NO_CLOCK,
+			firstMoveDeadline: null,
+			notice: null
 		});
 		this.subscribe = this.store.subscribe;
 	}
@@ -80,13 +91,25 @@ export class GameModel implements Readable<GameView> {
 		this.updateGameState();
 		// Explicitly clear gameOver: a fresh board makes outcome() null, so
 		// checkGameOver() won't patch it and a finished game's result would persist.
-		this.patch({ started: true, gameOver: { isOver: false, winner: null }, moveHistory: [] });
+		this.patch({
+			started: true,
+			gameOver: { isOver: false, winner: null },
+			moveHistory: [],
+			promotionMove: null,
+			hint: null
+		});
 	}
 
 	endGame(): void {
 		this.core.reset();
 		this.updateGameState();
-		this.patch({ started: false, gameOver: { isOver: false, winner: null }, moveHistory: [] });
+		this.patch({
+			started: false,
+			gameOver: { isOver: false, winner: null },
+			moveHistory: [],
+			promotionMove: null,
+			hint: null
+		});
 	}
 
 	handlePlayerMove({ from, to }: ChessMove): void {
@@ -96,6 +119,24 @@ export class GameModel implements Readable<GameView> {
 		} else {
 			this.makeMove({ from, to });
 		}
+	}
+
+	/**
+	 * A move typed by the player (keyboard input). Same rules as the board: only
+	 * on the player's own turn in a running game; a promotion without a piece
+	 * opens the promotion chooser.
+	 */
+	submitMove({ from, to, promotion }: ChessMove): boolean {
+		const view = this.snapshot();
+		if (!view.started || view.gameOver.isOver || view.promotionMove || view.turn !== this.player) {
+			return false;
+		}
+		this.clearHint();
+		if (!promotion && this.isPromotionMove(from, to)) {
+			this.patch({ promotionMove: { from, to } });
+			return true;
+		}
+		return this.makeMove({ from, to, promotion });
 	}
 
 	makeMove({ from, to, promotion }: ChessMove): boolean {
@@ -149,5 +190,10 @@ export class GameModel implements Readable<GameView> {
 
 	protected determineMoveType(move: Move): void {
 		this.audio.play(this.core.moveType(move));
+	}
+
+	/** Play a non-move cue (game start/end, notifications). */
+	protected playCue(cue: MoveType): void {
+		this.audio.play(cue);
 	}
 }

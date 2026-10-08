@@ -14,7 +14,7 @@ This is the backend API for Stalemates, a full-stack chess platform. It handles 
     - [Installation](#installation)
   - [API Overview](#api-overview)
   - [API Endpoints](#api-endpoints)
-  - [WebSocket Events](#websocket-events)
+  - [WebSocket protocol](#websocket-protocol)
   - [Contributing](#contributing)
   - [License](#license)
 
@@ -45,7 +45,7 @@ Follow these instructions to set up the Stalemates API on your local machine for
 
 ### Prerequisites
 
-- Node.js (v18.18.0 or later)
+- Node.js 22 (see the repo-root `.nvmrc`)
 - Bun
 
 ### Installation
@@ -110,6 +110,14 @@ This server is intentionally simple and runs as a **single instance**:
 - **Memory is bounded by room TTL.** A periodic sweep reaps abandoned rooms — those
   older than `ROOM_TTL_MS` (default 30 min) with no connected players — so rooms that
   are created but never joined, or long finished, cannot leak indefinitely.
+- **Crashes exit.** Per-socket problems (oversized or malformed frames, protocol
+  errors) are handled on the socket and never reach the process. A genuinely uncaught
+  exception logs, shuts down and exits non-zero so the process manager (`fly.toml`'s
+  `[[restart]] policy = "always"`, Docker `restart:`) starts a clean process — the
+  in-memory games are lost either way, but a half-updated room is never served. A
+  graceful shutdown force-exits after 5 s, inside `fly.toml`'s `kill_timeout = 10`. Unhandled promise
+  rejections are logged and the process keeps running.
+- **Concurrent WebSockets are capped per IP** (`MAX_WS_CONNECTIONS_PER_IP`, default 20).
 - **Room creation is rate-limited per IP** (default ~30 creates / 10 min) to prevent
   spam; this limiter is also in-memory and therefore per-instance.
 
@@ -117,39 +125,92 @@ This server is intentionally simple and runs as a **single instance**:
 
 Environment variables (validated at startup; the server fails fast on invalid values):
 
-| Variable      | Required            | Default                 | Notes                                              |
-| ------------- | ------------------- | ----------------------- | -------------------------------------------------- |
-| `PORT`        | No                  | `3000`                  | Must be an integer 1-65535 if set.                 |
-| `ORIGIN`      | In production only  | `http://localhost:5173` | Allowed CORS origin. Required when `NODE_ENV=production`. |
-| `ROOM_TTL_MS` | No                  | `1800000` (30 min)      | Abandoned-room sweep TTL (ms). Positive integer.   |
+| Variable                    | Required           | Default                 | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------------- | ------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | No                 | `3000`                  | Must be an integer 1-65535 if set.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `ORIGIN`                    | In production only | `http://localhost:5173` | Allowed frontend origin(s), comma-separated. Used for CORS **and** the WebSocket `Origin` check. Each entry is normalised to its origin (`https://site/` → `https://site`); a path/query/fragment or non-http(s) scheme fails startup. The parsed list is logged at startup.                                                                                                                                                                                                                                                                 |
+| `ORIGIN_PATTERNS`           | No                 | —                       | Opt-in https host patterns for preview deployments, e.g. `https://stale-mates-*-maiz27s-projects.vercel.app`: one `*` in the first label after a non-empty literal prefix, matching `[a-z0-9-]+` (never a dot), followed by a fixed domain of 2+ labels. `https://*.vercel.app` is refused. **Only a soft guard on a shared domain like `vercel.app`**: anyone can name a Vercel project so that `<name>.vercel.app` matches (a startup warning is logged); prefer no API for previews or a preview domain you control. See the root README. |
+| `ROOM_TTL_MS`               | No                 | `1800000` (30 min)      | How long a room with nobody connected is kept (measured from its last activity) before the sweep reaps it.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `DISCONNECT_GRACE_MS`       | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win (before both sides have moved: before the game is aborted instead).                                                                                                                                                                                                                                                                                                                                                                                       |
+| `FIRST_MOVE_TIMEOUT_MS`     | No                 | `30000` (30 s)          | Timed games: how long each side has to make its first move (no clock runs until both have moved) before the game is aborted with no winner. Starts once that side is connected.                                                                                                                                                                                                                                                                                                                                                              |
+| `TRUST_PROXY`               | No                 | `0`                     | Reverse-proxy hops trusted for the client IP in `X-Forwarded-For` (Express `trust proxy`; also used for WebSockets). `0` (socket address) is safe when exposed directly; set `1` behind Fly.io's edge (`fly.toml` does), or all clients share the proxy's IP for the per-IP limits.                                                                                                                                                                                                                                                          |
+| `MAX_WS_CONNECTIONS_PER_IP` | No                 | `20`                    | Concurrent WebSocket connections per client IP; extra ones are closed with `1013` ("Too many connections").                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+Outside production the WebSocket `Origin` check also accepts any `localhost` origin
+and origin-less clients, so local tools work.
 
 ## API Endpoints
 
-- `POST /game/create`: Create a new game
-- `POST /game/join`: Join an existing game
+- `GET /health` → `{ status: 'ok', rooms }`
+- `POST /game/create` — body `{ time: 0 | 1 | 3 | 10, color?: 'white' | 'black' | 'random' }`
+  (`color` is the creator's seat, default white; `random` is resolved on the server).
+  Responds `{ id, you: { color, token }, invite: { color, token } }`. Rate-limited per IP.
 
-## WebSocket Events
+## WebSocket protocol
 
-The API uses the following WebSocket events for real-time communication:
+Connect to `/game/join?id=<roomId>` — the URL carries no secret. The wire types are
+defined once in `src/lib/protocol.ts` (copied verbatim to the frontend; run
+`node scripts/sync-protocol.mjs` from the repo root after editing, CI checks the copies
+match). Every inbound frame is validated (`src/lib/validate.ts`), frames are capped at
+4 KB, each connection has a message-rate budget, and dead sockets are reaped by a
+ping/pong heartbeat.
 
-Incoming events (from client to server):
+**Seats.** The first frame must be `{ type: 'join', token }`. The token selects the seat
+— the client never chooses its colour. The tokens returned by `/game/create` are
+single-use: the first `join` rotates the seat's token and returns the new one in
+`seat`, so a spent invite link can't take over the seat. Reconnecting (the browser keeps the token per room) sends
+the rotated token; a newer connection for a seat replaces the older one (closed with
+code `4000`). Refusals close with `1008` and a reason the client shows: bad room / bad
+token → `Invalid game room` / `Unable to join game`, no `join` within 10 s → `Join
+timeout`, message flood → `Rate limit exceeded`, bad `Origin` → `Origin not allowed`.
+Too many sockets from one IP → `1013 Too many connections`. The reasons are typed as
+`CloseReason` in `protocol.ts`.
 
-- `move`: Handle a player's move
-- `offerRematch`: Offer a rematch to the opponent
-- `acceptRematch`: Accept a rematch offer
-- `gameOver`: Notify the server about game over (e.g., due to timeout)
+Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRematch`,
+`acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`. Before both
+sides have made their first move, `resign`, `offerDraw` and `acceptDraw` abort the game
+(no winner) and `claimVictory` (after the grace) aborts it too.
 
-Outgoing events (from server to client):
+Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
+`opponentReconnected`, `gameStart` (incl. opponent presence: `opponentConnected`,
+`opponentGraceMs` — the creator may have left before the friend joined; a player already
+away when a game starts gets the full grace from the start), `opponentMove` (normalised), `clock`, `gameOver`
+(`winner` — `null` for an `aborted` game — `reason`, and for an abort `abort { cause, by }`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
+result, rematch and draw-offer state, opponent presence), `rematchOffer`,
+`rematchAccepted { color, opponentConnected, opponentGraceMs }` (colours swap on every
+rematch), `drawOffer`, `drawDeclined`.
 
-- `connected`: Confirm successful connection and provide player ID
-- `opponentMove`: Notify about opponent's move
-- `opponentJoined`: Notify when an opponent joins the game
-- `opponentReconnected`: Notify when an opponent reconnects
-- `gameStart`: Notify about game start with initial state
-- `gameOver`: Notify about game end with result
-- `gameState`: Provide current game state (used for reconnection)
-- `rematchOffer`: Notify about a rematch offer
-- `rematchAccepted`: Notify that a rematch has been accepted
+Draw offers are server-authoritative: an offer stands until the opponent accepts,
+declines or moves (an implicit decline); both sides offering is an agreement; a side can
+re-offer only once a move has been played since its last offer (a refused re-offer is
+answered with `drawDeclined`, and the client disables the button until then).
+
+**First moves (timed games).** No clock runs until each side has made its first move
+(Lichess convention): the game starts with both clocks stopped, White's first move costs no
+time and earns no increment, Black's clock likewise stays stopped until Black's first move,
+and only then does White's clock start. Until then every `ClockSnapshot` carries `firstMoveMs`
+— what the side to move has left of its `FIRST_MOVE_TIMEOUT_MS` window (null otherwise) — and
+`running` is `null`. When the window passes the game ends with `gameOver { winner: null,
+reason: 'aborted', abort: { cause: 'firstMoveTimeout', by } }` (a late first move is refused
+and answered with a resync); a rematch can be offered as after any finished game.
+
+The window only starts while the side to move is **connected**; once started it keeps
+running across reconnects. If that side is away when its first move is due (the creator
+left before the friend joined, or Black left before White's first move), no window runs:
+`firstMoveMs` counts down its disconnect grace instead (from when it left, or from the start
+of the game if it was already away), and when that runs out the game is aborted with cause
+`noShow` — the waiting player isn't awarded a win. If it reconnects in time it gets a fresh,
+full window (the opponent is sent a `clock` with the new `firstMoveMs`).
+
+**Before both sides have moved** there is no result to give: a win by abandonment can't be
+claimed (a claim after the grace aborts with cause `noShow`), and `resign`, `offerDraw` or
+`acceptDraw` abort the game (cause `player`, `by` the side that sent it), in timed and
+untimed games alike. The room page shows "Abort" instead of "Resign" and no "Offer draw".
+
+The server is authoritative for outcomes and time: clients can't declare a result,
+a move that arrives after the mover's flag fell loses on time, and **clocks never pause
+on disconnect**: a disconnected player's clock keeps running (they can flag while away),
+independently of the abandonment grace period.
 
 ## Contributing
 

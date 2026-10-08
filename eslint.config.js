@@ -33,6 +33,13 @@ export default [
 		}
 	},
 	{
-		ignores: ['build/', '.svelte-kit/', '**/dist/', 'static/stockfish.js', '.vercel/']
+		// Generated shadcn-svelte primitives: links are passed through from callers.
+		files: ['src/lib/components/ui/**/*.svelte'],
+		rules: {
+			'svelte/no-navigation-without-resolve': 'off'
+		}
+	},
+	{
+		ignores: ['build/', '.svelte-kit/', '**/dist/', 'static/engine/', '.vercel/']
 	}
 ];

@@ -2,7 +2,7 @@
 
 Stalemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Stalemates Now](https://stalemates.magedfaiz.xyz/)
 
-![Portfolio Website Overview](https://drive.google.com/thumbnail?id=1KQZ-_uU-5ii0VdVfKHqHwvgC8G5luN5X&sz=w1024&t=1681358800&mime=image/png)
+![Stale Mates — playing the AI](static/imgs/screenshot-ai.png)
 
 ## Table of Contents
 
@@ -35,20 +35,36 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 
 ## Features
 
-- Play against an AI opponent with adjustable difficulty levels
-- Engage in real-time multiplayer chess games
-- Receive hints to improve your game play
-- Take back moves in AI games for learning and practice
-- Enjoy a responsive and intuitive chessboard interface
+- Play against an AI opponent (Stockfish) with adjustable difficulty, hints and takebacks;
+  in-progress AI games survive a page refresh
+- Real-time multiplayer with a one-step invite link, server-authoritative clocks and
+  results, reconnect handling and rematches
+- Move list with PGN copy/download, last-move highlighting, sound cues (with a mute
+  toggle) and screen-reader move announcements
+- Draw offers, colour-swapping rematches and claim-the-win when an opponent abandons
+  (clocks don't pause while a player is disconnected — a timed game can still be lost
+  on time while away)
+- Timed games follow the Lichess convention: no clock runs until each side has made its
+  first move (White's clock starts after Black's first move; those first moves earn no
+  increment). Each side has 30 s (`FIRST_MOVE_TIMEOUT_MS`) for its first move, counted
+  from when it is at the board, or the game is aborted — no winner, PGN result `*`,
+  rematch available. A side that is away when its first move is due gets the full
+  disconnect grace instead (60 s, from the start of the game), then a fresh 30 s window
+  if it comes back; if it never shows up the game is aborted, not won
+- Until both sides have moved a game can only be aborted: "Abort" replaces "Resign" (and
+  no draw can be offered), and a player who never shows up costs nobody the game
+- Keyboard play: type moves in SAN (`Nf3`, `O-O`) or coordinates (`e2e4`)
+- A responsive chessboard with player bars, clocks, light/dark mode and board colour themes
+- Works offline for AI games once visited (service worker)
 
 ## Tech Stack
 
 ### Frontend
 
-- SvelteKit: For building a responsive and efficient user interface
-- Tailwind CSS: For rapid and customizable styling
-- shadcn-svelte: For pre-built, customizable UI components
-- svelte-chessground: For the interactive chessboard component
+- SvelteKit 3 + Svelte 5 (runes), Vite 8: the user interface
+- Tailwind CSS 4: styling
+- shadcn-svelte (bits-ui 2, vaul-svelte): accessible UI primitives
+- chessground 9 (via a small in-repo Svelte 5 wrapper): the interactive chessboard
 
 ### Backend
 
@@ -58,7 +74,7 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
 ### Chess Logic
 
 - chess.js: Handling game rules, move validation, and board state
-- Stockfish.js: Providing the AI opponent with adjustable difficulty
+- Stockfish 18 (WebAssembly, in a Web Worker): the AI opponent with adjustable difficulty
 
 ### Build Tools
 
@@ -71,8 +87,8 @@ Follow these instructions to get Stalemates up and running on your local machine
 
 ### Prerequisites
 
-- Node.js (v18.18.0 or later)
-- Bun
+- Node.js 22.17+ (see `.nvmrc`; SvelteKit 3 needs >= 22.17, `engines` accepts up to 24)
+- Bun 1.2+ (the lockfiles are text `bun.lock`; CI pins Bun 1.4.2)
 
 ### Installation
 
@@ -101,47 +117,42 @@ Follow these instructions to get Stalemates up and running on your local machine
    bun i
    ```
 
-5. Stockfish.js setup:
-   The Stockfish.js file is located in the static folder of the project. No additional setup is required as it's already in the correct location for the application to use.
+5. Stockfish: a single-threaded WebAssembly build of Stockfish 18 is vendored in
+   `static/engine/stockfish-18.0.8/` — no setup needed.
 
 ## Scripts
 
-The `package.json` includes several scripts for common tasks:
+Frontend (repo root):
 
-```json
-{
-	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
-		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test:integration": "playwright test",
-		"test:unit": "vitest",
-		"lint": "prettier --check . && eslint .",
-		"format": "prettier --write .",
-		"api": "cd api && bun run dev",
-		"api:build": "cd api && bun run build",
-		"dev:all": "concurrently \"bun run dev\" \"bun run api\""
-	}
-}
-```
+| Script              | What it does                                                          |
+| ------------------- | --------------------------------------------------------------------- |
+| `bun run dev`       | SvelteKit dev server (http://localhost:5173)                          |
+| `bun run build`     | Production build (adapter-vercel, `nodejs22.x` runtime)               |
+| `bun run preview`   | Serve the production build locally (http://localhost:4173)            |
+| `bun run check`     | `svelte-kit sync` + `svelte-check` type checking                      |
+| `bun run lint`      | `prettier --check .` and `eslint .`                                   |
+| `bun run format`    | Format everything with Prettier                                       |
+| `bun run test:unit` | Vitest unit tests (`src/**/*.test.ts`)                                |
+| `bun run test:e2e`  | Playwright end-to-end tests (builds + previews the app, starts `api`) |
+| `bun run api`       | Run the backend in watch mode                                         |
+| `bun run dev:all`   | Frontend + backend together                                           |
 
-- `dev`: Runs the SvelteKit development server.
-- `build`: Builds the application for production.
-- `preview`: Previews the production build locally.
-- `check`: Runs type checking and syncs SvelteKit files.
-- `lint`: Runs Prettier and ESLint to check code style.
-- `format`: Formats code using Prettier.
-- `api`: Runs the Express.js API development server.
-- `api:build`: Builds the API for production.
-- `dev:all`: Runs both the frontend and backend concurrently for development.
+Backend (`api/`): `bun run dev`, `bun run build`, `bun run start`, `bun run test`,
+`bun run lint`, `bun run format`.
 
-To run both the frontend and backend concurrently:
+### Testing
 
-```bash
-bun run dev:all
-```
+- **Unit (frontend):** `bunx vitest run` — pure chess core, game model, formatting
+  helpers, the WebSocket manager and the game modes (with fake engine/socket).
+- **Unit (backend):** `cd api && bunx vitest run` — `GameRoom` (moves, clocks,
+  reconnects, draw offers, rematch), the clock/outcome modules, env validation, the
+  rate limiter, the room sweep and the inbound message validator.
+- **End-to-end:** `bun run test:e2e`. The Playwright config builds and previews the
+  frontend and starts the API on :3000, building the frontend with
+  `VITE_API_URL`/`VITE_API_WS_URL` pointed at it (unless you export your own), so no
+  `.env` is needed.
+  Install a browser once with `bunx playwright install chromium` (or point
+  `PW_CHROMIUM_EXECUTABLE` at an existing Chromium).
 
 ## Deployment
 
@@ -149,10 +160,10 @@ Stalemates ships as **two separate deployment targets** that must be deployed in
 
 ### Two-Target Split
 
-| Target | Code | Host | How |
-| --- | --- | --- | --- |
-| Frontend | repo root (SvelteKit) | Vercel | `adapter-vercel` |
-| Backend | `api/` (Express + `ws`) | A stateful host such as [Fly.io](https://fly.io) | `api/Dockerfile` |
+| Target   | Code                    | Host                                             | How              |
+| -------- | ----------------------- | ------------------------------------------------ | ---------------- |
+| Frontend | repo root (SvelteKit)   | Vercel                                           | `adapter-vercel` |
+| Backend  | `api/` (Express + `ws`) | A stateful host such as [Fly.io](https://fly.io) | `api/Dockerfile` |
 
 The frontend is a stateless SvelteKit app and deploys cleanly to Vercel's serverless platform. The backend is a long-lived, single-instance Express + WebSocket server and must run on a host that keeps a persistent process alive.
 
@@ -166,15 +177,66 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 
 - `VITE_API_URL` — HTTPS base URL of the deployed backend (e.g. `https://stalemates-api.fly.dev`)
 - `VITE_API_WS_URL` — WebSocket base URL of the deployed backend (e.g. `wss://stalemates-api.fly.dev`)
+  (optional: derived from `VITE_API_URL` when unset). A dev server with neither falls back
+  to `http://localhost:3000`; a production build with neither shows "no game server
+  configured" instead of trying to connect.
 
 **Backend (Fly secrets / container env):**
 
-- `ORIGIN` — the deployed frontend origin, used for CORS (e.g. `https://stalemates.magedfaiz.xyz`)
+- `ORIGIN` — the deployed frontend origin(s), comma-separated, used for CORS and the
+  WebSocket `Origin` allowlist (e.g. `https://stalemates.magedfaiz.xyz`). Each entry is
+  normalised (`https://site/` → `https://site`); an entry with a path, query or fragment,
+  or a non-http(s) scheme, stops the server at startup. The parsed allowlist is logged.
+- `ORIGIN_PATTERNS` — optional, for preview deployments; only a soft guard on a shared
+  domain such as `vercel.app` (see below).
 - `PORT` — port the server listens on (defaults to `3000`)
+- `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
+  default `1800000` = 30 min). Disconnected players can rejoin until then.
+- `DISCONNECT_GRACE_MS` — how long a disconnected player has before the opponent may
+  claim the win (ms, default `60000`). Before both sides have moved there is no win to
+  claim: an absent side to move gets the game aborted after it instead.
+- `FIRST_MOVE_TIMEOUT_MS` — timed games: how long each side has for its first move,
+  from when it is connected, before the game is aborted (ms, default `30000`).
+- `TRUST_PROXY` — how many reverse-proxy hops to trust for the client IP in
+  `X-Forwarded-For` (default `0`: use the socket address, right when the server is exposed
+  directly). Set `1` behind one reverse proxy such as Fly.io's edge (`api/fly.toml` does),
+  or every client shares the proxy's IP for the per-IP limits.
+- `MAX_WS_CONNECTIONS_PER_IP` — concurrent WebSocket connections allowed from one client
+  IP (default `20`); extra connections are closed with `1013`.
 
 ### Deploying the Frontend (Vercel)
 
 Connect the repository to a Vercel project, set `VITE_API_URL` and `VITE_API_WS_URL` in the project's environment variables, and deploy. `adapter-vercel` handles the build.
+
+**Preview deployments.** Every Vercel preview has its own URL, which the backend's exact
+`ORIGIN` list can't know, so multiplayer is refused there (`Origin not allowed`). Pick one:
+
+- **Leave previews without a game server** (simplest, safest): set `VITE_API_URL` /
+  `VITE_API_WS_URL` for the _Production_ environment only. Preview builds then show "no
+  game server configured" on the multiplayer page; single-player works.
+- **Allow this project's previews** on the backend with an opt-in pattern (a soft guard
+  on `vercel.app` — see the caveat below):
+
+  ```bash
+  fly secrets set ORIGIN_PATTERNS='https://stale-mates-*-maiz27s-projects.vercel.app'
+  ```
+
+  and set `VITE_API_URL` / `VITE_API_WS_URL` for the _Preview_ environment too. A pattern
+  is https-only with exactly one `*` in the first host label, after a non-empty literal
+  prefix (`https://*.vercel.app` is refused at startup — it would admit everyone's apps);
+  the `*` never matches a dot.
+
+  **On `vercel.app` this is only a soft guard.** Vercel project names are free-form
+  (`[a-z0-9-]`), and a production deployment is served at `<project-name>.vercel.app`, so
+  _any_ Vercel account can create a project named, say,
+  `stale-mates-x-maiz27s-projects` and get a host the pattern above accepts. The team
+  suffix only keeps out deployments that don't try. Seat tokens never leave the site's own
+  storage, so such a site can't take over existing games, but it can open game sockets
+  and create rooms from its visitors' browsers. The server logs a startup warning for any
+  pattern directly under a shared hosting domain (`vercel.app`, `netlify.app`, `pages.dev`,
+  `fly.dev`, …). For a hard boundary, leave `VITE_API_URL` unset in the Preview
+  environment (previews are AI-only — the recommended setup), or serve previews from a
+  custom preview domain you control (e.g. `https://pr-*.preview.example.com`).
 
 ### Deploying the Backend (Fly.io / Docker)
 
@@ -227,5 +289,9 @@ This project incorporates third-party software. The licenses for these are inclu
 
 - chess.js: [BSD 2-Clause License](https://github.com/jhlywa/chess.js/blob/master/LICENSE)
 - Chessground: [GPL-3.0 License](https://github.com/lichess-org/chessground/blob/master/LICENSE)
+- Stockfish 18 (vendored WebAssembly build in `static/engine/stockfish-18.0.8/`, from stockfish.js):
+  [GPL-3.0 License](https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt).
+  Its source is available from the [Stockfish project](https://github.com/official-stockfish/Stockfish)
+  and the [stockfish.js port](https://github.com/nmrugg/stockfish.js).
 
 Please make sure to comply with all license terms when using or modifying this software.

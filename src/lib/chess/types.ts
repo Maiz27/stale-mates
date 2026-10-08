@@ -1,25 +1,21 @@
 import type { PieceSymbol, Square } from 'chess.js';
 import type { Color } from 'chessground/types';
-import type { ConnectionStatus } from '../websocket/WebSocketManager';
+import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
+import type { AbortInfo, GameOverReason, TimeControl, ClockSnapshot } from './protocol';
 
 export type GameMode = 'pve' | 'pvp';
 
 export type PromotionMove = { from: string; to: string } | null;
 
-export type GameOverReason =
-	| 'checkmate'
-	| 'stalemate'
-	| 'threefold'
-	| 'insufficient'
-	| 'fiftyMove'
-	| 'draw'
-	| 'timeout'
-	| 'resignation';
+// Wire-level types come from the shared protocol (identical copy on the server).
+export type { AbortInfo, GameOverReason, TimeControl, ClockSnapshot };
 
 export type GameOver = {
 	isOver: boolean;
 	winner: Color | 'draw' | null;
 	reason?: GameOverReason;
+	/** Multiplayer: why an `aborted` game was aborted (absent from older servers). */
+	abort?: AbortInfo;
 };
 
 export type CheckState = { inCheck: boolean; kingSquare?: string; attackingSquares?: string[] };
@@ -37,26 +33,9 @@ export type MoveType =
 	| 'check'
 	| 'promote'
 	| 'game-start'
-	| 'game-end';
-
-// Single canonical definition, mirrored on the server at api/src/lib/types.ts.
-// All fields required (the optional fields here had drifted from the server).
-export type TimeControl = {
-	initial: number; // in seconds
-	lowTimeThreshold: number; // in seconds
-	increment: number; // in seconds
-	isUnlimited: boolean;
-};
-
-// Authoritative clock snapshot from the server; the client interpolates from it
-// for smooth display and never decides game-over from its own timer. Mirrors
-// api/src/lib/clock.ts ClockSnapshot.
-export type ClockSnapshot = {
-	whiteMs: number;
-	blackMs: number;
-	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
-	serverTime: number; // Date.now() on the server when the snapshot was taken
-};
+	| 'game-end'
+	| 'notify'
+	| 'low-time';
 
 // Player-relative clock for display. The game modes resolve white/black into
 // "mine" vs "the opponent's" so consumers never branch on player color.
@@ -64,6 +43,7 @@ export type ClockView = {
 	isUnlimited: boolean;
 	myClock: number; // seconds
 	opponentClock: number; // seconds
+	lowTimeThreshold: number; // seconds; the server's per-time-control "low time" level
 };
 
 // The single immutable view-model every consumer renders from. Replaces the
@@ -71,6 +51,8 @@ export type ClockView = {
 // this object and expose themselves as a `Readable<GameView>`. Multiplayer-only
 // fields carry harmless defaults in single-player mode (the AI page ignores them).
 export type GameView = {
+	/** The side the local player controls (drives board orientation / input). */
+	player: Color;
 	fen: string;
 	turn: Color;
 	started: boolean;
@@ -79,11 +61,37 @@ export type GameView = {
 	destinations: Map<Square, Square[]>;
 	promotionMove: PromotionMove;
 	hint: ChessMove | null;
+	/** AI mode: a hint search is running. */
+	hintPending: boolean;
+	/** AI mode: the engine is computing its move. */
+	thinking: boolean;
+	/** AI mode: the engine failed to load or crashed; offer a retry. */
+	engineError: boolean;
 	moveHistory: ChessMove[];
 	sanHistory: string[];
 	// Multiplayer-only.
 	opponentConnected: boolean;
+	/** Local `Date.now()` after which a win by abandonment may be claimed; null while the opponent is present. */
+	opponentClaimableAt: number | null;
 	connectionStatus: ConnectionStatus;
+	/** Why the server refused us, when `connectionStatus` is `rejected`. */
+	rejection: Rejection | null;
+	/** The opponent has offered a rematch. */
 	rematchOffer: boolean;
+	/** I have offered a rematch (server-confirmed on resync). */
+	myRematchOffer: boolean;
+	/** Pending draw offer in the current game. */
+	drawOffer: 'mine' | 'opponent' | null;
+	/** Ply (moves played) at my last draw offer; the server refuses another until it changes. */
+	lastDrawOfferPly: number | null;
 	clock: ClockView;
+	/**
+	 * Multiplayer, timed games: local `Date.now()` by which the game is aborted if
+	 * the side to move hasn't made its first move (its first-move window, or its
+	 * disconnect grace while it's away and the window hasn't started); null once
+	 * both sides have moved. No clock runs while this is set.
+	 */
+	firstMoveDeadline: number | null;
+	/** Multiplayer: a short-lived message for the player, e.g. an action not sent while reconnecting. */
+	notice: string | null;
 };

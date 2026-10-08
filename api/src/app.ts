@@ -1,31 +1,61 @@
-import express from 'express';
-import cors from 'cors';
+import express, { type ErrorRequestHandler } from 'express';
+import cors, { type CorsOptions } from 'cors';
 import { GameRouter } from './routes/game';
 import { getRoomCount } from './lib/game';
+import { EnvInput, trustProxyHops } from './lib/env';
+import { originMatcher } from './lib/origins';
 
-const app = express();
+export function createApp(env: EnvInput = process.env) {
+	const app = express();
 
-// Trust the first reverse proxy so `req.ip` resolves the real client IP from
-// X-Forwarded-For (used for per-IP rate limiting). Without this, requests
-// behind a proxy all collapse into the proxy's IP bucket.
-app.set('trust proxy', 1);
+	// Trust TRUST_PROXY reverse-proxy hops (default 0; fly.toml sets 1 for Fly.io's
+	// edge) so `req.ip` resolves the real client IP from X-Forwarded-For for per-IP
+	// rate limiting. Behind a proxy with 0, everyone collapses into the proxy's IP
+	// bucket; exposed directly with 1, a client could spoof its IP — so set it to
+	// match the deploy.
+	app.set('trust proxy', trustProxyHops(env));
 
-const corsOptions = {
-	origin: process.env.ORIGIN || 'http://localhost:5173',
-	optionsSuccessStatus: 200
+	// The same allowlist as the WebSocket Origin check (lib/origins.ts): ORIGIN's
+	// exact, normalised origins plus any opt-in ORIGIN_PATTERNS (CR3-1, CR3-2).
+	const isAllowed = originMatcher(env);
+	const corsOptions: CorsOptions = {
+		origin: (origin, callback) => callback(null, isAllowed(origin)),
+		optionsSuccessStatus: 200
+	};
+
+	app.use(cors(corsOptions));
+	app.use(express.json());
+	// A malformed or oversized JSON body is the client's mistake: answer it
+	// quietly instead of letting Express's default handler log a stack trace
+	// for every bad request (CR3-5). Anything else goes on to the default handler.
+	app.use(jsonBodyErrors);
+
+	app.get('/', (req, res) => {
+		res.send('Hello World!');
+	});
+
+	app.get('/health', (req, res) => {
+		res.json({ status: 'ok', rooms: getRoomCount() });
+	});
+
+	app.use('/game', GameRouter);
+
+	return app;
+}
+
+/** body-parser's error shape (`type` identifies the failure). */
+type BodyParserError = Error & { type?: string };
+
+export const jsonBodyErrors: ErrorRequestHandler = (error: BodyParserError, req, res, next) => {
+	if (error?.type === 'entity.parse.failed') {
+		res.status(400).json({ error: 'Invalid JSON' });
+		return;
+	}
+	if (error?.type === 'entity.too.large') {
+		res.status(413).json({ error: 'Request body too large' });
+		return;
+	}
+	next(error);
 };
 
-app.use(cors(corsOptions));
-app.use(express.json());
-
-app.get('/', (req, res) => {
-	res.send('Hello World!');
-});
-
-app.get('/health', (req, res) => {
-	res.json({ status: 'ok', rooms: getRoomCount() });
-});
-
-app.use('/game', GameRouter);
-
-export default app;
+export default createApp();

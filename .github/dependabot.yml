@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Frontend (repo root). Both projects install from bun.lock, so they use
+  # Dependabot's "bun" ecosystem (bun >= 1.1.39, text lockfile).
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Backend (api/).
+  - package-ecosystem: bun
+    directory: /api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -43,11 +43,13 @@ backend exposes `/health` (`api/src/app.ts`) for the host's health checks.
 ## Consequences
 
 **Positive**
+
 - Each part runs on infrastructure that matches it: cheap, scalable static/SSR
   hosting for the frontend; a persistent process for the stateful backend.
 - AI mode has zero backend dependency and keeps working even if the API is down.
 
 **Negative / accepted trade-offs**
+
 - Two deploy pipelines and two hosts to operate instead of one.
 - Cross-origin coupling: CORS config and a correct `VITE_API_WS_URL` / `ORIGIN`
   pairing are required, and (per ADR 0002) cookie-based seat tokens across origins

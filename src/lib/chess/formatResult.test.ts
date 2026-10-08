@@ -33,3 +33,46 @@ describe('formatResult', () => {
 		expect(formatResult({ isOver: true, winner: 'draw' })).toBe('Game Over: Draw');
 	});
 });
+
+describe('formatResult: aborted games (CR3-4, CR4-2, CR4-3)', () => {
+	const aborted = (cause: 'firstMoveTimeout' | 'noShow' | 'player', by: 'white' | 'black') => ({
+		isOver: true,
+		winner: null,
+		reason: 'aborted' as const,
+		abort: { cause, by }
+	});
+
+	it('announces an abort without a winner', () => {
+		expect(formatResult({ isOver: true, winner: null, reason: 'aborted' })).toBe(
+			'Game Over: Aborted'
+		);
+		expect(formatResult(aborted('firstMoveTimeout', 'white'), 'black')).toBe(
+			'Game Over: Aborted — no first move in time'
+		);
+		expect(formatResult(aborted('firstMoveTimeout', 'white'), 'white')).toBe(
+			'Game Over: Aborted — no first move in time'
+		);
+	});
+
+	it('says the opponent did not show up, from each side', () => {
+		expect(formatResult(aborted('noShow', 'white'), 'black')).toBe(
+			"Game Over: Opponent didn't show up — game aborted"
+		);
+		expect(formatResult(aborted('noShow', 'white'), 'white')).toBe(
+			'Game Over: Aborted — you were away before your first move'
+		);
+		expect(formatResult(aborted('noShow', 'black'))).toBe(
+			"Game Over: Aborted — Black didn't show up"
+		);
+	});
+
+	it('says who aborted the game', () => {
+		expect(formatResult(aborted('player', 'white'), 'white')).toBe(
+			'Game Over: You aborted the game'
+		);
+		expect(formatResult(aborted('player', 'white'), 'black')).toBe(
+			'Game Over: Your opponent aborted the game'
+		);
+		expect(formatResult(aborted('player', 'black'))).toBe('Game Over: Aborted by Black');
+	});
+});

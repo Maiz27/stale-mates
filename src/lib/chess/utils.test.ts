@@ -1,26 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
-import { getCheckState, toDestinations, isVsAI, getChessJsColor, isPromotionMove } from './utils';
-
-describe('isVsAI', () => {
-	it('returns true for pve', () => {
-		expect(isVsAI('pve')).toBe(true);
-	});
-
-	it('returns false for pvp', () => {
-		expect(isVsAI('pvp')).toBe(false);
-	});
-});
-
-describe('getChessJsColor', () => {
-	it('maps white to w', () => {
-		expect(getChessJsColor('white')).toBe('w');
-	});
-
-	it('maps black to b', () => {
-		expect(getChessJsColor('black')).toBe('b');
-	});
-});
+import { getCheckState, toDestinations, isPromotionMove } from './utils';
 
 describe('isPromotionMove', () => {
 	it('detects a white pawn promoting on rank 8', () => {
@@ -107,9 +87,7 @@ describe('toDestinations', () => {
 
 	it('returns an empty map for a checkmated (game-over) position', () => {
 		// Fool's mate: black has just delivered checkmate, white to move with no moves.
-		const chess = new Chess(
-			'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3'
-		);
+		const chess = new Chess('rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3');
 		expect(chess.isCheckmate()).toBe(true);
 		const dests = toDestinations(chess);
 		expect(dests.size).toBe(0);

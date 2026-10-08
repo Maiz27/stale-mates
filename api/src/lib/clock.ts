@@ -1,4 +1,6 @@
-import { Color } from './types';
+import type { Color, ClockSnapshot } from './protocol';
+
+export type { ClockSnapshot };
 
 /**
  * Pure, authoritative clock math for the multiplayer server.
@@ -10,14 +12,6 @@ import { Color } from './types';
  */
 
 export type ClockMs = { white: number; black: number };
-
-/** A snapshot the client interpolates from for smooth display. */
-export type ClockSnapshot = {
-	whiteMs: number;
-	blackMs: number;
-	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
-	serverTime: number; // Date.now() on the server when the snapshot was taken
-};
 
 /**
  * Remaining ms for `color`. If `color` is the running side, the time elapsed
@@ -52,17 +46,23 @@ export function clockAfterMove(
 	return remaining + incrementMs;
 }
 
-/** Build a wire snapshot, clamping displayed remaining time at zero. */
+/**
+ * Build a wire snapshot, clamping displayed remaining time at zero.
+ * `firstMoveDeadline` is the server time at which the game is aborted if the
+ * side to move still hasn't made its first move (null outside that phase).
+ */
 export function buildSnapshot(
 	clocks: ClockMs,
 	running: Color | null,
 	turnStartedAt: number | null,
-	now: number
+	now: number,
+	firstMoveDeadline: number | null = null
 ): ClockSnapshot {
 	return {
 		whiteMs: Math.max(0, remainingMs(clocks, running, turnStartedAt, 'white', now)),
 		blackMs: Math.max(0, remainingMs(clocks, running, turnStartedAt, 'black', now)),
 		running,
-		serverTime: now
+		serverTime: now,
+		firstMoveMs: firstMoveDeadline === null ? null : Math.max(0, firstMoveDeadline - now)
 	};
 }

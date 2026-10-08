@@ -57,6 +57,7 @@ watchdog live in-process on a single instance, with no new persistence store.
 ## Consequences
 
 **Positive**
+
 - Closes the forge-a-win, impersonate-a-color, hijack-a-seat, and stall-the-clock
   cheat vectors.
 - The clock and turn logic becomes pure server logic, unit-testable without sockets
@@ -65,6 +66,7 @@ watchdog live in-process on a single instance, with no new persistence store.
   `src/lib/chess/types.ts` (audit M1).
 
 **Negative / accepted trade-offs**
+
 - Larger refactor touching both the server move/clock/seat paths and the client
   `MultiplayerGameState` / `WebSocketManager`; shipped in stages to stay low-risk.
 - The join URL changes (old `?color=` links and `playerId` cookies become invalid).

@@ -2,3 +2,20 @@
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+bun.lock
+bun.lockb
+
+# Build output / generated
+.svelte-kit/
+build/
+.vercel/
+api/dist/
+playwright-report/
+test-results/
+
+# Vendored third-party bundle
+static/engine/
+
+# Rewritten by `bun add/remove` (2-space indent); not worth fighting over
+package.json
+api/package.json

@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { GameRoom } from './GameRoom';
-import { TimeOption } from './types';
+import { Color, TimeOption } from './types';
+import type { CreateGameResponse } from './protocol';
 
 const gameRooms = new Map<string, GameRoom>();
 
@@ -14,15 +15,31 @@ function resolveRoomTtlMs(): number {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_ROOM_TTL_MS;
 }
 
+function resolveDisconnectGraceMs(): number | undefined {
+	const raw = process.env.DISCONNECT_GRACE_MS;
+	if (!raw || raw.trim() === '') return undefined;
+	const parsed = Number(raw);
+	return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function resolveFirstMoveTimeoutMs(): number | undefined {
+	const raw = process.env.FIRST_MOVE_TIMEOUT_MS;
+	if (!raw || raw.trim() === '') return undefined;
+	const parsed = Number(raw);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 /**
  * Pure predicate (audit H4): a room is "abandoned" — eligible for sweeping —
- * when it is older than the TTL AND has no connected players. This covers both
- * never-joined rooms (created via POST but no WS ever connected) and
- * long-finished/empty rooms whose players have all disconnected. Side-effect
- * free so it can be unit-tested without timers.
+ * when nobody is connected AND nothing has happened in it (no join, leave or
+ * message) for the TTL. Measuring from the last activity rather than creation
+ * gives players who all dropped at once (e.g. the creator refreshing the
+ * waiting page) the full TTL to come back (audit SM-1.2). Rooms are never
+ * deleted on disconnect — only by this sweep. Side-effect free so it can be
+ * unit-tested without timers.
  */
 export function isRoomExpired(room: GameRoom, now: number, ttlMs: number): boolean {
-	return now - room.createdAt >= ttlMs && !room.hasConnectedPlayers();
+	return !room.hasConnectedPlayers() && now - room.lastActivityAt >= ttlMs;
 }
 
 /**
@@ -58,77 +75,42 @@ export function startRoomSweep(intervalMs: number = 5 * 60 * 1000): ReturnType<t
 	return timer;
 }
 
-export function createGame({ time }: { time: TimeOption }): string {
-	const room = new GameRoom({ time });
+export function createGame({
+	time,
+	color = 'white'
+}: {
+	time: TimeOption;
+	color?: Color | 'random';
+}): CreateGameResponse {
+	const room = new GameRoom({
+		time,
+		creatorColor: color,
+		disconnectGraceMs: resolveDisconnectGraceMs(),
+		firstMoveTimeoutMs: resolveFirstMoveTimeoutMs()
+	});
 	gameRooms.set(room.id, room);
-	return room.id;
+	const tokens = room.initialTokens();
+	const invite: Color = room.creatorColor === 'white' ? 'black' : 'white';
+	return {
+		id: room.id,
+		you: { color: room.creatorColor, token: tokens[room.creatorColor] },
+		invite: { color: invite, token: tokens[invite] }
+	};
 }
 
 export function getGameRoom(gameId: string): GameRoom | undefined {
 	return gameRooms.get(gameId);
 }
 
-export function addPlayerToGame(
-	gameId: string,
-	color: 'white' | 'black',
-	ws: WebSocket
-): string | null {
-	const room = getGameRoom(gameId);
-	if (!room) return null;
-
-	try {
-		return room.addPlayer(color, ws);
-	} catch (error) {
-		console.error('Error adding player to game:', error);
-		return null;
-	}
-}
-
-export function removePlayerFromGame(gameId: string, playerId: string) {
-	const room = getGameRoom(gameId);
-	if (room) {
-		room.removePlayer(playerId);
-		if (room.players.every((p) => !p.connected)) {
-			gameRooms.delete(gameId);
-		}
-	}
-}
-
-export function reconnectPlayerToGame(gameId: string, playerId: string, ws: WebSocket): boolean {
-	const room = getGameRoom(gameId);
-	if (room) {
-		return room.reconnectPlayer(playerId, ws);
-	}
-	return false;
-}
-
-export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
-	const room = getGameRoom(gameId);
-	if (!room) return;
-
-	let parsed;
-	try {
-		parsed = JSON.parse(message);
-	} catch (error) {
-		console.error('Error parsing player message, dropping frame:', error);
-		return;
-	}
-
-	// JSON.parse can legitimately yield null/number/string; handleMessage reads
-	// `message.type`, which would throw on a non-object. Drop those frames.
-	if (typeof parsed !== 'object' || parsed === null) {
-		console.error('Dropping non-object player message frame');
-		return;
-	}
-
-	room.handleMessage(playerId, parsed);
+/**
+ * A player's socket closed. `ws` is the socket that closed, so a stale socket
+ * that was already replaced by a reconnect can't unseat the new one. The room
+ * itself is kept (players may reconnect) and is reaped by the TTL sweep.
+ */
+export function removePlayerFromGame(gameId: string, playerId: string, ws?: WebSocket) {
+	getGameRoom(gameId)?.removePlayer(playerId, ws);
 }
 
 export function getRoomCount() {
 	return gameRooms.size;
-}
-
-export function checkGameStart(gameId: string): boolean {
-	const room = getGameRoom(gameId);
-	return room ? room.gameStarted : false;
 }

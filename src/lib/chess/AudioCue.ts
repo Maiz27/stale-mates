@@ -1,4 +1,6 @@
+import { get } from 'svelte/store';
 import { MOVE_AUDIOS_PATHS } from '../constants';
+import { soundEnabled } from '../stores/sound';
 import type { MoveType } from './types';
 
 /**
@@ -20,7 +22,7 @@ export class AudioCue {
 
 	async play(moveType: MoveType): Promise<void> {
 		const audio = this.files[moveType];
-		if (!audio) return;
+		if (!audio || !get(soundEnabled)) return;
 		try {
 			await audio.play();
 		} catch (error) {
