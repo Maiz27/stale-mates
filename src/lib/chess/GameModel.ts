@@ -38,6 +38,7 @@ export class GameModel implements Readable<GameView> {
 		this.player = player;
 		this.audio = new AudioCue();
 		this.store = writable<GameView>({
+			player,
 			fen,
 			turn: this.core.turn(),
 			started: false,
@@ -47,6 +48,8 @@ export class GameModel implements Readable<GameView> {
 			destinations: this.core.destinations(),
 			promotionMove: null,
 			hint: null,
+			hintPending: false,
+			thinking: false,
 			moveHistory: [],
 			sanHistory: [],
 			opponentConnected: false,
@@ -82,13 +85,25 @@ export class GameModel implements Readable<GameView> {
 		this.updateGameState();
 		// Explicitly clear gameOver: a fresh board makes outcome() null, so
 		// checkGameOver() won't patch it and a finished game's result would persist.
-		this.patch({ started: true, gameOver: { isOver: false, winner: null }, moveHistory: [] });
+		this.patch({
+			started: true,
+			gameOver: { isOver: false, winner: null },
+			moveHistory: [],
+			promotionMove: null,
+			hint: null
+		});
 	}
 
 	endGame(): void {
 		this.core.reset();
 		this.updateGameState();
-		this.patch({ started: false, gameOver: { isOver: false, winner: null }, moveHistory: [] });
+		this.patch({
+			started: false,
+			gameOver: { isOver: false, winner: null },
+			moveHistory: [],
+			promotionMove: null,
+			hint: null
+		});
 	}
 
 	handlePlayerMove({ from, to }: ChessMove): void {

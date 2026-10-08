@@ -243,6 +243,7 @@
 				{boardFlipped}
 				on:move={(e) => gameState?.handlePlayerMove(e.detail)}
 				on:promotion={(e) => gameState?.completePromotion(e.detail)}
+				on:promotionCancel={() => gameState?.clearPromotion()}
 			/>
 			<MoveList moves={sanHistory} />
 		</div>

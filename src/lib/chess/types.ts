@@ -68,6 +68,8 @@ export type ClockView = {
 // this object and expose themselves as a `Readable<GameView>`. Multiplayer-only
 // fields carry harmless defaults in single-player mode (the AI page ignores them).
 export type GameView = {
+	/** The side the local player controls (drives board orientation / input). */
+	player: Color;
 	fen: string;
 	turn: Color;
 	started: boolean;
@@ -76,6 +78,10 @@ export type GameView = {
 	destinations: Map<Square, Square[]>;
 	promotionMove: PromotionMove;
 	hint: ChessMove | null;
+	/** AI mode: a hint search is running. */
+	hintPending: boolean;
+	/** AI mode: the engine is computing its move. */
+	thinking: boolean;
 	moveHistory: ChessMove[];
 	sanHistory: string[];
 	// Multiplayer-only.

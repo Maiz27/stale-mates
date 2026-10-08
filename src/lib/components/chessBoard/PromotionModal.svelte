@@ -7,12 +7,23 @@
 	import { PROMOTION_OPTIONS } from '$lib/constants';
 
 	export let open = false;
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ promotion: { piece: string }; cancel: void }>();
 	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Choose Promotion Piece';
 	const description = 'Choose the piece you want to promote to a queen, rook, bishop, or knight.';
 
+	// Dismissing the dialog/drawer (Esc, outside click, swipe) without picking a
+	// piece must cancel the pending promotion, or the board stays locked (SM-2.2).
+	let chosen = false;
+	let wasOpen = open;
+	$: {
+		if (wasOpen && !open && !chosen) dispatch('cancel');
+		if (open && !wasOpen) chosen = false;
+		wasOpen = open;
+	}
+
 	function handlePromotion(piece: string) {
+		chosen = true;
 		dispatch('promotion', { piece });
 		open = false;
 	}

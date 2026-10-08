@@ -64,8 +64,10 @@ export const getDifficultyLabel = (value: number): string => {
 export const formatTime = (seconds: number): string => {
 	if (seconds === Infinity) return 'Unlimited';
 
-	const minutes = Math.floor(seconds / 60);
-	const remainingSeconds = Math.round(seconds % 60);
+	// Floor, never round: 59.6s must read "00:59", not "00:60" (SM-2.7).
+	const whole = Math.max(0, Math.floor(seconds));
+	const minutes = Math.floor(whole / 60);
+	const remainingSeconds = whole % 60;
 
 	const minutesStr = minutes.toString().padStart(2, '0');
 	const secondsStr = remainingSeconds.toString().padStart(2, '0');
@@ -80,6 +82,7 @@ export function AddItemToCookies({
 }: {
 	key: string;
 	value: string;
+	/** Lifetime in DAYS (js-cookie's `expires` unit). */
 	expiration: number;
 }) {
 	const cookie = {
@@ -93,9 +96,12 @@ export function AddItemToCookies({
 
 export function GetItemFromCookies(key: string) {
 	const storedData = Cookies.get(key);
-	if (storedData) {
-		const { data } = JSON.parse(storedData);
-		return data;
+	if (!storedData) return null;
+	// A corrupted/hand-edited cookie must not crash the page (SM-2.9).
+	try {
+		const parsed = JSON.parse(storedData);
+		return parsed && typeof parsed === 'object' && 'data' in parsed ? parsed.data : null;
+	} catch {
+		return null;
 	}
-	return null;
 }

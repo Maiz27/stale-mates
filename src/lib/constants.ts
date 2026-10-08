@@ -1,4 +1,6 @@
-export const PLAYER_ID_EXPIRATION = 4 * 60 * 60 * 1000; // 4 hours
+// js-cookie's `expires` is in DAYS: 4 hours = 4/24 of a day (SM-2.8; it was
+// previously 14,400,000 "days").
+export const PLAYER_ID_EXPIRATION = 4 / 24;
 
 export const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 

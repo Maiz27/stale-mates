@@ -1,4 +1,3 @@
-import { EngineState } from './engine';
 import type { ChessMove } from '$lib/chess/types';
 import { STARTING_FEN } from '$lib/constants';
 
@@ -8,78 +7,151 @@ interface SearchParams {
 	depth: number;
 }
 
+/** The subset of the Web Worker API the engine uses (lets tests inject a fake). */
+export interface EngineWorker {
+	postMessage(message: string): void;
+	terminate(): void;
+	onmessage: ((event: MessageEvent) => void) | null;
+	onerror: ((event: ErrorEvent) => void) | null;
+}
+
+export interface StockfishOptions {
+	debug?: boolean;
+	difficulty?: number;
+	/** Inject a worker (tests). Defaults to `new Worker(url)`. */
+	worker?: EngineWorker;
+	/** Worker script URL. */
+	url?: string;
+}
+
+type InFlight = 'move' | 'hint' | null;
+
 /**
  * Stockfish class that interacts with the Stockfish chess engine via a Web Worker.
  * It provides methods to control the engine, set difficulty, and retrieve best moves.
+ *
+ * Search bookkeeping: at most one search is ever in flight. Starting a new one,
+ * changing position, or stopping cancels the current search with `stop`; the
+ * cancelled search still answers with exactly one `bestmove`, which is counted
+ * in `staleBestmoves` and swallowed, so a stale result can never be applied to
+ * a newer position (audit SM-2.1). Hints run through the same machinery and
+ * never reach the move callback (audit SM-2.5).
  */
 export class Stockfish {
-	private worker: Worker;
-	private state: EngineState;
+	private worker: EngineWorker;
+	private ready = false;
+	private failed = false;
+	/** Commands posted before `readyok` — flushed once the engine is configured (SM-2.6). */
+	private queue: string[] = [];
 	private difficulty: number;
 	private bestMove: ChessMove;
 	private ponder: ChessMove;
 	private searchParams: SearchParams;
+	private multiPV = 1;
 	private messageCallback: ((message: string) => void) | null = null;
+	private errorCallback: ((error: unknown) => void) | null = null;
 	private currentFen: string = STARTING_FEN;
 	private debug: boolean;
 	private searchGeneration: number = 0;
 	private pendingGo: ReturnType<typeof setTimeout> | null = null;
+	private inFlight: InFlight = null;
+	private staleBestmoves = 0;
+	private hintResolve: ((move: ChessMove | null) => void) | null = null;
 
-	/**
-	 * Creates a new Stockfish instance.
-	 * @param debug - If true, enables detailed logging.
-	 */
-	constructor({ debug = false, difficulty = 10 }) {
-		this.worker = new Worker('/stockfish.js');
-		this.state = EngineState.Uninitialized;
+	constructor({
+		debug = false,
+		difficulty = 10,
+		worker,
+		url = '/stockfish.js'
+	}: StockfishOptions = {}) {
+		this.worker = worker ?? (new Worker(url) as unknown as EngineWorker);
 		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
 		this.bestMove = { from: '', to: '' };
 		this.ponder = { from: '', to: '' };
 		this.searchParams = { moveTime: 1000, depth: 5, moveDelay: 400 };
 		this.debug = debug;
-		this.initialize();
-	}
-
-	private initialize(): void {
-		this.setState(EngineState.Initializing);
+		this.worker.onmessage = (event) => this.handleMessage(String(event.data));
+		this.worker.onerror = (event) => this.handleError(event);
+		// Derive search params now; the UCI options are (re)sent during the handshake.
+		this.setDifficulty(difficulty);
+		this.queue = [];
 		this.worker.postMessage('uci');
-		this.worker.onmessage = this.handleInitialization.bind(this);
 	}
 
-	private handleInitialization(event: MessageEvent): void {
-		const message = event.data;
-		if (message.includes('uciok')) {
-			this.setState(EngineState.Waiting);
-			this.setDifficulty(this.difficulty);
+	/** Post a command, holding it until the engine has answered `readyok`. */
+	private send(command: string): void {
+		if (this.failed) return;
+		if (this.ready) {
+			this.worker.postMessage(command);
+		} else {
+			this.queue.push(command);
+		}
+	}
+
+	private handleError(event: unknown): void {
+		this.failed = true;
+		this.log(`Stockfish worker error: ${String((event as ErrorEvent)?.message ?? event)}`, 'error');
+		this.clearPendingGo();
+		this.inFlight = null;
+		this.resolveHint(null);
+		this.errorCallback?.(event);
+	}
+
+	private handleMessage(message: string): void {
+		this.log('Stockfish message: ' + message);
+		if (message.startsWith('uciok')) {
+			// Configure before anything queued runs, then wait for readyok.
+			this.applyDifficultyOptions((cmd) => this.worker.postMessage(cmd));
 			this.worker.postMessage('isready');
-		} else if (message.includes('readyok')) {
-			this.log('Engine is fully initialized and ready', 'info');
-			this.state = EngineState.Waiting;
-			this.worker.onmessage = this.handleMessage.bind(this);
+			return;
 		}
-	}
-
-	private handleMessage(event: MessageEvent): void {
-		const message = event.data;
-		this.log('Stockfish message: ', message);
-		this.handleBestMoveMessage(message);
-		if (this.messageCallback) {
-			this.messageCallback(message);
+		if (message.startsWith('readyok')) {
+			if (!this.ready) {
+				this.ready = true;
+				this.log('Engine is fully initialized and ready', 'info');
+				const queued = this.queue;
+				this.queue = [];
+				queued.forEach((cmd) => this.worker.postMessage(cmd));
+			}
+			return;
 		}
+		if (message.startsWith('bestmove')) {
+			this.handleBestMove(message);
+			return;
+		}
+		this.messageCallback?.(message);
 	}
 
 	onMessage(callback: (message: string) => void): void {
 		this.messageCallback = callback;
 	}
 
-	private handleBestMoveMessage(message: string): void {
-		if (!message.includes('bestmove')) return;
+	onError(callback: (error: unknown) => void): void {
+		this.errorCallback = callback;
+	}
+
+	private handleBestMove(message: string): void {
+		if (this.staleBestmoves > 0) {
+			// Answer to a search we cancelled — never apply it.
+			this.staleBestmoves--;
+			this.log('Ignoring stale bestmove: ' + message);
+			return;
+		}
+		const kind = this.inFlight;
+		this.inFlight = null;
+		const moves = message.split(' ');
+		const best = moves[1] && moves[1] !== '(none)' ? this.parseMove(moves[1]) : null;
+
+		if (kind === 'hint') {
+			this.restoreAfterHint();
+			this.resolveHint(best);
+			return;
+		}
 
 		this.log(message, 'info');
-		const moves = message.split(' ');
-		this.bestMove = this.parseMove(moves[1]);
+		this.bestMove = best ?? { from: '', to: '' };
 		this.ponder = moves[3] ? this.parseMove(moves[3]) : { from: '', to: '' };
-		this.setState(EngineState.Waiting);
+		this.messageCallback?.(message);
 	}
 
 	private parseMove(move: string): ChessMove {
@@ -93,6 +165,11 @@ export class Stockfish {
 			parsed.promotion = promotion;
 		}
 		return parsed;
+	}
+
+	/** True while a move or hint search is queued or running. */
+	isBusy(): boolean {
+		return this.inFlight !== null || this.pendingGo !== null;
 	}
 
 	/**
@@ -145,27 +222,21 @@ export class Stockfish {
 			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}, Move Delay ${moveDelay}`,
 			'info'
 		);
-		this.worker.postMessage(`setoption name Skill Level value ${skillLevel}`);
-		this.worker.postMessage(`setoption name Contempt value ${contempt}`);
-		this.worker.postMessage(`setoption name MultiPV value ${multiPV}`);
-
+		this.multiPV = multiPV;
 		this.searchParams = { moveTime, depth, moveDelay };
+		// Queued until readyok if the handshake hasn't finished yet.
+		this.applyDifficultyOptions((cmd) => this.send(cmd));
 	}
 
-	/**
-	 * Internal best-effort reset: cancels any in-flight search and returns the
-	 * engine to the Waiting state so a stale/stuck search cannot permanently
-	 * block new commands. Does NOT increment the search generation.
-	 */
-	private reset(): void {
-		// Cancel a queued (delayed) go so it can't post a stale search command.
-		this.clearPendingGo();
-		if (this.state === EngineState.Searching) {
-			this.worker.postMessage('stop');
-		}
-		this.setState(EngineState.Waiting);
+	private applyDifficultyOptions(post: (command: string) => void): void {
+		const level = this.difficulty;
+		this.multiPV = this.mapLevelToMultiPV(level);
+		post(`setoption name Skill Level value ${this.mapLevelToSkill(level)}`);
+		post(`setoption name Contempt value ${this.mapLevelToContempt(level)}`);
+		post(`setoption name MultiPV value ${this.multiPV}`);
 	}
 
+	/** Cancel a queued (not yet posted) search. */
 	private clearPendingGo(): void {
 		if (this.pendingGo) {
 			clearTimeout(this.pendingGo);
@@ -173,42 +244,47 @@ export class Stockfish {
 		}
 	}
 
-	setPosition(fen: string): void {
-		if (this.state !== EngineState.Waiting) {
-			this.log('Engine busy; resetting before accepting a new position', 'warn');
-			this.reset();
+	/** Cancel whatever search is queued or running; its bestmove will be swallowed. */
+	private cancelSearch(): void {
+		this.clearPendingGo();
+		if (this.inFlight) {
+			const kind = this.inFlight;
+			this.inFlight = null;
+			this.staleBestmoves++;
+			this.send('stop');
+			if (kind === 'hint') {
+				this.restoreAfterHint();
+				this.resolveHint(null);
+			}
 		}
+	}
+
+	setPosition(fen: string): void {
+		this.cancelSearch();
 		this.currentFen = fen;
 		this.log(`Sending position to Stockfish: ${fen}`);
-		this.worker.postMessage(`position fen ${fen}`);
+		this.send(`position fen ${fen}`);
 	}
 
 	go(): void {
-		if (this.state !== EngineState.Waiting) {
-			this.log('Engine busy; resetting before starting a new search', 'warn');
-			this.reset();
-		}
-		this.setState(EngineState.Searching);
+		this.cancelSearch();
 		const { moveTime, depth, moveDelay } = this.searchParams;
 		this.log(`Delaying move by ${moveDelay}ms`);
-		this.clearPendingGo();
 		this.pendingGo = setTimeout(() => {
 			this.pendingGo = null;
+			this.inFlight = 'move';
 			this.log(`Sending go command to Stockfish with depth: ${depth}, movetime: ${moveTime}`);
-			this.worker.postMessage(`go depth ${depth} movetime ${moveTime}`);
+			this.send(`go depth ${depth} movetime ${moveTime}`);
 		}, moveDelay);
 	}
 
 	/**
-	 * Cancels any in-flight search, returns the engine to the Waiting state,
-	 * and bumps the search generation so any pending bestmove can be ignored
-	 * by callers tracking the generation.
+	 * Cancels any in-flight search and bumps the search generation so callers
+	 * tracking it can also discard anything they requested before.
 	 */
 	stop(): void {
 		this.log('Stockfish: Stopping current search', 'info');
-		this.clearPendingGo();
-		this.worker.postMessage('stop');
-		this.setState(EngineState.Waiting);
+		this.cancelSearch();
 		this.searchGeneration++;
 	}
 
@@ -219,7 +295,9 @@ export class Stockfish {
 	terminate(): void {
 		this.log('Stockfish: Terminating worker', 'info');
 		this.clearPendingGo();
+		this.resolveHint(null);
 		this.messageCallback = null;
+		this.errorCallback = null;
 		this.worker.terminate();
 	}
 
@@ -233,62 +311,58 @@ export class Stockfish {
 
 	newGame(): void {
 		this.log('Stockfish: Starting new game');
-		this.clearPendingGo();
-		this.setState(EngineState.Waiting);
+		this.cancelSearch();
 		this.searchGeneration++;
-		this.worker.postMessage('ucinewgame');
-		this.worker.postMessage('setoption name Clear Hash');
-		this.log('Stockfish: Sent ucinewgame and Clear Hash commands');
+		this.send('ucinewgame');
+		this.send('setoption name Clear Hash');
+	}
+
+	private resolveHint(move: ChessMove | null): void {
+		const resolve = this.hintResolve;
+		this.hintResolve = null;
+		resolve?.(move);
+	}
+
+	/** Undo the analysis-only options a hint search set (audit SM-2.5). */
+	private restoreAfterHint(): void {
+		this.send('setoption name UCI_AnalyseMode value false');
+		this.send('setoption name Analysis Contempt value Both');
+		this.send(`setoption name MultiPV value ${this.multiPV}`);
 	}
 
 	/**
-	 * Provides a hint for the current position.
-	 * @param playerColor - The color of the player to get a hint for ('w' for white, 'b' for black)
-	 * @returns A promise that resolves to the suggested move
+	 * Provides a hint for the current position. Resolves to the suggested move,
+	 * or `null` if the hint was cancelled (the position changed, the game was
+	 * reset, or the engine failed).
 	 *
-	 * This method temporarily adjusts the engine settings to provide a hint:
-	 * 1. Enables UCI_AnalyseMode for more thorough analysis.
-	 * 2. Sets Analysis Contempt to favor the player's color.
-	 * 3. Uses a depth that scales with difficulty:
-	 *    - Minimum depth of 8 for lower difficulties.
-	 *    - Maximum depth of 15 for higher difficulties.
-	 * 4. Sets a move time that scales with difficulty:
-	 *    - Minimum move time of 500ms for lower difficulties.
-	 *    - Maximum move time of 3500ms for higher difficulties.
-	 * 5. Uses MultiPV to consider multiple lines, ensuring varied hints:
-	 *    - Higher MultiPV at lower difficulties for more varied suggestions.
-	 *    - Lower MultiPV at higher difficulties for more focused, stronger hints.
-	 *
-	 * This approach balances hint quality with response time, ensuring
-	 * decent hints across all difficulty levels without excessive delays.
+	 * Temporarily enables UCI_AnalyseMode, sets Analysis Contempt to the
+	 * player's colour and a difficulty-scaled MultiPV/depth/movetime; all are
+	 * restored when the hint search finishes or is cancelled. A hint replaces
+	 * any search already in flight.
 	 */
-	async getHint(playerColor: 'w' | 'b'): Promise<ChessMove> {
+	getHint(playerColor: 'w' | 'b'): Promise<ChessMove | null> {
+		this.cancelSearch();
 		return new Promise((resolve) => {
-			const originalCallback = this.messageCallback;
-			this.messageCallback = (message: string) => {
-				if (message.includes('bestmove')) {
-					const moves = message.split(' ');
-					resolve(this.parseMove(moves[1]));
-					this.messageCallback = originalCallback;
-				}
-			};
+			if (this.failed) {
+				resolve(null);
+				return;
+			}
+			this.hintResolve = resolve;
 
 			// Scale depth based on difficulty (8 to 15)
 			const hintDepth = Math.min(15, Math.max(8, Math.floor(7 + this.difficulty / 2)));
-
 			// Scale move time based on difficulty (1000ms to 2000ms)
 			const hintTime = Math.min(2000, Math.max(1000, 1000 + this.difficulty * 125));
-
 			// Vary MultiPV based on difficulty (5 to 1)
 			const multiPV = Math.max(1, Math.min(5, 6 - Math.floor(this.difficulty / 4)));
-
 			const forcedColor = playerColor === 'w' ? 'White' : 'Black';
 
-			this.worker.postMessage(`setoption name UCI_AnalyseMode value true`);
-			this.worker.postMessage(`setoption name Analysis Contempt value ${forcedColor}`);
-			this.worker.postMessage(`setoption name MultiPV value ${multiPV}`);
-			this.worker.postMessage(`position fen ${this.currentFen}`);
-			this.worker.postMessage(`go depth ${hintDepth} movetime ${hintTime}`);
+			this.send(`setoption name UCI_AnalyseMode value true`);
+			this.send(`setoption name Analysis Contempt value ${forcedColor}`);
+			this.send(`setoption name MultiPV value ${multiPV}`);
+			this.send(`position fen ${this.currentFen}`);
+			this.inFlight = 'hint';
+			this.send(`go depth ${hintDepth} movetime ${hintTime}`);
 		});
 	}
 
@@ -360,10 +434,6 @@ export class Stockfish {
 	 */
 	private mapLevelToMultiPV(level: number): number {
 		return Math.max(1, Math.floor((21 - level) / 4));
-	}
-
-	private setState(state: EngineState): void {
-		this.state = state;
 	}
 
 	private log(message: string, level: 'info' | 'log' | 'warn' | 'error' = 'log'): void {

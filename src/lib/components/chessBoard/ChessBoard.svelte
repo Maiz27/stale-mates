@@ -18,6 +18,7 @@
 	const dispatch = createEventDispatcher<{
 		move: { from: string; to: string };
 		promotion: { from: string; to: string; piece: string };
+		promotionCancel: void;
 	}>();
 
 	let chessground: Chessground;
@@ -74,7 +75,9 @@
 		movable: {
 			// Lock input while a promotion choice is pending so a second drag can't fire a move.
 			color:
-				view.started && view.turn === playerColor && !view.promotionMove ? playerColor : undefined,
+				view.started && !view.gameOver.isOver && view.turn === playerColor && !view.promotionMove
+					? playerColor
+					: undefined,
 			dests: view.destinations,
 			free: false,
 			showDests: true
@@ -118,6 +121,13 @@
 		}
 	}
 
+	function handlePromotionCancel() {
+		// Snap the dragged pawn back to the authoritative position.
+		displayFen = view.fen;
+		chessground?.set({ fen: view.fen });
+		dispatch('promotionCancel');
+	}
+
 	$: resultText = formatResult(view.gameOver);
 </script>
 
@@ -133,6 +143,10 @@
 	{/if}
 	<Chessground bind:this={chessground} {config} {orientation} />
 	{#if view.promotionMove}
-		<PromotionModal bind:open={promotionModalOpen} on:promotion={handlePromotion} />
+		<PromotionModal
+			bind:open={promotionModalOpen}
+			on:promotion={handlePromotion}
+			on:cancel={handlePromotionCancel}
+		/>
 	{/if}
 </section>

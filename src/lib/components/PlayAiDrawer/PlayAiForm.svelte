@@ -11,36 +11,38 @@
 	export let settings: GameSettings;
 	export let CTA = isGameStarted ? 'Update Settings' : 'Start Game';
 
-	const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ submit: GameSettings }>();
+
+	// Edit a private copy; the store only changes when the form is submitted
+	// (SM-2.9 — the old form mutated $settingsStore in place, so cancelling the
+	// dialog still "applied" the half-edited settings).
+	let draft: GameSettings = { ...settings };
 
 	const handleColorChange = (event: CustomEvent) => {
-		settings.color = event.detail.value;
+		draft.color = event.detail.value;
 	};
 
 	const handleDifficultyChange = (event: CustomEvent) => {
-		settings.difficulty = event.detail.value;
+		draft.difficulty = event.detail.value;
 	};
 
 	const handleSubmit = () => {
-		dispatch('submit', settings);
+		dispatch('submit', { ...draft });
 	};
 </script>
 
 <form on:submit|preventDefault={handleSubmit} class="grid items-start gap-4 px-4 md:px-0">
 	{#if !isGameStarted}
-		<ColorSelector on:colorChange={handleColorChange} color={settings.color} />
+		<ColorSelector on:colorChange={handleColorChange} color={draft.color} />
 	{/if}
-	<DifficultySelector
-		on:difficultyChange={handleDifficultyChange}
-		difficulty={settings.difficulty}
-	/>
+	<DifficultySelector on:difficultyChange={handleDifficultyChange} difficulty={draft.difficulty} />
 	<div class="flex items-center gap-2">
 		<Label for="hints">Allow Hints:</Label>
-		<Switch id="hints" bind:checked={settings.hints} />
+		<Switch id="hints" bind:checked={draft.hints} />
 	</div>
 	<div class="flex items-center gap-2">
 		<Label for="undo">Allow Undo:</Label>
-		<Switch id="undo" bind:checked={settings.undo} />
+		<Switch id="undo" bind:checked={draft.undo} />
 	</div>
 	<Button type="submit">{CTA}</Button>
 </form>

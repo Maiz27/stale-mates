@@ -33,17 +33,47 @@ function createSettingsStore() {
 	};
 }
 
-function loadSettings(): GameSettings {
-	if (typeof localStorage !== 'undefined') {
-		const storedSettings = localStorage.getItem('settings');
-		return storedSettings ? JSON.parse(storedSettings) : defaultSettings;
+/**
+ * Read persisted settings, falling back to the defaults for anything missing or
+ * malformed. Corrupt JSON (or storage that throws, e.g. disabled in a private
+ * window) must never break the app (SM-2.9).
+ */
+export function loadSettings(
+	storage: Pick<Storage, 'getItem'> | undefined = safeStorage()
+): GameSettings {
+	if (!storage) return { ...defaultSettings };
+	try {
+		const raw = storage.getItem('settings');
+		if (!raw) return { ...defaultSettings };
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== 'object') return { ...defaultSettings };
+		return {
+			color: parsed.color === 'black' ? 'black' : 'white',
+			difficulty:
+				typeof parsed.difficulty === 'number' && parsed.difficulty >= 1 && parsed.difficulty <= 20
+					? parsed.difficulty
+					: defaultSettings.difficulty,
+			hints: typeof parsed.hints === 'boolean' ? parsed.hints : defaultSettings.hints,
+			undo: typeof parsed.undo === 'boolean' ? parsed.undo : defaultSettings.undo
+		};
+	} catch {
+		return { ...defaultSettings };
 	}
-	return defaultSettings;
+}
+
+function safeStorage(): Storage | undefined {
+	try {
+		return typeof localStorage !== 'undefined' ? localStorage : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function saveSettings(settings: GameSettings) {
-	if (typeof localStorage !== 'undefined') {
-		localStorage.setItem('settings', JSON.stringify(settings));
+	try {
+		safeStorage()?.setItem('settings', JSON.stringify(settings));
+	} catch {
+		// Storage full/disabled — settings just won't persist.
 	}
 }
 

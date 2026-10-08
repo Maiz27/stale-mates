@@ -34,6 +34,16 @@
 	const handleSettingsUpdate = (newSettings: GameSettings) => {
 		gameState.updateSettings(newSettings);
 	};
+
+	// Derived from the model (not the settings store) so the board can never
+	// disagree with the side the AI thinks you're playing (SM-2.4).
+	$: canUndo = $gameState && $settingsStore.undo && gameState.canUndo();
+	$: canHint =
+		$gameState.started &&
+		$settingsStore.hints &&
+		!$gameState.gameOver.isOver &&
+		$gameState.turn === $gameState.player &&
+		!$gameState.hintPending;
 </script>
 
 <svelte:head>
@@ -51,7 +61,7 @@
 			<div class="grid grid-cols-2 gap-y-2 md:grid-cols-4">
 				<div>
 					Player: <span class="text-primary"
-						>{$settingsStore.color === 'white' ? 'White' : 'Black'}</span
+						>{$gameState.player === 'white' ? 'White' : 'Black'}</span
 					>
 				</div>
 				<div>
@@ -76,23 +86,10 @@
 			{:else}
 				<EndGameDrawer onConfirm={endGame} />
 			{/if}
-			<Button
-				on:click={getHint}
-				variant="outline"
-				disabled={!$gameState.started || !$settingsStore.hints || $gameState.gameOver.isOver}
-				title="Get Hint"
-			>
+			<Button on:click={getHint} variant="outline" disabled={!canHint} title="Get Hint">
 				<Icon icon="radix-icons:question-mark" />
 			</Button>
-			<Button
-				on:click={undoMove}
-				variant="outline"
-				disabled={!$gameState.started ||
-					!$settingsStore.undo ||
-					$gameState.moveHistory.length < 2 ||
-					$gameState.gameOver.isOver}
-				title="Undo Move"
-			>
+			<Button on:click={undoMove} variant="outline" disabled={!canUndo} title="Undo Move">
 				<Icon icon="radix-icons:thick-arrow-left" />
 			</Button>
 			<Button on:click={flipBoard} variant="outline" title="Flip Board" aria-label="Flip board">
@@ -115,9 +112,10 @@
 		<ChessBoard
 			{boardFlipped}
 			view={$gameState}
-			playerColor={$settingsStore.color || 'white'}
+			playerColor={$gameState.player}
 			on:move={(e) => gameState.handlePlayerMove(e.detail)}
 			on:promotion={(e) => gameState.completePromotion(e.detail)}
+			on:promotionCancel={() => gameState.clearPromotion()}
 		/>
 		<MoveList moves={$gameState.sanHistory} />
 	</div>
