@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import app, { createApp } from '../app';
@@ -115,5 +115,32 @@ describe('CORS allowlist (CR3-1, CR3-2)', () => {
 		const preview = 'https://app-git-x-team.vercel.app';
 		expect(await acao(env, preview)).toBe(preview);
 		expect(await acao(env, 'https://other-git-x-team.vercel.app')).toBeNull();
+	});
+});
+
+describe('body parsing errors (CR3-5)', () => {
+	const raw = (body: string) =>
+		fetch(`${base}/game/create`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body
+		});
+
+	it('answers malformed JSON with 400 Invalid JSON and logs no stack trace', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const res = await raw('{bad');
+			expect(res.status).toBe(400);
+			expect(await res.json()).toEqual({ error: 'Invalid JSON' });
+			expect(error).not.toHaveBeenCalled();
+		} finally {
+			error.mockRestore();
+		}
+	});
+
+	it('answers an oversized body with 413', async () => {
+		const res = await raw(JSON.stringify({ time: 1, pad: 'x'.repeat(200_000) }));
+		expect(res.status).toBe(413);
+		expect(await res.json()).toEqual({ error: 'Request body too large' });
 	});
 });

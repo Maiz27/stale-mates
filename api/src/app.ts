@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type ErrorRequestHandler } from 'express';
 import cors, { type CorsOptions } from 'cors';
 import { GameRouter } from './routes/game';
 import { getRoomCount } from './lib/game';
@@ -25,6 +25,10 @@ export function createApp(env: EnvInput = process.env) {
 
 	app.use(cors(corsOptions));
 	app.use(express.json());
+	// A malformed or oversized JSON body is the client's mistake: answer it
+	// quietly instead of letting Express's default handler log a stack trace
+	// for every bad request (CR3-5). Anything else goes on to the default handler.
+	app.use(jsonBodyErrors);
 
 	app.get('/', (req, res) => {
 		res.send('Hello World!');
@@ -38,5 +42,20 @@ export function createApp(env: EnvInput = process.env) {
 
 	return app;
 }
+
+/** body-parser's error shape (`type` identifies the failure). */
+type BodyParserError = Error & { type?: string };
+
+export const jsonBodyErrors: ErrorRequestHandler = (error: BodyParserError, req, res, next) => {
+	if (error?.type === 'entity.parse.failed') {
+		res.status(400).json({ error: 'Invalid JSON' });
+		return;
+	}
+	if (error?.type === 'entity.too.large') {
+		res.status(413).json({ error: 'Request body too large' });
+		return;
+	}
+	next(error);
+};
 
 export default createApp();
