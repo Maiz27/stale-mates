@@ -217,3 +217,16 @@ referenced from commit messages.
 | SM-6.5 | Stockfish upgraded from a 3.1 MB asm.js SF10 to Stockfish 18 lite single-threaded WASM (7.3 MB, much stronger/faster), loaded from a versioned static path only on the AI page | ✅      |
 | SM-6.6 | Service worker: precached app shell, runtime-cached engine, network-first pages — AI mode works offline after one online visit                                                 | ✅      |
 | SM-6.7 | Spectators / chat                                                                                                                                                              | skipped |
+
+### SM-7 — Upgrades
+
+| #      | Upgrade                                                                                                                                                                   | Status |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| SM-7.1 | chess.js 1.0.0-beta.8 → 1.4.0 (frontend + api; `isDrawByFiftyMoves()` replaces the FEN halfmove parse)                                                                    | ✅     |
+| SM-7.2 | Playwright 1.56 → 1.64 (`PW_CHROMIUM_EXECUTABLE` to reuse a preinstalled Chromium)                                                                                        | ✅     |
+| SM-7.3 | SvelteKit 2.70 / svelte-check 4 / eslint-plugin-svelte 3 (new lint rules fixed)                                                                                           | ✅     |
+| SM-7.4 | api: Express 4 → 5, ts-node + nodemon → tsx                                                                                                                               | ✅     |
+| SM-7.5 | Svelte 4 → 5; svelte-legos → `svelte/reactivity` MediaQuery; svelte-chessground → in-repo chessground 9 wrapper; mode-watcher 1; svelte-radix 3                           | ✅     |
+| SM-7.6 | bits-ui 0.21 → 2, vaul-svelte 1, Tailwind 3 → 4, shadcn-svelte components regenerated; all app components migrated to runes                                               | ✅     |
+| SM-7.7 | SvelteKit 3 + Vite 8 + adapter-vercel 7 + TypeScript 6 (config in the Vite plugin, `$lib` kept via `alias`, service worker on `$app/manifest`)                            | ✅     |
+| SM-7.8 | Found during SM-7: the hashed engine URL relied on a URL fragment that is lost when the service worker serves the worker script — engine moved to a versioned static path | ✅     |
