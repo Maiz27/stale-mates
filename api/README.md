@@ -112,9 +112,10 @@ This server is intentionally simple and runs as a **single instance**:
   are created but never joined, or long finished, cannot leak indefinitely.
 - **Crashes exit.** Per-socket problems (oversized or malformed frames, protocol
   errors) are handled on the socket and never reach the process. A genuinely uncaught
-  exception logs, shuts down and exits non-zero so the process manager (Fly's machine
-  restart policy, Docker `restart:`) starts a clean process — the in-memory games are
-  lost either way, but a half-updated room is never served. Unhandled promise
+  exception logs, shuts down and exits non-zero so the process manager (`fly.toml`'s
+  `[[restart]] policy = "always"`, Docker `restart:`) starts a clean process — the
+  in-memory games are lost either way, but a half-updated room is never served. A
+  graceful shutdown force-exits after 5 s, inside `fly.toml`'s `kill_timeout = 10`. Unhandled promise
   rejections are logged and the process keeps running.
 - **Concurrent WebSockets are capped per IP** (`MAX_WS_CONNECTIONS_PER_IP`, default 20).
 - **Room creation is rate-limited per IP** (default ~30 creates / 10 min) to prevent

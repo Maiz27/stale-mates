@@ -6,6 +6,11 @@
 
 app = "stalemates-api"
 primary_region = "fra"
+# On deploy/stop Fly sends kill_signal (default SIGINT; index.ts handles SIGINT and
+# SIGTERM) and force-kills after kill_timeout seconds. The server closes sockets with
+# 1001 and force-exits after SHUTDOWN_FORCE_EXIT_MS (5 s, src/lib/shutdown.ts), which
+# must stay below this so its own cleanup always finishes first (shutdown.test.ts).
+kill_timeout = 10
 
 [build]
   dockerfile = "Dockerfile"
@@ -38,6 +43,11 @@ primary_region = "fra"
     interval = "15s"
     timeout = "5s"
     grace_period = "10s"
+
+# Restart the single machine whatever the exit code: the server exits non-zero on an
+# uncaught exception (index.ts) and 0 after a signal, and either way it must come back.
+[[restart]]
+  policy = "always"
 
 # Single always-on machine sized for a lightweight Node WS process.
 [[vm]]

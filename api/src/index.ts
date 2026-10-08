@@ -8,6 +8,7 @@ import { createWebSocketServer } from './lib/websocket';
 import type { CloseReason } from './lib/protocol';
 import { assertValidEnv } from './lib/env';
 import { describeOrigins } from './lib/origins';
+import { SHUTDOWN_FORCE_EXIT_MS } from './lib/shutdown';
 import { startRoomSweep } from './lib/game';
 
 // Fail fast on invalid configuration before binding any sockets (audit M4).
@@ -74,7 +75,8 @@ function shutdown(signal: string, exitCode = 0) {
 	});
 
 	// Best-effort: force exit if close hangs.
-	setTimeout(() => process.exit(exitCode), 5000).unref();
+	// Below fly.toml's kill_timeout, so this exit wins over Fly's SIGKILL.
+	setTimeout(() => process.exit(exitCode), SHUTDOWN_FORCE_EXIT_MS).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
