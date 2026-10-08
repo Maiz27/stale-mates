@@ -46,8 +46,13 @@ Stalemates was born out of a passion for chess and a desire to explore the capab
   on time while away)
 - Timed games follow the Lichess convention: no clock runs until each side has made its
   first move (White's clock starts after Black's first move; those first moves earn no
-  increment). Each side has 30 s (`FIRST_MOVE_TIMEOUT_MS`) for its first move, or the
-  game is aborted — no winner, PGN result `*`, rematch available
+  increment). Each side has 30 s (`FIRST_MOVE_TIMEOUT_MS`) for its first move, counted
+  from when it is at the board, or the game is aborted — no winner, PGN result `*`,
+  rematch available. A side that is away when its first move is due gets the full
+  disconnect grace instead (60 s, from the start of the game), then a fresh 30 s window
+  if it comes back; if it never shows up the game is aborted, not won
+- Until both sides have moved a game can only be aborted: "Abort" replaces "Resign" (and
+  no draw can be offered), and a player who never shows up costs nobody the game
 - Keyboard play: type moves in SAN (`Nf3`, `O-O`) or coordinates (`e2e4`)
 - A responsive chessboard with player bars, clocks, light/dark mode and board colour themes
 - Works offline for AI games once visited (service worker)
@@ -188,9 +193,10 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 - `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
   default `1800000` = 30 min). Disconnected players can rejoin until then.
 - `DISCONNECT_GRACE_MS` — how long a disconnected player has before the opponent may
-  claim the win (ms, default `60000`).
-- `FIRST_MOVE_TIMEOUT_MS` — timed games: how long each side has for its first move
-  before the game is aborted (ms, default `30000`).
+  claim the win (ms, default `60000`). Before both sides have moved there is no win to
+  claim: an absent side to move gets the game aborted after it instead.
+- `FIRST_MOVE_TIMEOUT_MS` — timed games: how long each side has for its first move,
+  from when it is connected, before the game is aborted (ms, default `30000`).
 - `TRUST_PROXY` — how many reverse-proxy hops to trust for the client IP in
   `X-Forwarded-For` (default `0`: use the socket address, right when the server is exposed
   directly). Set `1` behind one reverse proxy such as Fly.io's edge (`api/fly.toml` does),

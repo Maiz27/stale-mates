@@ -22,8 +22,25 @@ export type GameOverReason =
 	| 'timeoutVsInsufficient'
 	| 'resignation'
 	| 'abandonment'
-	/** A timed game where a side didn't make its first move in time; no winner. */
+	/**
+	 * Ended before both sides had made their first move; no winner. See
+	 * `AbortInfo` for why.
+	 */
 	| 'aborted';
+
+/**
+ * Why a game was `aborted`, and the side it's put down to:
+ * - `firstMoveTimeout`: timed games — the side to move didn't make its first
+ *   move within its first-move window.
+ * - `noShow`: the side to move was away (disconnected) past the grace period
+ *   before making its first move.
+ * - `player`: the side resigned, or offered or accepted a draw, before both
+ *   sides had moved, which aborts the game instead.
+ */
+export type AbortInfo = {
+	cause: 'firstMoveTimeout' | 'noShow' | 'player';
+	by: Color;
+};
 
 export type TimeControl = {
 	initial: number; // seconds
@@ -40,9 +57,12 @@ export type ClockSnapshot = {
 	serverTime: number; // server Date.now() when the snapshot was taken
 	/**
 	 * Timed games only: clocks don't run until each side has made its first move.
-	 * Until then this is the ms (at `serverTime`) the side to move has left to make
-	 * its first move before the game is aborted; null once both sides have moved,
-	 * in untimed games, and when no game is in progress.
+	 * Until then this is the ms (at `serverTime`) left before the game is aborted
+	 * if the side to move still hasn't made its first move: its first-move window
+	 * (which starts once that side is connected, and then keeps running across
+	 * reconnects), or, while that side is away and its window hasn't started, the
+	 * disconnect grace left. Null once both sides have moved, in untimed games,
+	 * and when no game is in progress.
 	 */
 	firstMoveMs: number | null;
 };
@@ -50,8 +70,12 @@ export type ClockSnapshot = {
 /** A move on the wire. `promotion` is one of q/r/b/n when present. */
 export type WireMove = { from: string; to: string; promotion?: string };
 
-/** `winner` is null only for an `aborted` game. */
-export type GameResult = { winner: Color | 'draw' | null; reason: GameOverReason };
+/** `winner` is null only for an `aborted` game, which also carries `abort`. */
+export type GameResult = {
+	winner: Color | 'draw' | null;
+	reason: GameOverReason;
+	abort?: AbortInfo;
+};
 
 /** Messages the client sends (client → server). */
 export type ClientMessage =
@@ -60,7 +84,9 @@ export type ClientMessage =
 	| { type: 'move'; move: WireMove }
 	| { type: 'offerRematch' }
 	| { type: 'acceptRematch' }
+	/** Before both sides have moved this (like offerDraw / acceptDraw) aborts the game. */
 	| { type: 'resign' }
+	/** After the grace period; before both sides have moved it aborts the game instead. */
 	| { type: 'claimVictory' }
 	| { type: 'offerDraw' }
 	| { type: 'acceptDraw' }
@@ -81,7 +107,11 @@ export type GameStateMessage = {
 	/** Pending draw offer: who made it, or null. */
 	drawOffer: 'mine' | 'opponent' | null;
 	opponentConnected: boolean;
-	/** Ms until a win by abandonment may be claimed; null while the opponent is connected. */
+	/**
+	 * Ms until a win by abandonment may be claimed (or, before both sides have
+	 * moved, until the game may be aborted instead); null while the opponent is
+	 * connected.
+	 */
 	opponentGraceMs: number | null;
 };
 
@@ -114,6 +144,8 @@ export type ServerMessage =
 			/** null only when the game was `aborted`. */
 			winner: Color | 'draw' | null;
 			reason: GameOverReason;
+			/** Present only when the game was `aborted`. */
+			abort?: AbortInfo;
 			clock: ClockSnapshot;
 	  }
 	| GameStateMessage

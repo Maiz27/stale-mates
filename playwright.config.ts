@@ -1,5 +1,5 @@
 import type { PlaywrightTestConfig } from '@playwright/test';
-import { FIRST_MOVE_TIMEOUT_MS } from './tests/helpers/timeouts';
+import { DISCONNECT_GRACE_MS, FIRST_MOVE_TIMEOUT_MS } from './tests/helpers/timeouts';
 
 // Where the previewed SvelteKit app is served. `npm run preview` (vite preview)
 // defaults to port 4173. The frontend reads VITE_API_URL / VITE_API_WS_URL at
@@ -66,7 +66,9 @@ const config: PlaywrightTestConfig = {
 				ORIGIN: `http://localhost:${PREVIEW_PORT}`,
 				// Timed games abort when a side doesn't make its first move in time
 				// (default 30 s); shortened so the abort is testable (multiplayer.spec.ts).
-				FIRST_MOVE_TIMEOUT_MS: String(FIRST_MOVE_TIMEOUT_MS)
+				FIRST_MOVE_TIMEOUT_MS: String(FIRST_MOVE_TIMEOUT_MS),
+				// Shortened from 60 s so a no-show abort is testable (multiplayer.spec.ts).
+				DISCONNECT_GRACE_MS: String(DISCONNECT_GRACE_MS)
 			},
 			reuseExistingServer: !process.env.CI,
 			timeout: 120_000

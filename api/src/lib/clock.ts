@@ -48,8 +48,8 @@ export function clockAfterMove(
 
 /**
  * Build a wire snapshot, clamping displayed remaining time at zero.
- * `firstMoveDeadline` is the server time by which the side to move must make
- * its first move (null outside that phase).
+ * `firstMoveDeadline` is the server time at which the game is aborted if the
+ * side to move still hasn't made its first move (null outside that phase).
  */
 export function buildSnapshot(
 	clocks: ClockMs,

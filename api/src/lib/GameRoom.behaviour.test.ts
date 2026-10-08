@@ -121,6 +121,7 @@ describe('resync payload (SM-1.3 / SM-1.5 / SM-1.6)', () => {
 
 	it('includes the result and rematch state when reconnecting into a finished game', () => {
 		const { reconnect, room, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'resign' });
 		room.handleMessage(blackId, { type: 'offerRematch' });
 
@@ -235,6 +236,7 @@ describe('flag fall (SM-1.4)', () => {
 describe('abandonment claim (SM-1.6)', () => {
 	it('refuses a claim during the grace period and grants it afterwards', () => {
 		const { room, white, black, blackId, whiteId, clock } = setup(0, { graceMs: 30_000 });
+		playFirstMoves(room, whiteId, blackId);
 		room.removePlayer(blackId, asWs(black));
 
 		clock.advance(10_000);
@@ -293,6 +295,7 @@ describe('rematch', () => {
 describe('draw offers (SM-6)', () => {
 	it('offer + accept ends the game as a draw by agreement', () => {
 		const { room, white, black, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		expect(black.of('drawOffer')).toHaveLength(1);
 		room.handleMessage(blackId, { type: 'acceptDraw' });
@@ -300,7 +303,8 @@ describe('draw offers (SM-6)', () => {
 	});
 
 	it('the offerer cannot accept their own offer', () => {
-		const { room, white, whiteId } = setup();
+		const { room, white, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		room.handleMessage(whiteId, { type: 'acceptDraw' });
 		expect(white.of('gameOver')).toHaveLength(0);
@@ -308,6 +312,7 @@ describe('draw offers (SM-6)', () => {
 
 	it('decline clears the offer and tells the offerer', () => {
 		const { room, white, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		room.handleMessage(blackId, { type: 'declineDraw' });
 		expect(white.of('drawDeclined')).toHaveLength(1);
@@ -317,11 +322,12 @@ describe('draw offers (SM-6)', () => {
 
 	it('moving instead of answering declines, and offers cannot be spammed', () => {
 		const { room, white, black, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		room.handleMessage(whiteId, { type: 'offerDraw' }); // duplicate ignored
 		expect(black.of('drawOffer')).toHaveLength(1);
-		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
-		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'g1', to: 'f3' } });
+		room.handleMessage(blackId, { type: 'move', move: { from: 'b8', to: 'c6' } });
 		expect(white.of('drawDeclined')).toHaveLength(1);
 		// White has moved since, so may offer again.
 		room.handleMessage(whiteId, { type: 'offerDraw' });
@@ -330,6 +336,7 @@ describe('draw offers (SM-6)', () => {
 
 	it('mutual offers are an agreement and the resync shows pending offers', () => {
 		const { reconnect, room, white, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		const fresh = new FakeWs();
 		reconnect(blackId, fresh);
@@ -393,7 +400,12 @@ describe('joining after the creator left (CR-3)', () => {
 
 		now += 40_000;
 		room.handleMessage(joinerId, { type: 'claimVictory' });
-		expect(joiner.last('gameOver')).toMatchObject({ winner: 'black', reason: 'abandonment' });
+		// The creator never made a move: the game is aborted, not won (CR4-2).
+		expect(joiner.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'white' }
+		});
 	});
 
 	it('restarts the grace when a rematch starts with a player away (CR2-3)', () => {
@@ -413,7 +425,12 @@ describe('joining after the creator left (CR-3)', () => {
 		expect(white.of('gameOver')).toHaveLength(0);
 		clock.advance(60_000);
 		room.handleMessage(whiteId, { type: 'claimVictory' });
-		expect(white.last('gameOver')).toMatchObject({ reason: 'abandonment' });
+		// No move was played in the rematch: aborted rather than won (CR4-2).
+		expect(white.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow' }
+		});
 	});
 
 	it('reports a present creator as connected', () => {
@@ -432,6 +449,7 @@ describe('joining after the creator left (CR-3)', () => {
 describe('repeat draw offer at the same ply (CR-4)', () => {
 	it('answers a refused re-offer with drawDeclined instead of silence', () => {
 		const { room, white, black, whiteId, blackId } = setup();
+		playFirstMoves(room, whiteId, blackId);
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		room.handleMessage(blackId, { type: 'declineDraw' });
 		expect(white.of('drawDeclined')).toHaveLength(1);
@@ -512,7 +530,8 @@ describe('first moves and the first-move timeout (CR3-4)', () => {
 		}
 		expect(room.stateMessageFor(room.players[0]).gameOver).toEqual({
 			winner: null,
-			reason: 'aborted'
+			reason: 'aborted',
+			abort: { cause: 'firstMoveTimeout', by: 'white' }
 		});
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -556,19 +575,39 @@ describe('first moves and the first-move timeout (CR3-4)', () => {
 		expect(room.gameStarted).toBe(true);
 	});
 
-	it('refuses a win-by-abandonment claim before both sides have moved', () => {
+	it('turns a win-by-abandonment claim before both sides have moved into an abort', () => {
 		const { room, white, black, whiteId, blackId, clock } = setup(1, {
 			graceMs: 10_000,
 			firstMoveTimeoutMs: 30_000
 		});
 		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
 		room.removePlayer(blackId, asWs(black));
-		elapse(clock, 15_000); // past the grace, but Black hasn't made its first move
-		room.handleMessage(whiteId, { type: 'claimVictory' });
+		elapse(clock, 5_000);
+		room.handleMessage(whiteId, { type: 'claimVictory' }); // within the grace: refused
 		expect(white.of('gameOver')).toHaveLength(0);
-		// Black never comes back to move: the game is aborted, not won.
-		elapse(clock, 15_000);
-		expect(white.last('gameOver')).toMatchObject({ winner: null, reason: 'aborted' });
+		elapse(clock, 10_000); // past the grace, but Black hasn't made its first move
+		room.handleMessage(whiteId, { type: 'claimVictory' });
+		expect(white.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'black' }
+		});
+	});
+
+	it('keeps a started window running when the side to move leaves', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(1, {
+			graceMs: 60_000,
+			firstMoveTimeoutMs: 30_000
+		});
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.removePlayer(blackId, asWs(black));
+		// Black's window started while Black was here; leaving doesn't stop it.
+		elapse(clock, 30_000);
+		expect(white.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'firstMoveTimeout', by: 'black' }
+		});
 	});
 
 	it('allows the claim once both sides have moved', () => {
@@ -605,5 +644,200 @@ describe('first moves and the first-move timeout (CR3-4)', () => {
 	it('defaults the window to 30 s', () => {
 		const { white } = setup(1);
 		expect(white.last('gameStart')).toMatchObject({ clock: { firstMoveMs: 30_000 } });
+	});
+});
+
+describe('the first-move window starts only while the side to move is here (CR4-2)', () => {
+	type Snap = { firstMoveMs: number | null; running: string | null };
+	const elapse = (clock: { advance: (ms: number) => void }, ms: number) => {
+		clock.advance(ms);
+		vi.advanceTimersByTime(ms);
+	};
+
+	/** A timed room whose creator (white) left the waiting room before black joined. */
+	function creatorLeft(opts: { graceMs?: number; firstMoveTimeoutMs?: number } = {}) {
+		let now = 1_000_000;
+		const clock = { advance: (ms: number) => (now += ms) };
+		const room = new GameRoom({
+			time: 1,
+			disconnectGraceMs: opts.graceMs ?? 60_000,
+			firstMoveTimeoutMs: opts.firstMoveTimeoutMs ?? 30_000,
+			now: () => now
+		});
+		const tokens = room.initialTokens();
+		const creator = new FakeWs();
+		const creatorId = room.claimSeat(tokens.white, asWs(creator))!.id;
+		const creatorToken = (creator.last('seat') as { token: string }).token;
+		room.removePlayer(creatorId, asWs(creator));
+		clock.advance(5 * 60_000);
+		const joiner = new FakeWs();
+		const joinerId = room.claimSeat(tokens.black, asWs(joiner))!.id;
+		return { room, clock, creatorId, creatorToken, joiner, joinerId };
+	}
+
+	it('gives an absent creator the full grace, not the first-move window', () => {
+		const { room, clock, joiner } = creatorLeft();
+		// The joiner's countdown is the creator's grace (60 s), not a 30 s window.
+		expect(joiner.last('gameStart')).toMatchObject({
+			opponentConnected: false,
+			clock: { running: null, firstMoveMs: 60_000 }
+		});
+		elapse(clock, 30_000);
+		expect(joiner.of('gameOver')).toHaveLength(0);
+		expect((room.stateMessageFor(room.players[1]).clock as Snap).firstMoveMs).toBe(30_000);
+		// Still away at the end of the grace with no move: aborted, no winner.
+		elapse(clock, 30_000);
+		expect(joiner.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'white' }
+		});
+		expect(room.stateMessageFor(room.players[1]).gameOver).toEqual({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'white' }
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('starts a fresh, full window when the absent side to move connects', () => {
+		const { room, clock, creatorToken, joiner } = creatorLeft();
+		elapse(clock, 40_000);
+		const back = new FakeWs();
+		room.claimSeat(creatorToken, asWs(back));
+		expect(back.last('gameState')).toMatchObject({ clock: { firstMoveMs: 30_000 } });
+		// The waiting side's countdown switches from the grace to the window.
+		expect(joiner.last('clock')).toMatchObject({ clock: { firstMoveMs: 30_000 } });
+		// The grace would have ended 20 s from now; the window runs past it.
+		elapse(clock, 29_999);
+		expect(joiner.of('gameOver')).toHaveLength(0);
+		elapse(clock, 1);
+		expect(joiner.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'firstMoveTimeout', by: 'white' }
+		});
+	});
+
+	it('lets the returning side play normally', () => {
+		const { room, clock, creatorToken, creatorId, joiner } = creatorLeft();
+		elapse(clock, 50_000);
+		room.claimSeat(creatorToken, asWs(new FakeWs()));
+		elapse(clock, 20_000);
+		room.handleMessage(creatorId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		expect(joiner.last('opponentMove')).toBeTruthy();
+		expect(joiner.last('clock')).toMatchObject({ clock: { running: null, firstMoveMs: 30_000 } });
+	});
+
+	it('does not restart a started window on reconnects', () => {
+		const { room, white, whiteId, clock, reconnect } = setup(1, { firstMoveTimeoutMs: 30_000 });
+		let ws = white;
+		for (let i = 0; i < 3; i++) {
+			elapse(clock, 8_000);
+			room.removePlayer(whiteId, asWs(ws));
+			const fresh = new FakeWs();
+			// reconnect() reads the rotated token from the seat's first socket.
+			reconnect(whiteId, fresh);
+			ws = fresh;
+		}
+		expect(ws.last('gameState')).toMatchObject({ clock: { firstMoveMs: 6_000 } });
+		elapse(clock, 6_000);
+		expect(ws.last('gameOver')).toMatchObject({ abort: { cause: 'firstMoveTimeout' } });
+	});
+
+	it('does not start Black’s window after White’s first move while Black is away', () => {
+		const { room, white, black, whiteId, blackId, clock, reconnect } = setup(1, {
+			graceMs: 60_000,
+			firstMoveTimeoutMs: 30_000
+		});
+		room.removePlayer(blackId, asWs(black));
+		elapse(clock, 10_000);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		// Black left 10 s ago: 50 s of grace left, not a 30 s window.
+		expect(white.last('clock')).toMatchObject({ clock: { firstMoveMs: 50_000 } });
+		elapse(clock, 45_000);
+		const back = new FakeWs();
+		reconnect(blackId, back);
+		expect(back.last('gameState')).toMatchObject({ clock: { firstMoveMs: 30_000 } });
+		elapse(clock, 25_000);
+		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+		expect(white.last('clock')).toMatchObject({ clock: { running: 'white', firstMoveMs: null } });
+		expect(room.gameStarted).toBe(true);
+	});
+
+	it('aborts on reconnect when the side to move stayed away past the grace with nobody here', () => {
+		const { room, clock, joiner, joinerId } = creatorLeft();
+		const joinerToken = (joiner.last('seat') as { token: string }).token;
+		room.removePlayer(joinerId, asWs(joiner));
+		expect(vi.getTimerCount()).toBe(0);
+		clock.advance(2 * 60_000);
+		const back = new FakeWs();
+		room.claimSeat(joinerToken, asWs(back));
+		expect(back.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'white' }
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('resigning or drawing before both sides have moved aborts (CR4-3)', () => {
+	it.each([0, 1] as const)('resign before any move aborts (time %i)', (time) => {
+		const { room, white, black, whiteId, clock } = setup(time, { firstMoveTimeoutMs: 30_000 });
+		room.handleMessage(whiteId, { type: 'resign' });
+		for (const ws of [white, black]) {
+			expect(ws.last('gameOver')).toMatchObject({
+				winner: null,
+				reason: 'aborted',
+				abort: { cause: 'player', by: 'white' }
+			});
+		}
+		expect(vi.getTimerCount()).toBe(0);
+		clock.advance(60_000);
+		vi.advanceTimersByTime(60_000);
+		expect(white.of('gameOver')).toHaveLength(1);
+	});
+
+	it('resign after only White has moved aborts too', () => {
+		const { room, white, whiteId, blackId } = setup(1);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.handleMessage(blackId, { type: 'resign' });
+		expect(white.last('gameOver')).toMatchObject({
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'player', by: 'black' }
+		});
+	});
+
+	it('resign after both first moves is a resignation', () => {
+		const { room, white, whiteId, blackId } = setup(1);
+		playFirstMoves(room, whiteId, blackId);
+		room.handleMessage(blackId, { type: 'resign' });
+		expect(white.last('gameOver')).toMatchObject({ winner: 'white', reason: 'resignation' });
+		expect(white.last('gameOver')).not.toHaveProperty('abort');
+	});
+
+	it.each([0, 1] as const)('a draw offer before both first moves aborts (time %i)', (time) => {
+		const { room, white, black, whiteId, blackId } = setup(time);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.handleMessage(blackId, { type: 'offerDraw' });
+		expect(white.of('drawOffer')).toHaveLength(0);
+		for (const ws of [white, black]) {
+			expect(ws.last('gameOver')).toMatchObject({
+				winner: null,
+				reason: 'aborted',
+				abort: { cause: 'player', by: 'black' }
+			});
+		}
+	});
+
+	it('a rematch can follow an abort', () => {
+		const { room, white, whiteId, blackId } = setup(1);
+		room.handleMessage(whiteId, { type: 'resign' });
+		room.handleMessage(whiteId, { type: 'offerRematch' });
+		room.handleMessage(blackId, { type: 'acceptRematch' });
+		expect(white.last('rematchAccepted')).toMatchObject({ color: 'black' });
+		expect(room.gameStarted).toBe(true);
 	});
 });

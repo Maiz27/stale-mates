@@ -7,6 +7,7 @@ import {
 	TimeControl,
 	TimeOption,
 	Color,
+	AbortInfo,
 	ClientMessage,
 	GameOverReason,
 	GameResult,
@@ -92,9 +93,13 @@ export class GameRoom {
 	// Timed games follow the Lichess convention (CR3-4): no clock runs before
 	// White's first move, and Black's doesn't run before Black's first move. Until
 	// both have moved this is the server time by which the side to move must make
-	// its first move, or the game is aborted; null afterwards (and when untimed).
+	// its first move, or the game is aborted. The window only starts while that
+	// side is connected (CR4-2): an absent side's start is governed by the
+	// disconnect grace instead (see pendingAbort), and its window starts when it
+	// (re)connects. Once started it keeps running across reconnects. Null before
+	// it starts, once both sides have moved, and in untimed games.
 	private firstMoveDeadlineAt: number | null = null;
-	// One watchdog timer: the flag fall, or the first-move abort while pending.
+	// One watchdog timer: the flag fall, or the pending abort before both first moves.
 	private flagTimer: ReturnType<typeof setTimeout> | null = null;
 	// The last finished game's result. Non-null gates rematch (audit F5) and lets
 	// a reconnecting player see how the game ended (audit SM-1.3).
@@ -207,6 +212,12 @@ export class GameRoom {
 	}
 
 	private reconnect(player: Player, ws: WebSocket) {
+		// Before the seat is marked present: did the side to move stay away past
+		// the grace before its first move (while nobody was here to see it)?
+		const overdue = this.pendingAbort();
+		const noShow =
+			overdue !== null && overdue.cause === 'noShow' && this.now() >= overdue.at ? overdue : null;
+
 		// A previous socket for this seat may still be open (a half-dead network
 		// path, or the same seat in another tab). Close it so only one live socket
 		// per seat ever exists; its late `close` is ignored by removePlayer.
@@ -224,8 +235,12 @@ export class GameRoom {
 			}
 		}
 
+		// The side to move is back before its first move: its window starts now,
+		// in full, unless it already started (it persists across reconnects).
+		const windowStarted = !noShow && this.startFirstMoveWindow();
+
 		// The flag timer is cleared when everyone disconnects; re-arm it.
-		if (this.gameStarted && !this.flagTimer) {
+		if (this.gameStarted && (!this.flagTimer || windowStarted)) {
 			this.scheduleFlagTimer();
 		}
 
@@ -233,7 +248,11 @@ export class GameRoom {
 		const opponent = this.opponentOf(player);
 		if (opponent) {
 			this.sendToPlayer(opponent, { type: 'opponentReconnected' });
+			// The waiting side's abort countdown changes from the grace to the window.
+			if (windowStarted)
+				this.sendToPlayer(opponent, { type: 'clock', clock: this.currentSnapshot() });
 		}
+		if (noShow) this.abort('noShow', this.currentTurn);
 	}
 
 	/** Dispatch an already-validated client message (see validate.ts). */
@@ -263,7 +282,9 @@ export class GameRoom {
 				break;
 			case 'acceptDraw':
 				if (this.gameStarted && this.drawOffer === opposite(player.color)) {
-					this.finishGame('draw', 'agreement');
+					// Before both sides have moved there is no game to draw: abort it.
+					if (this.inOpening()) this.abort('player', player.color);
+					else this.finishGame('draw', 'agreement');
 				}
 				break;
 			case 'declineDraw':
@@ -285,8 +306,9 @@ export class GameRoom {
 			return;
 		}
 
-		// Likewise a first move after the first-move deadline: the game is aborted.
-		if (this.firstMoveDeadlineAt !== null && this.now() >= this.firstMoveDeadlineAt) {
+		// Likewise a first move after the abort deadline: the game is aborted.
+		const pending = this.pendingAbort();
+		if (pending && this.now() >= pending.at) {
 			this.onFirstMoveTimeout();
 			this.resyncPlayer(player);
 			return;
@@ -340,6 +362,12 @@ export class GameRoom {
 
 	private handleOfferDraw(player: Player) {
 		if (!this.gameStarted) return;
+		// Before both sides have moved a draw offer aborts the game (Lichess: such
+		// a game can only be aborted, not drawn or resigned) (CR4-3).
+		if (this.inOpening()) {
+			this.abort('player', player.color);
+			return;
+		}
 		// Both sides offering is an agreement.
 		if (this.drawOffer === opposite(player.color)) {
 			this.finishGame('draw', 'agreement');
@@ -362,21 +390,23 @@ export class GameRoom {
 
 	private handleResign(player: Player) {
 		if (!this.gameStarted) return;
+		// Resigning before both sides have moved aborts the game instead: no
+		// result is recorded (CR4-3).
+		if (this.inOpening()) {
+			this.abort('player', player.color);
+			return;
+		}
 		this.finishGame(opposite(player.color), 'resignation');
 	}
 
 	/**
 	 * The connected side may claim the win once its opponent has been gone for
 	 * longer than the grace period. Verified entirely server-side (audit SM-1.6).
+	 * Before both sides have moved there is no win to claim: the claim aborts
+	 * the game instead (CR3-4, CR4-2).
 	 */
 	private handleClaimVictory(player: Player) {
 		if (!this.gameStarted) return;
-		// Before both sides have moved there is no win to claim: a side that never
-		// makes its first move gets the game aborted instead (CR3-4).
-		if (this.firstMoveDeadlineAt !== null) {
-			this.resyncPlayer(player);
-			return;
-		}
 		const opponent = this.opponentOf(player);
 		if (!opponent || opponent.connected || opponent.disconnectedAt === null) {
 			this.resyncPlayer(player);
@@ -386,7 +416,49 @@ export class GameRoom {
 			this.resyncPlayer(player);
 			return;
 		}
+		if (this.inOpening()) {
+			this.abort('noShow', opponent.color);
+			return;
+		}
 		this.finishGame(player.color, 'abandonment');
+	}
+
+	/** Before both sides have made their first move (any time control). */
+	private inOpening(): boolean {
+		return this.chess.history().length < 2;
+	}
+
+	/**
+	 * Timed games, before both first moves: when the game is aborted if the side
+	 * to move still hasn't moved, and why. Its first-move window once started;
+	 * otherwise (it was away when its turn came) the end of its disconnect grace.
+	 */
+	private pendingAbort(): { at: number; cause: 'firstMoveTimeout' | 'noShow' } | null {
+		if (!this.gameStarted || this.timeControl.isUnlimited || !this.inOpening()) return null;
+		if (this.firstMoveDeadlineAt !== null) {
+			return { at: this.firstMoveDeadlineAt, cause: 'firstMoveTimeout' };
+		}
+		const mover = this.players.find((p) => p.color === this.currentTurn);
+		if (!mover || mover.connected || mover.disconnectedAt === null) return null;
+		return { at: mover.disconnectedAt + this.disconnectGraceMs, cause: 'noShow' };
+	}
+
+	/**
+	 * Start the side to move's first-move window if it hasn't started and that
+	 * side is connected (CR4-2). Returns whether it started now.
+	 */
+	private startFirstMoveWindow(): boolean {
+		if (!this.gameStarted || this.timeControl.isUnlimited || !this.inOpening()) return false;
+		if (this.firstMoveDeadlineAt !== null) return false;
+		const mover = this.players.find((p) => p.color === this.currentTurn);
+		if (!mover || !mover.connected) return false;
+		this.firstMoveDeadlineAt = this.now() + this.firstMoveTimeoutMs;
+		return true;
+	}
+
+	/** End the game with no winner (CR3-4, CR4-2, CR4-3). */
+	private abort(cause: AbortInfo['cause'], by: Color) {
+		this.finishGame(null, 'aborted', { cause, by });
 	}
 
 	private canRematch(): boolean {
@@ -399,7 +471,8 @@ export class GameRoom {
 
 	private updateGameStateAfterMove(player: Player, move: WireMove) {
 		const now = this.now();
-		const firstMoves = this.firstMoveDeadlineAt !== null;
+		// This was the mover's first move (the move is already on the board).
+		const firstMoves = this.chess.history().length <= 2;
 
 		// Apply the clock to the mover (the side whose turn just ended), then flip.
 		// A side's first move costs no time and earns no increment: its clock
@@ -417,9 +490,11 @@ export class GameRoom {
 		if (this.timeControl.isUnlimited) {
 			this.turnStartedAt = null;
 		} else if (firstMoves && player.color === 'white') {
-			// White's first move: Black's clock stays stopped until Black's first move.
+			// White's first move: Black's clock stays stopped until Black's first move,
+			// and Black's window starts now if Black is here (else when it returns).
 			this.turnStartedAt = null;
-			this.firstMoveDeadlineAt = now + this.firstMoveTimeoutMs;
+			this.firstMoveDeadlineAt = null;
+			this.startFirstMoveWindow();
 		} else {
 			// Both sides have moved (or this is a later move): White's clock runs now.
 			this.turnStartedAt = now;
@@ -448,11 +523,14 @@ export class GameRoom {
 		this.clearFlagTimer();
 		if (this.timeControl.isUnlimited || !this.gameStarted) return;
 
-		if (this.firstMoveDeadlineAt !== null) {
-			this.flagTimer = setTimeout(
-				() => this.onFirstMoveTimeout(),
-				Math.max(0, this.firstMoveDeadlineAt - this.now())
-			);
+		if (this.inOpening()) {
+			const pending = this.pendingAbort();
+			if (pending) {
+				this.flagTimer = setTimeout(
+					() => this.onFirstMoveTimeout(),
+					Math.max(0, pending.at - this.now())
+				);
+			}
 			return;
 		}
 
@@ -474,17 +552,19 @@ export class GameRoom {
 	}
 
 	/**
-	 * The side to move didn't make its first move in time: abort the game, with
-	 * no winner (CR3-4). Exposed for tests.
+	 * The side to move didn't make its first move in time, or stayed away past
+	 * the grace before it: abort the game, with no winner (CR3-4, CR4-2).
+	 * Exposed for tests.
 	 */
 	onFirstMoveTimeout() {
 		this.clearFlagTimer();
-		if (!this.gameStarted || this.firstMoveDeadlineAt === null) return;
-		if (this.now() < this.firstMoveDeadlineAt) {
+		const pending = this.pendingAbort();
+		if (!pending) return;
+		if (this.now() < pending.at) {
 			this.scheduleFlagTimer();
 			return;
 		}
-		this.finishGame(null, 'aborted');
+		this.abort(pending.cause, this.currentTurn);
 	}
 
 	/** Exposed for tests: run the flag-fall check now. */
@@ -519,10 +599,10 @@ export class GameRoom {
 		}
 	}
 
-	private finishGame(winner: Color | 'draw' | null, reason: GameOverReason) {
+	private finishGame(winner: Color | 'draw' | null, reason: GameOverReason, abort?: AbortInfo) {
 		this.gameStarted = false;
 		this.firstMoveDeadlineAt = null;
-		this.result = { winner, reason };
+		this.result = abort ? { winner, reason, abort } : { winner, reason };
 		this.rematchOffers.clear();
 		this.drawOffer = null;
 		this.clearFlagTimer();
@@ -531,6 +611,7 @@ export class GameRoom {
 			type: 'gameOver',
 			winner,
 			reason,
+			...(abort ? { abort } : {}),
 			clock: this.currentSnapshot()
 		});
 	}
@@ -560,8 +641,8 @@ export class GameRoom {
 		this.seats = { white: this.seats.black, black: this.seats.white };
 		this.result = null;
 		this.gameStarted = true;
-		this.initClocks();
 		this.restartAbsenceGrace();
+		this.initClocks();
 		this.scheduleFlagTimer();
 
 		this.players.forEach((player) => {
@@ -636,8 +717,8 @@ export class GameRoom {
 	private startGame() {
 		this.gameStarted = true;
 		this.result = null;
-		this.initClocks();
 		this.restartAbsenceGrace();
+		this.initClocks();
 		this.players.forEach((player) => {
 			this.sendToPlayer(player, {
 				type: 'gameStart',
@@ -667,15 +748,15 @@ export class GameRoom {
 
 	/**
 	 * Reset both clocks to the initial control. Neither runs yet: a timed game
-	 * starts with White's first-move window instead (CR3-4).
+	 * starts with White's first-move window instead (CR3-4), once White is here
+	 * (CR4-2). Call after `gameStarted` is set and absences are restarted.
 	 */
 	private initClocks() {
 		const initialMs = this.timeControl.isUnlimited ? 0 : this.timeControl.initial * 1000;
 		this.clocksMs = { white: initialMs, black: initialMs };
 		this.turnStartedAt = null;
-		this.firstMoveDeadlineAt = this.timeControl.isUnlimited
-			? null
-			: this.now() + this.firstMoveTimeoutMs;
+		this.firstMoveDeadlineAt = null;
+		this.startFirstMoveWindow();
 	}
 
 	private currentSnapshot(): ClockSnapshot {
@@ -688,7 +769,7 @@ export class GameRoom {
 			running,
 			this.turnStartedAt,
 			this.now(),
-			this.gameStarted ? this.firstMoveDeadlineAt : null
+			this.pendingAbort()?.at ?? null
 		);
 	}
 

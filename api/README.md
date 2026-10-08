@@ -131,8 +131,8 @@ Environment variables (validated at startup; the server fails fast on invalid va
 | `ORIGIN`                    | In production only | `http://localhost:5173` | Allowed frontend origin(s), comma-separated. Used for CORS **and** the WebSocket `Origin` check. Each entry is normalised to its origin (`https://site/` → `https://site`); a path/query/fragment or non-http(s) scheme fails startup. The parsed list is logged at startup.                                                                                                                                                                                                                                                                 |
 | `ORIGIN_PATTERNS`           | No                 | —                       | Opt-in https host patterns for preview deployments, e.g. `https://stale-mates-*-maiz27s-projects.vercel.app`: one `*` in the first label after a non-empty literal prefix, matching `[a-z0-9-]+` (never a dot), followed by a fixed domain of 2+ labels. `https://*.vercel.app` is refused. **Only a soft guard on a shared domain like `vercel.app`**: anyone can name a Vercel project so that `<name>.vercel.app` matches (a startup warning is logged); prefer no API for previews or a preview domain you control. See the root README. |
 | `ROOM_TTL_MS`               | No                 | `1800000` (30 min)      | How long a room with nobody connected is kept (measured from its last activity) before the sweep reaps it.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `DISCONNECT_GRACE_MS`       | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `FIRST_MOVE_TIMEOUT_MS`     | No                 | `30000` (30 s)          | Timed games: how long each side has to make its first move (no clock runs until both have moved) before the game is aborted with no winner.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `DISCONNECT_GRACE_MS`       | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win (before both sides have moved: before the game is aborted instead).                                                                                                                                                                                                                                                                                                                                                                                       |
+| `FIRST_MOVE_TIMEOUT_MS`     | No                 | `30000` (30 s)          | Timed games: how long each side has to make its first move (no clock runs until both have moved) before the game is aborted with no winner. Starts once that side is connected.                                                                                                                                                                                                                                                                                                                                                              |
 | `TRUST_PROXY`               | No                 | `0`                     | Reverse-proxy hops trusted for the client IP in `X-Forwarded-For` (Express `trust proxy`; also used for WebSockets). `0` (socket address) is safe when exposed directly; set `1` behind Fly.io's edge (`fly.toml` does), or all clients share the proxy's IP for the per-IP limits.                                                                                                                                                                                                                                                          |
 | `MAX_WS_CONNECTIONS_PER_IP` | No                 | `20`                    | Concurrent WebSocket connections per client IP; extra ones are closed with `1013` ("Too many connections").                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
@@ -167,13 +167,15 @@ Too many sockets from one IP → `1013 Too many connections`. The reasons are ty
 `CloseReason` in `protocol.ts`.
 
 Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRematch`,
-`acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`.
+`acceptRematch`, `claimVictory`, `offerDraw`, `acceptDraw`, `declineDraw`. Before both
+sides have made their first move, `resign`, `offerDraw` and `acceptDraw` abort the game
+(no winner) and `claimVictory` (after the grace) aborts it too.
 
 Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
 `opponentReconnected`, `gameStart` (incl. opponent presence: `opponentConnected`,
 `opponentGraceMs` — the creator may have left before the friend joined; a player already
 away when a game starts gets the full grace from the start), `opponentMove` (normalised), `clock`, `gameOver`
-(`winner` — `null` for an `aborted` game — `reason`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
+(`winner` — `null` for an `aborted` game — `reason`, and for an abort `abort { cause, by }`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
 result, rematch and draw-offer state, opponent presence), `rematchOffer`,
 `rematchAccepted { color, opponentConnected, opponentGraceMs }` (colours swap on every
 rematch), `drawOffer`, `drawDeclined`.
@@ -189,9 +191,21 @@ time and earns no increment, Black's clock likewise stays stopped until Black's 
 and only then does White's clock start. Until then every `ClockSnapshot` carries `firstMoveMs`
 — what the side to move has left of its `FIRST_MOVE_TIMEOUT_MS` window (null otherwise) — and
 `running` is `null`. When the window passes the game ends with `gameOver { winner: null,
-reason: 'aborted' }` (a late first move is refused and answered with a resync); a rematch can
-be offered as after any finished game. A win by abandonment can't be claimed before both
-sides have moved — a side that never moves gets the game aborted instead.
+reason: 'aborted', abort: { cause: 'firstMoveTimeout', by } }` (a late first move is refused
+and answered with a resync); a rematch can be offered as after any finished game.
+
+The window only starts while the side to move is **connected**; once started it keeps
+running across reconnects. If that side is away when its first move is due (the creator
+left before the friend joined, or Black left before White's first move), no window runs:
+`firstMoveMs` counts down its disconnect grace instead (from when it left, or from the start
+of the game if it was already away), and when that runs out the game is aborted with cause
+`noShow` — the waiting player isn't awarded a win. If it reconnects in time it gets a fresh,
+full window (the opponent is sent a `clock` with the new `firstMoveMs`).
+
+**Before both sides have moved** there is no result to give: a win by abandonment can't be
+claimed (a claim after the grace aborts with cause `noShow`), and `resign`, `offerDraw` or
+`acceptDraw` abort the game (cause `player`, `by` the side that sent it), in timed and
+untimed games alike. The room page shows "Abort" instead of "Resign" and no "Offer draw".
 
 The server is authoritative for outcomes and time: clients can't declare a result,
 a move that arrives after the mover's flag fell loses on time, and **clocks never pause

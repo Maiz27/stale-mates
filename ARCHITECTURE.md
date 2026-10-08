@@ -50,9 +50,13 @@ The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` a
 server clock snapshot rather than declaring timeouts itself. Timed games follow the Lichess
 convention: no clock runs before each side's first move; until then the snapshot carries
 `firstMoveMs` (the side to move's window, `FIRST_MOVE_TIMEOUT_MS`, default 30 s) and the same
-per-room watchdog that flags time-outs aborts the game (reason `aborted`, `winner: null`) when
-the window passes — a first move arriving after it is refused the same way a late move loses
-on time. Abandonment can't be claimed in that phase (the game aborts instead). The remaining authority gap is
+per-room watchdog that flags time-outs aborts the game (reason `aborted`, `winner: null`, with
+`abort: { cause, by }`) when the window passes — a first move arriving after it is refused the
+same way a late move loses on time. The window only starts while the side to move is
+connected (then it survives reconnects); while that side is away the watchdog runs to the end
+of its disconnect grace instead and aborts with cause `noShow`. Abandonment can't be won in
+that phase (a claim aborts instead), and resigning, offering or accepting a draw before both
+sides have moved aborts too (cause `player`; the room page shows "Abort"). The remaining authority gap is
 seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.md`.
 
 ### Known structural smells (most now resolved — kept for history)

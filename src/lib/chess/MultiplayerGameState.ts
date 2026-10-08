@@ -1,6 +1,6 @@
 import { GameModel } from './GameModel';
 import type { Color } from 'chessground/types';
-import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './types';
+import type { AbortInfo, ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './types';
 import type { ServerMessageOf } from './protocol';
 import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
@@ -16,14 +16,24 @@ import type { GameView } from './types';
 import { apiUrls } from '../apiConfig';
 
 /**
+ * A game in progress where a side hasn't made its first move yet. The server
+ * aborts such a game on resign or a draw offer (CR4-3), so the page offers
+ * "Abort" instead of "Resign" and no draw.
+ */
+export function inOpening(view: GameView): boolean {
+	return view.started && !view.gameOver.isOver && view.moveHistory.length < 2;
+}
+
+/**
  * Whether the "Offer draw" control is live: a game in progress, no offer pending,
- * and the position has changed since my last offer (mirrors the server's rule,
- * which refuses a second offer at the same ply) (CR-4).
+ * both sides have moved, and the position has changed since my last offer
+ * (mirrors the server's rule, which refuses a second offer at the same ply) (CR-4).
  */
 export function canOfferDraw(view: GameView): boolean {
 	return (
 		view.started &&
 		!view.gameOver.isOver &&
+		!inOpening(view) &&
 		view.drawOffer === null &&
 		view.lastDrawOfferPly !== view.moveHistory.length
 	);
@@ -403,6 +413,7 @@ export class MultiplayerGameState extends GameModel {
 	private handleGameOver(data: {
 		winner?: Color | 'draw' | null;
 		reason?: GameOverReason;
+		abort?: AbortInfo;
 		clock?: ClockSnapshot;
 	}) {
 		// Freeze the display on the final authoritative clock, then stop ticking.
@@ -413,7 +424,12 @@ export class MultiplayerGameState extends GameModel {
 		}
 		this.stopClockTick();
 		this.patch({
-			gameOver: { isOver: true, winner: data.winner ?? null, reason: data.reason },
+			gameOver: {
+				isOver: true,
+				winner: data.winner ?? null,
+				reason: data.reason,
+				...(data.abort ? { abort: data.abort } : {})
+			},
 			firstMoveDeadline: null,
 			rematchOffer: false,
 			myRematchOffer: false,
@@ -443,7 +459,12 @@ export class MultiplayerGameState extends GameModel {
 		}
 
 		const gameOver = data.gameOver
-			? { isOver: true, winner: data.gameOver.winner, reason: data.gameOver.reason }
+			? {
+					isOver: true,
+					winner: data.gameOver.winner,
+					reason: data.gameOver.reason,
+					...(data.gameOver.abort ? { abort: data.gameOver.abort } : {})
+				}
 			: { isOver: false, winner: null };
 		if (data.gameOver) this.stopClockTick();
 

@@ -5,6 +5,7 @@ import {
 	NOTICE_MS,
 	NOT_SENT_NOTICE,
 	canOfferDraw,
+	inOpening,
 	type GameSocket
 } from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
@@ -455,16 +456,9 @@ describe('MultiplayerGameState seats (SM-3)', () => {
 });
 
 describe('MultiplayerGameState draws & rematch (SM-6)', () => {
+	// Draws can only be offered once both sides have moved (CR4-3).
 	const start = (socket: FakeSocket) =>
-		socket.emit({
-			type: 'gameStart',
-			fen: START,
-			turn: 'white',
-			timeControl: unlimited,
-			clock: NO_CLOCK,
-			opponentConnected: true,
-			opponentGraceMs: null
-		});
+		socket.emit(state({ fen: AFTER_E4_E5, moves: ['e2e4', 'e7e5'] }));
 
 	it('offers a draw once and shows an incoming offer', () => {
 		const { game, socket } = setup();
@@ -495,7 +489,7 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(1);
 		expect(get(game).drawOffer).toBeNull();
 
-		game.makeMove({ from: 'e2', to: 'e4' });
+		game.makeMove({ from: 'g1', to: 'f3' });
 		expect(canOfferDraw(get(game))).toBe(true);
 		game.offerDraw();
 		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(2);
@@ -561,17 +555,11 @@ describe('MultiplayerGameState draws & rematch (SM-6)', () => {
 });
 
 describe('MultiplayerGameState actions while reconnecting (CR3-3)', () => {
+	// After 1. e4 e5, so every action (a draw offer included) is available.
 	function started() {
 		const ctx = setup();
-		ctx.socket.emit({
-			type: 'gameStart',
-			fen: START,
-			turn: 'white',
-			timeControl: unlimited,
-			clock: NO_CLOCK,
-			opponentConnected: true,
-			opponentGraceMs: null
-		});
+		ctx.socket.emit({ type: 'seat', color: 'white', token: 'seat-token-123' });
+		ctx.socket.emit(state({ fen: AFTER_E4_E5, moves: ['e2e4', 'e7e5'] }));
 		return ctx;
 	}
 
@@ -590,7 +578,7 @@ describe('MultiplayerGameState actions while reconnecting (CR3-3)', () => {
 	it.each([
 		['offerDraw', (g: MultiplayerGameState) => g.offerDraw()],
 		['claimVictory', (g: MultiplayerGameState) => g.claimVictory()],
-		['move', (g: MultiplayerGameState) => g.makeMove({ from: 'e2', to: 'e4' })]
+		['move', (g: MultiplayerGameState) => g.makeMove({ from: 'g1', to: 'f3' })]
 	])('%s: no optimistic state is kept and the notice shows', (_name, act) => {
 		const { game, socket } = started();
 		socket.open = false;
@@ -598,7 +586,7 @@ describe('MultiplayerGameState actions while reconnecting (CR3-3)', () => {
 		const view = get(game);
 		expect(view.notice).toBe(NOT_SENT_NOTICE);
 		expect(view.drawOffer).toBeNull();
-		expect(view.moveHistory).toEqual([]);
+		expect(view.moveHistory).toHaveLength(2);
 		game.destroy();
 	});
 
@@ -677,6 +665,88 @@ describe('MultiplayerGameState first-move window (CR3-4)', () => {
 		const { game, socket } = setup();
 		socket.emit(state({ timeControl: unlimited, clock: { ...waiting, firstMoveMs: null } }));
 		expect(get(game).firstMoveDeadline).toBeNull();
+		game.destroy();
+	});
+});
+
+describe('MultiplayerGameState before both first moves (CR4-2, CR4-3)', () => {
+	it('is in the opening until both sides have moved: no draw offer then', () => {
+		const { game, socket } = setup();
+		socket.emit({ type: 'seat', color: 'white', token: 'seat-token-123' });
+		socket.emit(state({}));
+		expect(inOpening(get(game))).toBe(true);
+		expect(canOfferDraw(get(game))).toBe(false);
+		game.offerDraw();
+		expect(socket.sent.filter((m) => m.type === 'offerDraw')).toHaveLength(0);
+		game.makeMove({ from: 'e2', to: 'e4' });
+		expect(inOpening(get(game))).toBe(true);
+		socket.emit({ type: 'opponentMove', move: { from: 'e7', to: 'e5' } });
+		expect(inOpening(get(game))).toBe(false);
+		expect(canOfferDraw(get(game))).toBe(true);
+		game.destroy();
+	});
+
+	it('is not in the opening once the game is over', () => {
+		const { game, socket } = setup();
+		socket.emit(
+			state({
+				started: false,
+				gameOver: { winner: null, reason: 'aborted', abort: { cause: 'player', by: 'black' } }
+			})
+		);
+		expect(inOpening(get(game))).toBe(false);
+		expect(get(game).gameOver).toEqual({
+			isOver: true,
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'player', by: 'black' }
+		});
+		game.destroy();
+	});
+
+	it('keeps why a game was aborted from the gameOver frame', () => {
+		const { game, socket } = setup();
+		socket.emit(state({}));
+		socket.emit({
+			type: 'gameOver',
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'black' },
+			clock: NO_CLOCK
+		});
+		expect(get(game).gameOver).toEqual({
+			isOver: true,
+			winner: null,
+			reason: 'aborted',
+			abort: { cause: 'noShow', by: 'black' }
+		});
+		game.destroy();
+	});
+
+	it('follows the server when the abort countdown switches from the grace to the window', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000_000);
+		const timed = { initial: 60, lowTimeThreshold: 10, increment: 3, isUnlimited: false };
+		const { game, socket } = setup();
+		socket.emit({ type: 'seat', color: 'black', token: 'seat-token-123' });
+		const clock = { whiteMs: 60_000, blackMs: 60_000, running: null, serverTime: 1_000_000 };
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: timed,
+			clock: { ...clock, firstMoveMs: 60_000 },
+			opponentConnected: false,
+			opponentGraceMs: 60_000
+		});
+		expect(get(game).firstMoveDeadline).toBe(1_060_000);
+		vi.setSystemTime(1_040_000);
+		socket.emit({ type: 'opponentReconnected' });
+		socket.emit({
+			type: 'clock',
+			clock: { ...clock, serverTime: 1_040_000, firstMoveMs: 30_000 }
+		});
+		expect(get(game).firstMoveDeadline).toBe(1_070_000);
 		game.destroy();
 	});
 });

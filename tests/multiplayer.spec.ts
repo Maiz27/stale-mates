@@ -1,6 +1,6 @@
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test';
 import { boardLocator, clickMove } from './helpers/board';
-import { FIRST_MOVE_TIMEOUT_MS } from './helpers/timeouts';
+import { DISCONNECT_GRACE_MS, FIRST_MOVE_TIMEOUT_MS } from './helpers/timeouts';
 
 /**
  * Multiplayer mode (`/room?id=…#seat=<token>`) needs the API server on :3000.
@@ -131,11 +131,14 @@ test.describe('Multiplayer mode', () => {
 		await expect(page.getByText('This invite link is incomplete')).toHaveCount(0);
 	});
 
-	test('joining after the creator left shows them as disconnected, with the full grace (CR-3)', async ({
+	test('joining after the creator left shows them as disconnected, with the full grace, and aborts if they never show (CR-3, CR4-2)', async ({
 		browser,
 		page
 	}) => {
-		const room = await createRoom(page);
+		test.setTimeout(DISCONNECT_GRACE_MS + 60_000);
+		// Timed: the absent creator (White, to move) gets the full disconnect grace
+		// from the start of the game, not the shorter first-move window.
+		const room = await createRoom(page, 1);
 		test.skip(room === null, 'API server not reachable');
 		const a = await browser.newContext();
 		const b = await browser.newContext();
@@ -153,12 +156,21 @@ test.describe('Multiplayer mode', () => {
 			await friend.goto(seatUrl(room!, 'black'));
 			await expect(boardLocator(friend)).toBeVisible({ timeout: 20_000 });
 			await expect(friend.getByText('Opponent disconnected')).toBeVisible({ timeout: 15_000 });
-			// ...but the joiner still waits the full grace (60 s), counted from the
-			// start of the game, not from the creator's disconnect (CR2-3).
-			const countdown = friend.getByText(/You can claim the win in \d+s/);
-			await expect(countdown).toBeVisible();
+			// ...but the joiner still waits the full grace, counted from the start of
+			// the game, not from the creator's disconnect (CR2-3), and no win can be
+			// claimed before both sides have moved: the game is aborted instead (CR4-2).
+			const countdown = friend.getByTestId('first-move');
+			await expect(countdown).toContainText('Your opponent is away');
 			const seconds = Number((await countdown.innerText()).match(/in (\d+)s/)![1]);
-			expect(seconds).toBeGreaterThan(56);
+			// More than the first-move window: the grace, not the window, is running.
+			expect(seconds).toBeGreaterThan(FIRST_MOVE_TIMEOUT_MS / 1000);
+			expect(seconds).toBeGreaterThan(DISCONNECT_GRACE_MS / 1000 - 5);
+			await expect(friend.getByRole('button', { name: 'Claim victory' })).toHaveCount(0);
+
+			await expect(
+				friend.getByText("Game Over: Opponent didn't show up — game aborted")
+			).toBeVisible({ timeout: DISCONNECT_GRACE_MS + 5_000 });
+			await expect(friend.getByRole('button', { name: 'Leave' })).toBeVisible();
 		} finally {
 			await a.close();
 			await b.close();
@@ -295,6 +307,12 @@ test.describe('Multiplayer mode', () => {
 			await black.goto(seatUrl(room!, 'black'));
 			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
 			await expect(boardLocator(black)).toBeVisible({ timeout: 20_000 });
+			// A draw can only be offered once both sides have moved (CR4-3).
+			await expect(white.getByRole('button', { name: /Offer draw/ })).toHaveCount(0);
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible();
+			await clickMove(black, 'e7', 'e5', 'black');
+			await expect(white.getByRole('list').getByText('e5', { exact: true })).toBeVisible();
 
 			await white.getByRole('button', { name: /Offer draw/ }).click();
 			await expect(white.getByRole('button', { name: 'Draw offered' })).toBeVisible();
@@ -340,6 +358,11 @@ test.describe('Multiplayer mode', () => {
 			await white.goto(seatUrl(room!, 'white'));
 			await black.goto(seatUrl(room!, 'black'));
 			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			// Resign and draw exist once both sides have moved (CR4-3).
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible();
+			await clickMove(black, 'e7', 'e5', 'black');
+			await expect(white.getByRole('list').getByText('e5', { exact: true })).toBeVisible();
 			const resign = white.getByRole('button', { name: 'Resign' });
 			const offerDraw = white.getByRole('button', { name: /Offer draw/ });
 			await expect(resign).toBeEnabled();
@@ -356,18 +379,55 @@ test.describe('Multiplayer mode', () => {
 			await expect(offerDraw).toHaveAttribute('title', 'Reconnecting…');
 
 			// A move can't reach the server: it is taken back and the player is told.
-			await clickMove(white, 'e2', 'e4', 'white');
+			await clickMove(white, 'g1', 'f3', 'white');
 			await expect(white.getByRole('status').getByText('Not sent — reconnecting')).toBeVisible();
-			await expect(white.getByRole('list').getByText('e4', { exact: true })).toHaveCount(0);
+			await expect(white.getByRole('list').getByText('Nf3', { exact: true })).toHaveCount(0);
 
 			// Back online: the controls come back and moves go through.
 			outage = false;
 			await expect(resign).toBeEnabled({ timeout: 20_000 });
 			await expect(offerDraw).toBeEnabled();
-			await clickMove(white, 'e2', 'e4', 'white');
-			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible({
+			await clickMove(white, 'g1', 'f3', 'white');
+			await expect(black.getByRole('list').getByText('Nf3', { exact: true })).toBeVisible({
 				timeout: 15_000
 			});
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
+	test('before both sides have moved, "Abort" replaces Resign and draw, and aborts the game (CR4-3)', async ({
+		browser,
+		page
+	}) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await a.newPage();
+			const black = await b.newPage();
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			await expect(boardLocator(black)).toBeVisible({ timeout: 20_000 });
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible();
+
+			// Black hasn't moved yet: abort, not resign; no draw offer.
+			for (const p of [white, black]) {
+				await expect(p.getByRole('button', { name: 'Abort' })).toBeEnabled();
+				await expect(p.getByRole('button', { name: 'Resign' })).toHaveCount(0);
+				await expect(p.getByRole('button', { name: /Offer draw/ })).toHaveCount(0);
+			}
+			await black.getByRole('button', { name: 'Abort' }).click();
+			await expect(black.getByRole('dialog')).toBeVisible();
+			await black.getByRole('dialog').getByRole('button', { name: 'Abort' }).click();
+
+			await expect(black.getByText('Game Over: You aborted the game')).toBeVisible();
+			await expect(white.getByText('Game Over: Your opponent aborted the game')).toBeVisible();
+			await expect(white.getByRole('button', { name: 'Offer Rematch' })).toBeEnabled();
 		} finally {
 			await a.close();
 			await b.close();

@@ -8,6 +8,7 @@ export type {
 	TimeControl,
 	ClockSnapshot,
 	GameResult,
+	AbortInfo,
 	ClientMessage,
 	ServerMessage,
 	WireMove

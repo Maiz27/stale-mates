@@ -56,7 +56,10 @@ The `id` is internal to the server and never sent to clients. Only one live sock
 seat exists; a newer connection replaces the older one (close code `4000`). When a
 player's socket drops, the opponent is told (`opponentDisconnected`) and may claim the
 win after `DISCONNECT_GRACE_MS` (counted from the start of the game if they were
-already away when it started); the room itself survives until the TTL sweep. Clocks
+already away when it started) — but only once both sides have moved: before that the
+game is **aborted** instead (a claim aborts it, and in timed games the server aborts it
+by itself when an absent side to move's grace runs out); the room itself survives until
+the TTL sweep. Clocks
 do not pause while a player is disconnected: their clock keeps running and they can
 lose on time before the grace period ends.
 
@@ -84,7 +87,9 @@ increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes
 - **First moves** — in timed games no clock runs until each side has made its first move
   (no time charged, no increment). Meanwhile the side to move has `FIRST_MOVE_TIMEOUT_MS`
   (default 30 s; `ClockSnapshot.firstMoveMs`), or the server **aborts** the game (reason
-  `aborted`, no winner, PGN `*`).
+  `aborted`, no winner, PGN `*`). The window starts only once that side is connected and
+  then keeps running across reconnects; while it is away, `firstMoveMs` counts down its
+  disconnect grace instead, and the game is aborted if it never shows up.
 - **lowTimeThreshold** — the remaining-time level below which the UI flags "low time".
   `TimeControl` / `TimeOption` types: `api/src/lib/types.ts` and `src/lib/chess/types.ts`
   (now a **single canonical** definition with all fields required; the earlier drift in
@@ -123,7 +128,14 @@ increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes
 The end of a game, carried as `GameOver { isOver, winner, reason? }`. `winner` is a
 `Color`, `'draw'`, or `null`. The `reason` (`GameOverReason`) is one of:
 `checkmate`, `stalemate`, `threefold` (threefold repetition), `insufficient`
-(insufficient material), `fiftyMove`, `draw`, `timeout`, `resignation`.
+(insufficient material), `fiftyMove`, `draw`, `timeout`, `timeoutVsInsufficient`,
+`resignation`, `abandonment`, `aborted`.
+
+**Abort** — a game that ends before both sides have made their first move has no result
+(`winner: null`, reason `aborted`, PGN `*`). `GameOver.abort` (`AbortInfo { cause, by }`)
+says why: `firstMoveTimeout` (timed: the side to move let its first-move window pass),
+`noShow` (the side to move was away past the disconnect grace) or `player` (a side
+resigned, or offered or accepted a draw, which before both first moves aborts instead).
 `GameOver` / `GameOverReason` types: `src/lib/chess/types.ts`. Detection is now
 **server-authoritative** for multiplayer: `GameRoom` ends the game only via the rules
 (`gameOutcome` in `api/src/lib/outcome.ts`) or its flag-fall watchdog (`onFlagFall`),

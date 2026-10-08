@@ -14,7 +14,7 @@
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
 	import type { GameView } from '$lib/chess/types';
 	import type { Rejection } from '$lib/websocket/WebSocketManager';
-	import { MultiplayerGameState, canOfferDraw } from '$lib/chess/MultiplayerGameState';
+	import { MultiplayerGameState, canOfferDraw, inOpening } from '$lib/chess/MultiplayerGameState';
 	import {
 		getInviteToken,
 		inviteLink,
@@ -88,8 +88,12 @@
 	);
 	const turn = $derived(view?.turn ?? 'white');
 	const running = $derived(started && !gameOver);
+	// Before both sides have moved the game can only be aborted: no resignation,
+	// draw or win by abandonment (CR4-3).
+	const opening = $derived(view ? inOpening(view) : false);
 	// Timed games: no clock runs until each side has made its first move; the side
-	// to move has a window instead, after which the server aborts the game (CR3-4).
+	// to move has a window instead (or its disconnect grace while it's away), after
+	// which the server aborts the game (CR3-4, CR4-2).
 	const firstMoveDeadline = $derived(running ? (view?.firstMoveDeadline ?? null) : null);
 	const firstMoveIn = $derived(
 		firstMoveDeadline === null ? null : Math.max(0, Math.ceil((firstMoveDeadline - now) / 1000))
@@ -342,8 +346,13 @@
 					{#if opponentAway}
 						<div role="status" aria-live="polite" class="mx-auto max-w-md space-y-2">
 							<p class="font-semibold text-amber-600 dark:text-amber-400">Opponent disconnected</p>
-							{#if firstMoveDeadline !== null}
-								<!-- No win to claim before both first moves: the game is aborted instead. -->
+							{#if opening}
+								<!-- No win to claim before both first moves: the game is aborted instead (CR4-2). -->
+								{#if firstMoveDeadline === null || turn === playerColor}
+									<p class="text-sm text-muted-foreground">
+										Neither side can win before both have moved — you can abort the game instead.
+									</p>
+								{/if}
 							{:else if claimInSeconds !== null && claimInSeconds > 0}
 								<p class="text-sm text-muted-foreground">
 									You can claim the win in {claimInSeconds}s if they don't return.
@@ -360,6 +369,10 @@
 							{#if turn === playerColor}
 								Clocks start after each side's first move. Make yours within
 								<span class="font-semibold tabular-nums">{firstMoveIn}s</span> or the game is aborted.
+							{:else if opponentAway}
+								Clocks start after each side's first move. Your opponent is away — the game is
+								aborted in <span class="font-semibold tabular-nums">{firstMoveIn}s</span> if they don't
+								return.
 							{:else}
 								Clocks start after each side's first move. Waiting for your opponent's — the game is
 								aborted in <span class="font-semibold tabular-nums">{firstMoveIn}s</span> if they don't
@@ -376,7 +389,19 @@
 				<Button variant="outline" onclick={flipBoard} aria-label="Flip board" title="Flip board">
 					<Loop aria-hidden="true" />
 				</Button>
-				{#if started && !gameOver}
+				{#if started && !gameOver && opening}
+					<!-- Before both sides have moved, resigning aborts the game (CR4-3). -->
+					<ConfirmAction
+						onConfirm={resign}
+						triggerLabel="Abort"
+						triggerVariant="outline"
+						disabled={!online}
+						disabledReason={OFFLINE_REASON}
+						title="Abort game"
+						description="Abort this game? Until both sides have moved, nobody wins or loses."
+						confirmLabel="Abort"
+					/>
+				{:else if started && !gameOver}
 					<ConfirmAction
 						onConfirm={resign}
 						triggerLabel="Resign"

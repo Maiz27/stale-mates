@@ -131,7 +131,7 @@
 		onpromotioncancel();
 	}
 
-	const resultText = $derived(formatResult(view.gameOver));
+	const resultText = $derived(formatResult(view.gameOver, playerColor));
 </script>
 
 <section

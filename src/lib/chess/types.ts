@@ -1,19 +1,21 @@
 import type { PieceSymbol, Square } from 'chess.js';
 import type { Color } from 'chessground/types';
 import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
-import type { GameOverReason, TimeControl, ClockSnapshot } from './protocol';
+import type { AbortInfo, GameOverReason, TimeControl, ClockSnapshot } from './protocol';
 
 export type GameMode = 'pve' | 'pvp';
 
 export type PromotionMove = { from: string; to: string } | null;
 
 // Wire-level types come from the shared protocol (identical copy on the server).
-export type { GameOverReason, TimeControl, ClockSnapshot };
+export type { AbortInfo, GameOverReason, TimeControl, ClockSnapshot };
 
 export type GameOver = {
 	isOver: boolean;
 	winner: Color | 'draw' | null;
 	reason?: GameOverReason;
+	/** Multiplayer: why an `aborted` game was aborted (absent from older servers). */
+	abort?: AbortInfo;
 };
 
 export type CheckState = { inCheck: boolean; kingSquare?: string; attackingSquares?: string[] };
@@ -84,9 +86,10 @@ export type GameView = {
 	lastDrawOfferPly: number | null;
 	clock: ClockView;
 	/**
-	 * Multiplayer, timed games: local `Date.now()` by which the side to move must
-	 * make its first move or the game is aborted; null once both sides have moved.
-	 * No clock runs while this is set.
+	 * Multiplayer, timed games: local `Date.now()` by which the game is aborted if
+	 * the side to move hasn't made its first move (its first-move window, or its
+	 * disconnect grace while it's away and the window hasn't started); null once
+	 * both sides have moved. No clock runs while this is set.
 	 */
 	firstMoveDeadline: number | null;
 	/** Multiplayer: a short-lived message for the player, e.g. an action not sent while reconnecting. */
