@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { parseMoveInput } from '$lib/chess/moveInput';
 	import type { ChessMove } from '$lib/chess/types';
 
@@ -8,15 +7,18 @@
 	 * coordinates ("e2e4"); it is validated against the current position before
 	 * being emitted. Errors are announced via an aria-live region.
 	 */
-	export let fen: string;
-	export let disabled = false;
+	let {
+		fen,
+		disabled = false,
+		onmove
+	}: { fen: string; disabled?: boolean; onmove: (move: ChessMove) => void } = $props();
 
-	const dispatch = createEventDispatcher<{ move: ChessMove }>();
-	let value = '';
-	let error = '';
+	let value = $state('');
+	let error = $state('');
 	const inputId = `move-input-${Math.random().toString(36).slice(2, 8)}`;
 
-	function submit() {
+	function submit(event: SubmitEvent) {
+		event.preventDefault();
 		const result = parseMoveInput(value, fen);
 		if (!result.ok) {
 			error = result.error;
@@ -24,11 +26,11 @@
 		}
 		error = '';
 		value = '';
-		dispatch('move', result.move);
+		onmove(result.move);
 	}
 </script>
 
-<form class="flex flex-wrap items-center gap-2" on:submit|preventDefault={submit}>
+<form class="flex flex-wrap items-center gap-2" onsubmit={submit}>
 	<label for={inputId} class="text-sm text-muted-foreground">Type a move:</label>
 	<input
 		id={inputId}
@@ -40,7 +42,7 @@
 		placeholder={disabled ? 'Wait for your turn' : 'e4, Nf3, O-O, e2e4'}
 		aria-describedby={`${inputId}-help`}
 		aria-invalid={error ? 'true' : undefined}
-		class="h-9 w-40 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+		class="h-9 w-40 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden disabled:opacity-50"
 	/>
 	<button
 		type="submit"

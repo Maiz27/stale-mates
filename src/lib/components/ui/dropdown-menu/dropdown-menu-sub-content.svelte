@@ -1,29 +1,31 @@
 <script lang="ts">
 	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
-	import { cn, flyAndScale } from '$lib/utils.js';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
+	import DropdownMenuPortal from './dropdown-menu-portal.svelte';
+	import type { ComponentProps } from 'svelte';
 
-	type $$Props = DropdownMenuPrimitive.SubContentProps;
-
-	let className: $$Props['class'] = undefined;
-	export let transition: $$Props['transition'] = flyAndScale;
-	export let transitionConfig: $$Props['transitionConfig'] = {
-		x: -10,
-		y: 0
-	};
-	export { className as class };
+	let {
+		ref = $bindable(null),
+		class: className,
+		align = 'start',
+		alignOffset = -3,
+		portalProps,
+		...restProps
+	}: DropdownMenuPrimitive.SubContentProps & {
+		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof DropdownMenuPortal>>;
+	} = $props();
 </script>
 
-<DropdownMenuPrimitive.SubContent
-	{transition}
-	{transitionConfig}
-	class={cn(
-		'z-50 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-lg focus:outline-none',
-		className
-	)}
-	{...$$restProps}
-	on:keydown
-	on:focusout
-	on:pointermove
->
-	<slot />
-</DropdownMenuPrimitive.SubContent>
+<DropdownMenuPortal {...portalProps}>
+	<DropdownMenuPrimitive.SubContent
+		bind:ref
+		data-slot="dropdown-menu-sub-content"
+		{align}
+		{alignOffset}
+		class={cn(
+			'z-50 min-w-[96px] origin-(--bits-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+			className
+		)}
+		{...restProps}
+	/>
+</DropdownMenuPortal>

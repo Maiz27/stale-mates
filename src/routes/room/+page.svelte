@@ -156,7 +156,7 @@
 <div class="mt-4 w-full space-y-8 p-6">
 	<section class="mx-auto grid w-full max-w-3xl place-items-center gap-4">
 		<div class="w-full space-y-4 text-center">
-			<h1 class="text-3xl font-black leading-tight md:text-4xl">Play Friend: Friendly Duel</h1>
+			<h1 class="text-3xl leading-tight font-black md:text-4xl">Play Friend: Friendly Duel</h1>
 
 			{#if reconnecting}
 				<p
@@ -173,7 +173,7 @@
 					<p class="text-muted-foreground">
 						This room link is missing a game ID. Start a new game from the home page.
 					</p>
-					<Button on:click={leave}>Back to Home</Button>
+					<Button onclick={leave}>Back to Home</Button>
 				</div>
 			{:else if missingSeat}
 				<div class="space-y-3" role="alert">
@@ -181,7 +181,7 @@
 					<p class="text-muted-foreground">
 						Ask your friend to send the full link again, or start a new game.
 					</p>
-					<Button on:click={leave}>Back to Home</Button>
+					<Button onclick={leave}>Back to Home</Button>
 				</div>
 			{:else if status === 'rejected'}
 				<div class="space-y-3" role="alert">
@@ -189,15 +189,15 @@
 					<p class="text-muted-foreground">
 						This game has expired, already has two players, or the link is invalid.
 					</p>
-					<Button on:click={leave}>Back to Home</Button>
+					<Button onclick={leave}>Back to Home</Button>
 				</div>
 			{:else if status === 'replaced'}
 				<div class="space-y-3" role="alert">
 					<p class="font-semibold">This game is open somewhere else</p>
 					<p class="text-muted-foreground">Your seat was taken over by another tab or window.</p>
 					<div class="flex justify-center gap-2">
-						<Button on:click={reload}>Play here instead</Button>
-						<Button variant="ghost" on:click={leave}>Back to Home</Button>
+						<Button onclick={reload}>Play here instead</Button>
+						<Button variant="ghost" onclick={leave}>Back to Home</Button>
 					</div>
 				</div>
 			{:else if gameState && connecting}
@@ -220,19 +220,19 @@
 								value={opponentLink}
 								type="url"
 								class="text-center"
-								on:focus={(e) => e.currentTarget.select()}
+								onfocus={(e) => e.currentTarget.select()}
 							/>
 							<div class="flex flex-wrap items-center justify-center gap-2">
 								{#if canShare}
-									<Button on:click={shareInvite}>
+									<Button onclick={shareInvite}>
 										<Share1 class="mr-2" aria-hidden="true" /> Share invite
 									</Button>
 								{/if}
-								<Button variant="outline" on:click={copyInvite} aria-label="Copy invite link">
+								<Button variant="outline" onclick={copyInvite} aria-label="Copy invite link">
 									<Copy class="mr-2" aria-hidden="true" />
 									{copied ? 'Link copied!' : 'Copy invite link'}
 								</Button>
-								<Button variant="ghost" on:click={leave}>Leave</Button>
+								<Button variant="ghost" onclick={leave}>Leave</Button>
 							</div>
 							<p class="text-xs text-muted-foreground" aria-live="polite">
 								{copied
@@ -240,7 +240,7 @@
 									: 'Send the link to a friend — it works once, for one opponent.'}
 							</p>
 						{:else}
-							<Button variant="ghost" on:click={leave}>Leave</Button>
+							<Button variant="ghost" onclick={leave}>Leave</Button>
 						{/if}
 					</div>
 				{:else}
@@ -252,7 +252,7 @@
 									You can claim the win in {claimInSeconds}s if they don't return.
 								</p>
 							{:else if claimInSeconds === 0}
-								<Button on:click={claimVictory}>Claim victory</Button>
+								<Button onclick={claimVictory}>Claim victory</Button>
 							{/if}
 						</div>
 					{/if}
@@ -265,7 +265,7 @@
 
 		<div class="flex flex-wrap items-center justify-center gap-2">
 			{#if gameState && !waiting && !terminal}
-				<Button variant="outline" on:click={flipBoard} aria-label="Flip board" title="Flip board">
+				<Button variant="outline" onclick={flipBoard} aria-label="Flip board" title="Flip board">
 					<Loop aria-hidden="true" />
 				</Button>
 				{#if started && !gameOver}
@@ -277,25 +277,24 @@
 						description="Resign this game? Your opponent will be awarded the win."
 						confirmLabel="Resign"
 					>
-						<Flag slot="icon" class="mr-2" />
+						{#snippet icon()}<Flag class="mr-2" />{/snippet}
 					</ConfirmAction>
 					{#if drawOffer === 'mine'}
 						<Button variant="outline" disabled>Draw offered</Button>
 					{:else if drawOffer === null}
-						<Button variant="outline" on:click={offerDraw} title="Offer a draw">½ Offer draw</Button
-						>
+						<Button variant="outline" onclick={offerDraw} title="Offer a draw">½ Offer draw</Button>
 					{/if}
 				{/if}
 			{/if}
 			{#if gameOver && !terminal}
 				{#if opponentOfferedRematch}
-					<Button on:click={acceptRematch}>Accept Rematch</Button>
+					<Button onclick={acceptRematch}>Accept Rematch</Button>
 				{:else if rematchOffered}
 					<Button disabled>Rematch Offered</Button>
 				{:else}
-					<Button on:click={offerRematch} disabled={!opponentConnected}>Offer Rematch</Button>
+					<Button onclick={offerRematch} disabled={!opponentConnected}>Offer Rematch</Button>
 				{/if}
-				<Button variant="ghost" on:click={leave}>Leave</Button>
+				<Button variant="ghost" onclick={leave}>Leave</Button>
 			{/if}
 		</div>
 	</section>
@@ -306,8 +305,8 @@
 			class="mx-auto flex max-w-md flex-wrap items-center justify-center gap-2 rounded-md border border-primary p-3"
 		>
 			<span class="font-semibold">Your opponent offers a draw.</span>
-			<Button on:click={acceptDraw}>Accept</Button>
-			<Button variant="outline" on:click={declineDraw}>Decline</Button>
+			<Button onclick={acceptDraw}>Accept</Button>
+			<Button variant="outline" onclick={declineDraw}>Decline</Button>
 		</div>
 	{/if}
 
@@ -336,9 +335,9 @@
 					{view}
 					{playerColor}
 					{boardFlipped}
-					on:move={(e) => gameState?.handlePlayerMove(e.detail)}
-					on:promotion={(e) => gameState?.completePromotion(e.detail)}
-					on:promotionCancel={() => gameState?.clearPromotion()}
+					onmove={(move) => gameState?.handlePlayerMove(move)}
+					onpromotion={(p) => gameState?.completePromotion(p)}
+					onpromotioncancel={() => gameState?.clearPromotion()}
 				/>
 				{#if !boardFlipped}
 					<PlayerBar
@@ -361,7 +360,7 @@
 				<MoveInput
 					fen={view.fen}
 					disabled={!running || turn !== playerColor || !!view.promotionMove}
-					on:move={(e) => gameState?.submitMove(e.detail)}
+					onmove={(move) => gameState?.submitMove(move)}
 				/>
 			</div>
 			<MoveList

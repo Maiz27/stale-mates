@@ -1,36 +1,45 @@
 <script lang="ts">
 	import { Select as SelectPrimitive } from 'bits-ui';
-	import { scale } from 'svelte/transition';
-	import { cn, flyAndScale } from '$lib/utils.js';
+	import { cn, type WithoutChild } from '$lib/utils.js';
+	import type { WithoutChildrenOrChild } from '$lib/utils.js';
+	import SelectPortal from './select-portal.svelte';
+	import SelectScrollDownButton from './select-scroll-down-button.svelte';
+	import SelectScrollUpButton from './select-scroll-up-button.svelte';
+	import type { ComponentProps } from 'svelte';
 
-	type $$Props = SelectPrimitive.ContentProps;
-
-	let className: $$Props['class'] = undefined;
-	export let sideOffset: $$Props['sideOffset'] = 4;
-	export let inTransition: $$Props['inTransition'] = flyAndScale;
-	export let inTransitionConfig: $$Props['inTransitionConfig'] = undefined;
-	export let outTransition: $$Props['outTransition'] = scale;
-	export let outTransitionConfig: $$Props['outTransitionConfig'] = {
-		start: 0.95,
-		opacity: 0,
-		duration: 50
-	};
-	export { className as class };
+	let {
+		ref = $bindable(null),
+		class: className,
+		sideOffset = 4,
+		portalProps,
+		children,
+		preventScroll = true,
+		...restProps
+	}: WithoutChild<SelectPrimitive.ContentProps> & {
+		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof SelectPortal>>;
+	} = $props();
 </script>
 
-<SelectPrimitive.Content
-	{inTransition}
-	{inTransitionConfig}
-	{outTransition}
-	{outTransitionConfig}
-	{sideOffset}
-	class={cn(
-		'relative z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md focus:outline-none',
-		className
-	)}
-	{...$$restProps}
->
-	<div class="w-full p-1">
-		<slot />
-	</div>
-</SelectPrimitive.Content>
+<SelectPortal {...portalProps}>
+	<SelectPrimitive.Content
+		bind:ref
+		{sideOffset}
+		{preventScroll}
+		data-slot="select-content"
+		class={cn(
+			'relative z-50 max-h-(--bits-select-content-available-height) min-w-36 origin-(--bits-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+			className
+		)}
+		{...restProps}
+	>
+		<SelectScrollUpButton />
+		<SelectPrimitive.Viewport
+			class={cn(
+				'h-(--bits-select-anchor-height) w-full min-w-(--bits-select-anchor-width) scroll-my-1'
+			)}
+		>
+			{@render children?.()}
+		</SelectPrimitive.Viewport>
+		<SelectScrollDownButton />
+	</SelectPrimitive.Content>
+</SelectPortal>

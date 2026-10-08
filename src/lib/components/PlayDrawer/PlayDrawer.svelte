@@ -4,18 +4,18 @@
 	import { isDesktop } from '$lib/media';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import ColorSelector from '../controls/ColorSelector.svelte';
 	import type { Color } from 'chessground/types';
 	import TimeSelector from '../controls/TimeSelector.svelte';
 	import type { CreateGameResponse } from '$lib/chess/protocol';
 	import { setInviteToken, setSeatToken } from '$lib/chess/seat';
 
-	let open = false;
-	let color: Color | 'random' = 'white';
-	let time = 0;
-	let errorMessage = '';
-	let loading = false;
+	let open = $state(false);
+	let color = $state<Color | 'random'>('white');
+	let time = $state(0);
+	let errorMessage = $state('');
+	let loading = $state(false);
 
 	const title = 'Play Friend: Friendly Duel';
 	const description =
@@ -63,70 +63,50 @@
 		errorMessage = '';
 	}
 
-	$: if (!open) resetState();
-
-	const handleColorChange = (event: CustomEvent) => {
-		color = event.detail.value;
-	};
-
-	const handleTimeChange = (event: CustomEvent) => {
-		time = event.detail.value;
-	};
+	$effect(() => {
+		if (!open) resetState();
+	});
 </script>
+
+{#snippet form()}
+	<div class="space-y-4">
+		<ColorSelector
+			bind:value={() => color, (v) => (color = v as Color | 'random')}
+			{extraOptions}
+		/>
+		<TimeSelector bind:value={time} />
+	</div>
+	{#if errorMessage}
+		<p class="text-sm text-red-500">{errorMessage}</p>
+	{/if}
+	<Button class={`w-full ${loading ? 'animate-pulse' : ''}`} disabled={loading} onclick={createGame}
+		>{loading ? 'Creating…' : 'Create Game'}</Button
+	>
+{/snippet}
 
 {#if isDesktop.current}
 	<Dialog.Root bind:open>
-		<Dialog.Trigger asChild let:builder>
-			<Button builders={[builder]} variant="outline">{title}</Button>
-		</Dialog.Trigger>
+		<Dialog.Trigger class={buttonVariants({ variant: 'outline' })}>{title}</Dialog.Trigger>
 		<Dialog.Content class="sm:max-w-[425px]">
 			<Dialog.Header>
 				<Dialog.Title>{title}</Dialog.Title>
-				<Dialog.Description>
-					{description}
-				</Dialog.Description>
+				<Dialog.Description>{description}</Dialog.Description>
 			</Dialog.Header>
 			<div class="w-full space-y-4">
-				<div class="space-y-4">
-					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
-					<TimeSelector on:timeChange={handleTimeChange} />
-				</div>
-				{#if errorMessage}
-					<p class="text-sm text-red-500">{errorMessage}</p>
-				{/if}
-				<Button
-					class={`w-full ${loading ? 'animate-pulse' : ''}`}
-					disabled={loading}
-					on:click={createGame}>{loading ? 'Creating…' : 'Create Game'}</Button
-				>
+				{@render form()}
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
 {:else}
 	<Drawer.Root bind:open>
-		<Drawer.Trigger asChild let:builder>
-			<Button variant="outline" builders={[builder]}>{title}</Button>
-		</Drawer.Trigger>
+		<Drawer.Trigger class={buttonVariants({ variant: 'outline' })}>{title}</Drawer.Trigger>
 		<Drawer.Content>
 			<Drawer.Header class="text-left">
 				<Drawer.Title>{title}</Drawer.Title>
-				<Drawer.Description>
-					{description}
-				</Drawer.Description>
+				<Drawer.Description>{description}</Drawer.Description>
 			</Drawer.Header>
 			<div class="w-full space-y-4 px-4 pb-4">
-				<div class="space-y-4">
-					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
-					<TimeSelector on:timeChange={handleTimeChange} />
-				</div>
-				{#if errorMessage}
-					<p class="text-sm text-red-500">{errorMessage}</p>
-				{/if}
-				<Button
-					class={`w-full ${loading ? 'animate-pulse' : ''}`}
-					disabled={loading}
-					on:click={createGame}>{loading ? 'Creating…' : 'Create Game'}</Button
-				>
+				{@render form()}
 			</div>
 		</Drawer.Content>
 	</Drawer.Root>

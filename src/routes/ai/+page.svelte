@@ -114,7 +114,7 @@
 <div class="mt-4 space-y-6 p-4 sm:p-6">
 	<section class="grid place-items-center gap-4">
 		<div class="space-y-4 text-center">
-			<h1 class="text-3xl font-black leading-tight md:text-4xl">Play AI: Adaptive Challenge</h1>
+			<h1 class="text-3xl leading-tight font-black md:text-4xl">Play AI: Adaptive Challenge</h1>
 			<div class="grid grid-cols-2 gap-x-6 gap-y-2 md:grid-cols-4">
 				<div>
 					Player: <span class="text-primary"
@@ -137,11 +137,11 @@
 
 		<div class="flex flex-wrap items-center justify-center gap-2">
 			{#if !$gameState.started}
-				<Button on:click={startNewGame}>Start New Game</Button>
+				<Button onclick={startNewGame}>Start New Game</Button>
 			{:else if $gameState.gameOver.isOver}
-				<Button on:click={playAgain}>Play again</Button>
-				<Button variant="outline" on:click={swapColors}>Swap colors</Button>
-				<Button variant="ghost" on:click={endGame}>Reset Game</Button>
+				<Button onclick={playAgain}>Play again</Button>
+				<Button variant="outline" onclick={swapColors}>Swap colors</Button>
+				<Button variant="ghost" onclick={endGame}>Reset Game</Button>
 			{:else}
 				<ConfirmAction
 					onConfirm={endGame}
@@ -151,7 +151,7 @@
 				/>
 			{/if}
 			<Button
-				on:click={getHint}
+				onclick={getHint}
 				variant="outline"
 				disabled={!canHint}
 				title="Get hint"
@@ -160,7 +160,7 @@
 				<QuestionMark aria-hidden="true" class={$gameState.hintPending ? 'animate-pulse' : ''} />
 			</Button>
 			<Button
-				on:click={undoMove}
+				onclick={undoMove}
 				variant="outline"
 				disabled={!canUndo}
 				title="Undo move"
@@ -168,7 +168,7 @@
 			>
 				<ThickArrowLeft aria-hidden="true" />
 			</Button>
-			<Button on:click={flipBoard} variant="outline" title="Flip board" aria-label="Flip board">
+			<Button onclick={flipBoard} variant="outline" title="Flip board" aria-label="Flip board">
 				<Loop aria-hidden="true" />
 			</Button>
 			{#if inProgress}
@@ -181,7 +181,7 @@
 					description="Resign this game? The AI will be awarded the win."
 					confirmLabel="Resign"
 				>
-					<Flag slot="icon" />
+					{#snippet icon()}<Flag />{/snippet}
 				</ConfirmAction>
 			{/if}
 			<PlayAiDrawer
@@ -212,9 +212,9 @@
 				{boardFlipped}
 				view={$gameState}
 				playerColor={$gameState.player}
-				on:move={(e) => gameState.handlePlayerMove(e.detail)}
-				on:promotion={(e) => gameState.completePromotion(e.detail)}
-				on:promotionCancel={() => gameState.clearPromotion()}
+				onmove={(move) => gameState.handlePlayerMove(move)}
+				onpromotion={(p) => gameState.completePromotion(p)}
+				onpromotioncancel={() => gameState.clearPromotion()}
 			/>
 			{#if topIsAi}
 				<PlayerBar
@@ -235,7 +235,7 @@
 				disabled={!inProgress ||
 					$gameState.turn !== $gameState.player ||
 					!!$gameState.promotionMove}
-				on:move={(e) => gameState.submitMove(e.detail)}
+				onmove={(move) => gameState.submitMove(move)}
 			/>
 		</div>
 		<MoveList

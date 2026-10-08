@@ -8,7 +8,7 @@
 <Button
 	variant="outline"
 	size="icon"
-	on:click={() => soundEnabled.update((on) => !on)}
+	onclick={() => soundEnabled.update((on) => !on)}
 	aria-pressed={!$soundEnabled}
 	aria-label={$soundEnabled ? 'Mute sounds' : 'Unmute sounds'}
 	title={$soundEnabled ? 'Mute sounds' : 'Unmute sounds'}

@@ -15,7 +15,7 @@
 		<Badge variant="secondary" class="gap-2 px-4 py-2 font-semibold">
 			<Globe aria-hidden="true" /> Pushing Chess to the Edge
 		</Badge>
-		<h1 class="flex flex-col items-center text-4xl font-black leading-tight md:text-5xl">
+		<h1 class="flex flex-col items-center text-4xl leading-tight font-black md:text-5xl">
 			<span class="mb-2">Where Chess Gets a</span>
 			<span class="text-primary">Checkmate on Boredom</span>
 		</h1>

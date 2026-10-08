@@ -1,7 +1,8 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
-	import Button from '$lib/components/ui/button/button.svelte';
+	import { Button, buttonVariants, type ButtonVariant } from '$lib/components/ui/button/index.js';
 	import { isDesktop } from '$lib/media';
 
 	/**
@@ -9,18 +10,31 @@
 	 * mobile) before running `onConfirm`. Used for destructive actions like
 	 * ending or resigning a game.
 	 */
-	export let onConfirm: () => void;
-	export let triggerLabel: string;
-	/** Accessible name for an icon-only trigger. */
-	export let triggerAriaLabel: string | undefined = undefined;
-	export let title: string;
-	export let description: string;
-	export let confirmLabel = title;
-	export let triggerVariant: 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' =
-		'secondary';
-	export let disabled = false;
+	let {
+		onConfirm,
+		triggerLabel,
+		triggerAriaLabel = undefined,
+		title,
+		description,
+		confirmLabel = undefined,
+		triggerVariant = 'secondary',
+		disabled = false,
+		icon = undefined
+	}: {
+		onConfirm: () => void;
+		triggerLabel: string;
+		/** Accessible name for an icon-only trigger. */
+		triggerAriaLabel?: string;
+		title: string;
+		description: string;
+		confirmLabel?: string;
+		triggerVariant?: ButtonVariant;
+		disabled?: boolean;
+		icon?: Snippet;
+	} = $props();
 
-	let open = false;
+	let open = $state(false);
+	const triggerClass = $derived(buttonVariants({ variant: triggerVariant }));
 
 	const handleConfirm = () => {
 		open = false;
@@ -28,19 +42,25 @@
 	};
 </script>
 
+{#snippet trigger()}
+	{@render icon?.()}
+	{triggerLabel}
+{/snippet}
+
+{#snippet actions()}
+	<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
+	<Button onclick={handleConfirm}>{confirmLabel ?? title}</Button>
+{/snippet}
+
 {#if isDesktop.current}
 	<Dialog.Root bind:open>
-		<Dialog.Trigger asChild let:builder>
-			<Button
-				variant={triggerVariant}
-				builders={[builder]}
-				{disabled}
-				aria-label={triggerAriaLabel}
-				title={triggerAriaLabel}
-			>
-				<slot name="icon" />
-				{triggerLabel}
-			</Button>
+		<Dialog.Trigger
+			class={triggerClass}
+			{disabled}
+			aria-label={triggerAriaLabel}
+			title={triggerAriaLabel}
+		>
+			{@render trigger()}
 		</Dialog.Trigger>
 		<Dialog.Content class="sm:max-w-[425px]">
 			<Dialog.Header>
@@ -48,24 +68,19 @@
 				<Dialog.Description>{description}</Dialog.Description>
 			</Dialog.Header>
 			<div class="flex justify-end space-x-2">
-				<Button variant="outline" on:click={() => (open = false)}>Cancel</Button>
-				<Button on:click={handleConfirm}>{confirmLabel}</Button>
+				{@render actions()}
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
 {:else}
 	<Drawer.Root bind:open>
-		<Drawer.Trigger asChild let:builder>
-			<Button
-				variant={triggerVariant}
-				builders={[builder]}
-				{disabled}
-				aria-label={triggerAriaLabel}
-				title={triggerAriaLabel}
-			>
-				<slot name="icon" />
-				{triggerLabel}
-			</Button>
+		<Drawer.Trigger
+			class={triggerClass}
+			{disabled}
+			aria-label={triggerAriaLabel}
+			title={triggerAriaLabel}
+		>
+			{@render trigger()}
 		</Drawer.Trigger>
 		<Drawer.Content>
 			<Drawer.Header class="text-left">
@@ -73,8 +88,7 @@
 				<Drawer.Description>{description}</Drawer.Description>
 			</Drawer.Header>
 			<div class="flex justify-end space-x-2 px-4 pb-4">
-				<Button variant="outline" on:click={() => (open = false)}>Cancel</Button>
-				<Button on:click={handleConfirm}>{confirmLabel}</Button>
+				{@render actions()}
 			</div>
 		</Drawer.Content>
 	</Drawer.Root>

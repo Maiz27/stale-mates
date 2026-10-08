@@ -1,14 +1,4 @@
-<!--
-	immutable: props are compared by reference. The view is a new object on every
-	patch (including the 250 ms clock tick), but the board-relevant fields keep
-	their identity unless they really change — so the chessground config is only
-	rebuilt (and `set`, which wipes user-drawn arrows) when the position, turn,
-	legal moves or orientation change (audit SM-5 perf).
--->
-<svelte:options immutable={true} />
-
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import Chessground from './Chessground.svelte';
 	import PromotionModal from './PromotionModal.svelte';
 	import type { Config } from 'chessground/config';
@@ -18,69 +8,81 @@
 	import { formatResult } from '$lib/chess/formatResult';
 	import { boardTheme } from '$lib/stores/boardTheme';
 
-	// Presentational: props in, events out. The board renders a `GameView` and
-	// emits the player's intent (`move`, `promotion`); the page owns the game
-	// state and applies those events. The board never mutates game state itself.
-	export let view: GameView;
-	export let playerColor: Color;
-	export let boardFlipped = false;
+	// Presentational: props in, callbacks out. The board renders a `GameView` and
+	// reports the player's intent (`onmove`, `onpromotion`); the page owns the game
+	// state and applies it. The board never mutates game state itself.
+	let {
+		view,
+		playerColor,
+		boardFlipped = false,
+		onmove,
+		onpromotion,
+		onpromotioncancel
+	}: {
+		view: GameView;
+		playerColor: Color;
+		boardFlipped?: boolean;
+		onmove: (move: { from: string; to: string }) => void;
+		onpromotion: (move: { from: string; to: string; piece: string }) => void;
+		onpromotioncancel: () => void;
+	} = $props();
 
-	const dispatch = createEventDispatcher<{
-		move: { from: string; to: string };
-		promotion: { from: string; to: string; piece: string };
-		promotionCancel: void;
-	}>();
+	let chessground = $state<ReturnType<typeof Chessground> | undefined>(undefined);
+	let promotionModalOpen = $state(false);
 
-	let chessground: Chessground;
-	let promotionModalOpen = false;
-
-	$: orientation = (
+	const orientation = $derived<Color>(
 		boardFlipped ? (playerColor === 'white' ? 'black' : 'white') : playerColor
-	) as Color;
+	);
 
-	// Local display FEN. Authoritative position comes from `view.fen`, but during
-	// a drag (and while the promotion modal is open) chessground's `change` event
-	// keeps this in sync with what's on the board so a reactive config rebuild
-	// doesn't snap a piece back. We only re-adopt `view.fen` when it genuinely
-	// advances to a new position — tracked via `appliedViewFen`.
-	let displayFen = view.fen;
-	let appliedViewFen = view.fen;
-	$: if (view.fen !== appliedViewFen) {
-		displayFen = view.fen;
-		appliedViewFen = view.fen;
-	}
-
-	// Open the promotion modal as soon as a promotion choice is pending.
-	$: if (view.promotionMove) {
-		promotionModalOpen = true;
-	}
-
-	// Mirror hint arrows onto the board whenever the hint changes.
-	let lastHint = view.hint;
-	$: if (view.hint !== lastHint) {
-		lastHint = view.hint;
-		updateHintShape();
-	}
-
-	// Board-relevant slices of the view. Primitives/refs only invalidate `config`
-	// when they actually change.
-	$: turn = view.turn;
-	$: inCheck = view.checkState.inCheck;
-	$: dests = view.destinations;
-	$: moveHistory = view.moveHistory;
-	$: movableColor = (
-		view.started && !view.gameOver.isOver && view.turn === playerColor && !view.promotionMove
+	// Board-relevant slices of the view. `view` is a new object on every patch
+	// (including the 250 ms clock tick), but these deriveds only propagate when
+	// their value/reference actually changes — so the chessground config (whose
+	// `set({fen})` wipes user-drawn arrows) is rebuilt only for real board changes
+	// (audit SM-5 perf).
+	const viewFen = $derived(view.fen);
+	const turn = $derived(view.turn);
+	const inCheck = $derived(view.checkState.inCheck);
+	const dests = $derived(view.destinations);
+	const moveHistory = $derived(view.moveHistory);
+	const hint = $derived(view.hint);
+	const promotionMove = $derived(view.promotionMove);
+	// Locked while a promotion choice is pending and after game over.
+	const movableColor = $derived<Color | undefined>(
+		view.started && !view.gameOver.isOver && turn === playerColor && !promotionMove
 			? playerColor
 			: undefined
-	) as Color | undefined;
+	);
 	// Highlight the last move (ours or the opponent's/AI's).
-	$: lastMove = (
+	const lastMove = $derived<Key[] | undefined>(
 		moveHistory.length
-			? [moveHistory[moveHistory.length - 1].from, moveHistory[moveHistory.length - 1].to]
+			? ([
+					moveHistory[moveHistory.length - 1].from,
+					moveHistory[moveHistory.length - 1].to
+				] as Key[])
 			: undefined
-	) as Key[] | undefined;
+	);
 
-	$: config = {
+	// Local display FEN. The authoritative position is `view.fen`, but during a
+	// drag (and while the promotion modal is open) chessground's `change` event
+	// keeps this in sync with the board so a config rebuild doesn't snap a piece
+	// back. It re-adopts `view.fen` whenever that genuinely changes.
+	let displayFen = $derived(viewFen);
+
+	// Open the promotion modal as soon as a promotion choice is pending.
+	$effect(() => {
+		if (promotionMove) promotionModalOpen = true;
+	});
+
+	// Mirror hint arrows onto the board whenever the hint changes.
+	$effect(() => {
+		const board = chessground;
+		if (!board) return;
+		board.setAutoShapes(
+			hint ? ([{ orig: hint.from, dest: hint.to, brush: 'green' }] as DrawShape[]) : []
+		);
+	});
+
+	const config = $derived({
 		fen: displayFen,
 		orientation,
 		turnColor: turn,
@@ -94,16 +96,12 @@
 			enabled: true
 		},
 		events: {
-			move: handleMove,
+			move: (from: string, to: string) => onmove({ from, to }),
 			change: () => {
-				if (chessground) {
-					displayFen = chessground.getFen();
-				}
+				if (chessground) displayFen = chessground.getFen();
 			}
 		},
 		movable: {
-			// Lock input while a promotion choice is pending so a second drag can't fire a move.
-			// Locked while a promotion choice is pending and after game over.
 			color: movableColor,
 			dests,
 			free: false,
@@ -120,42 +118,20 @@
 				yellow: { key: 'yellow', color: '#e68f00', opacity: 1, lineWidth: 10 }
 			}
 		}
-	} satisfies Config;
+	} satisfies Config);
 
-	function updateHintShape() {
-		if (chessground && view.hint) {
-			const shapes = [
-				{
-					orig: view.hint.from,
-					dest: view.hint.to,
-					brush: 'green'
-				}
-			] as DrawShape[];
-			chessground.setAutoShapes(shapes);
-		} else if (chessground) {
-			chessground.setAutoShapes([]);
-		}
-	}
-
-	function handleMove(from: string, to: string) {
-		dispatch('move', { from, to });
-	}
-
-	function handlePromotion(event: CustomEvent) {
-		const piece = event.detail.piece;
-		if (view.promotionMove) {
-			dispatch('promotion', { from: view.promotionMove.from, to: view.promotionMove.to, piece });
-		}
+	function handlePromotion(piece: string) {
+		if (promotionMove) onpromotion({ from: promotionMove.from, to: promotionMove.to, piece });
 	}
 
 	function handlePromotionCancel() {
 		// Snap the dragged pawn back to the authoritative position.
 		displayFen = view.fen;
 		chessground?.set({ fen: view.fen });
-		dispatch('promotionCancel');
+		onpromotioncancel();
 	}
 
-	$: resultText = formatResult(view.gameOver);
+	const resultText = $derived(formatResult(view.gameOver));
 </script>
 
 <section
@@ -166,17 +142,17 @@
 		<div
 			role="status"
 			aria-live="polite"
-			class="absolute left-0 right-0 top-0 z-10 bg-gray-800 bg-opacity-80 py-2 text-center text-white"
+			class="absolute top-0 right-0 left-0 z-10 bg-gray-800/80 py-2 text-center text-white"
 		>
 			{resultText}
 		</div>
 	{/if}
 	<Chessground bind:this={chessground} {config} />
-	{#if view.promotionMove}
+	{#if promotionMove}
 		<PromotionModal
 			bind:open={promotionModalOpen}
-			on:promotion={handlePromotion}
-			on:cancel={handlePromotionCancel}
+			onpromotion={handlePromotion}
+			oncancel={handlePromotionCancel}
 		/>
 	{/if}
 </section>
