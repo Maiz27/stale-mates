@@ -117,39 +117,50 @@ This server is intentionally simple and runs as a **single instance**:
 
 Environment variables (validated at startup; the server fails fast on invalid values):
 
-| Variable      | Required           | Default                 | Notes                                                     |
-| ------------- | ------------------ | ----------------------- | --------------------------------------------------------- |
-| `PORT`        | No                 | `3000`                  | Must be an integer 1-65535 if set.                        |
-| `ORIGIN`      | In production only | `http://localhost:5173` | Allowed CORS origin. Required when `NODE_ENV=production`. |
-| `ROOM_TTL_MS` | No                 | `1800000` (30 min)      | Abandoned-room sweep TTL (ms). Positive integer.          |
+| Variable              | Required           | Default                 | Notes                                                                                                                    |
+| --------------------- | ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`                | No                 | `3000`                  | Must be an integer 1-65535 if set.                                                                                       |
+| `ORIGIN`              | In production only | `http://localhost:5173` | Allowed frontend origin(s), comma-separated. Used for CORS **and** the WebSocket `Origin` check. Required in production. |
+| `ROOM_TTL_MS`         | No                 | `1800000` (30 min)      | How long a room with nobody connected is kept (measured from its last activity) before the sweep reaps it.               |
+| `DISCONNECT_GRACE_MS` | No                 | `60000` (60 s)          | How long a disconnected player has to return before the opponent may claim the win.                                      |
+
+Outside production the WebSocket `Origin` check also accepts any `localhost` origin
+and origin-less clients, so local tools work.
 
 ## API Endpoints
 
-- `POST /game/create`: Create a new game
-- `POST /game/join`: Join an existing game
+- `GET /health` → `{ status: 'ok', rooms }`
+- `POST /game/create` — body `{ time: 0 | 1 | 3 | 10, color?: 'white' | 'black' | 'random' }`
+  (`color` is the creator's seat, default white; `random` is resolved on the server).
+  Responds `{ id, you: { color, token }, invite: { color, token } }`. Rate-limited per IP.
 
-## WebSocket Events
+## WebSocket protocol
 
-The API uses the following WebSocket events for real-time communication:
+Connect to `/game/join?id=<roomId>` — the URL carries no secret. The wire types are
+defined once in `src/lib/protocol.ts` (copied verbatim to the frontend; run
+`node scripts/sync-protocol.mjs` from the repo root after editing, CI checks the copies
+match). Every inbound frame is validated (`src/lib/validate.ts`), frames are capped at
+4 KB, each connection has a message-rate budget, and dead sockets are reaped by a
+ping/pong heartbeat.
 
-Incoming events (from client to server):
+**Seats.** The first frame must be `{ type: 'join', token }`. The token selects the seat
+— the client never chooses its colour. The tokens returned by `/game/create` are
+single-use: the first `join` rotates the seat's token and returns the new one in
+`seat`, so a spent invite link can't take over the seat. Reconnecting (same tab) sends
+the rotated token; a newer connection for a seat replaces the older one (closed with
+code `4000`). Bad room / bad token / no `join` within 10 s → close `1008`.
 
-- `move`: Handle a player's move
-- `offerRematch`: Offer a rematch to the opponent
-- `acceptRematch`: Accept a rematch offer
-- `gameOver`: Notify the server about game over (e.g., due to timeout)
+Client → server: `join`, `move { from, to, promotion? }`, `resign`, `offerRematch`,
+`acceptRematch`, `claimVictory`.
 
-Outgoing events (from server to client):
+Server → client: `seat`, `opponentJoined`, `opponentDisconnected { graceMs }`,
+`opponentReconnected`, `gameStart`, `opponentMove` (normalised), `clock`, `gameOver`
+(`winner`, `reason`), `gameState` (full per-player resync: FEN, UCI move list, clocks,
+result, rematch state, opponent presence), `rematchOffer`, `rematchAccepted`.
 
-- `connected`: Confirm successful connection and provide player ID
-- `opponentMove`: Notify about opponent's move
-- `opponentJoined`: Notify when an opponent joins the game
-- `opponentReconnected`: Notify when an opponent reconnects
-- `gameStart`: Notify about game start with initial state
-- `gameOver`: Notify about game end with result
-- `gameState`: Provide current game state (used for reconnection)
-- `rematchOffer`: Notify about a rematch offer
-- `rematchAccepted`: Notify that a rematch has been accepted
+The server is authoritative for outcomes and time: clients can't declare a result,
+a move that arrives after the mover's flag fell loses on time, and a disconnected
+player's clock keeps running.
 
 ## Contributing
 

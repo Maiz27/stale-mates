@@ -1,23 +1,19 @@
 <script lang="ts">
-	import Icon from '@iconify/svelte';
 	import { goto } from '$app/navigation';
 	import { mediaQuery } from 'svelte-legos';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ColorSelector from '../controls/ColorSelector.svelte';
 	import type { Color } from 'chessground/types';
 	import TimeSelector from '../controls/TimeSelector.svelte';
+	import type { CreateGameResponse } from '$lib/chess/protocol';
+	import { setInviteToken, setSeatToken } from '$lib/chess/seat';
 
 	let open = false;
-	let opponentLink = '';
-	let playerLink = '';
 	let color: Color | 'random' = 'white';
 	let time = 0;
 	let errorMessage = '';
-	let copied = false;
-
 	let loading = false;
 
 	const isDesktop = mediaQuery('(min-width: 768px)');
@@ -26,6 +22,12 @@
 		'Match wits with friends in casual or competitive games. Enjoy chess together and improve your skills!';
 	const extraOptions = [{ value: 'random', label: 'Random Color' }];
 
+	/**
+	 * Create the room and go straight to it: the room page shows the invite link
+	 * (copy / share) while it waits, so there's no separate "Join Game" step.
+	 * The server picks colours (incl. 'random') and returns one seat token for us
+	 * and one for the invite link; both stay in this tab's sessionStorage.
+	 */
 	async function createGame() {
 		if (loading) return;
 
@@ -34,21 +36,16 @@
 		try {
 			const response = await fetch(`${import.meta.env.VITE_API_URL}/game/create`, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					time
-				})
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ time, color })
 			});
-
 			if (!response.ok) throw new Error('Failed to create game');
 
-			const { id } = await response.json();
-			const playerColor = color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
-			const opponentColor = playerColor === 'white' ? 'black' : 'white';
-			opponentLink = `${window.location.origin}/room?id=${id}&color=${opponentColor}`;
-			playerLink = `${window.location.origin}/room?id=${id}&color=${playerColor}`;
+			const { id, you, invite } = (await response.json()) as CreateGameResponse;
+			setSeatToken(id, you.token);
+			setInviteToken(id, invite.token);
+			open = false;
+			await goto(`/room?id=${encodeURIComponent(id)}`);
 		} catch (error) {
 			console.error('Error creating game:', error);
 			errorMessage = 'Failed to create game. Please try again.';
@@ -58,12 +55,9 @@
 	}
 
 	function resetState() {
-		opponentLink = '';
-		playerLink = '';
 		color = 'white';
 		time = 0;
 		errorMessage = '';
-		copied = false;
 	}
 
 	$: if (!open) resetState();
@@ -74,21 +68,6 @@
 
 	const handleTimeChange = (event: CustomEvent) => {
 		time = event.detail.value;
-	};
-
-	const navigateToGame = () => {
-		goto(playerLink);
-	};
-
-	const copyLink = async () => {
-		if (!navigator.clipboard) return;
-		try {
-			await navigator.clipboard.writeText(opponentLink);
-			copied = true;
-			setTimeout(() => (copied = false), 2000);
-		} catch {
-			// Clipboard write was blocked/denied — don't show a false success.
-		}
 	};
 </script>
 
@@ -108,46 +87,15 @@
 				<div class="space-y-4">
 					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
 					<TimeSelector on:timeChange={handleTimeChange} />
-					{#if opponentLink}
-						<div>
-							<p class="text-sm text-muted-foreground">
-								Share this link with your friend to play together:
-							</p>
-							<div class="relative grid place-items-center">
-								<Input
-									disabled
-									value={opponentLink}
-									type="url"
-									placeholder="link"
-									class="max-w-sm"
-								/>
-								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-									<button
-										title={copied ? 'Copied!' : 'Copy Link'}
-										aria-label={copied ? 'Invite link copied' : 'Copy invite link'}
-										on:click={copyLink}
-										class="p-1 hover:bg-muted"
-									>
-										<Icon
-											icon={copied ? 'radix-icons:check' : 'radix-icons:copy'}
-											font-size="1.2rem"
-										/>
-									</button>
-								</div>
-							</div>
-						</div>
-					{/if}
 				</div>
 				{#if errorMessage}
 					<p class="text-sm text-red-500">{errorMessage}</p>
 				{/if}
-				{#if opponentLink}
-					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
-				{:else}
-					<Button class={`w-full ${loading ? 'animate-pulse' : ''}`} on:click={createGame}
-						>Create Game</Button
-					>
-				{/if}
+				<Button
+					class={`w-full ${loading ? 'animate-pulse' : ''}`}
+					disabled={loading}
+					on:click={createGame}>{loading ? 'Creating…' : 'Create Game'}</Button
+				>
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
@@ -167,46 +115,15 @@
 				<div class="space-y-4">
 					<ColorSelector on:colorChange={handleColorChange} {extraOptions} />
 					<TimeSelector on:timeChange={handleTimeChange} />
-					{#if opponentLink}
-						<div>
-							<p class="text-sm text-muted-foreground">
-								Share this link with your friend to play together:
-							</p>
-							<div class="relative grid place-items-center">
-								<Input
-									disabled
-									value={opponentLink}
-									type="url"
-									placeholder="link"
-									class="max-w-sm"
-								/>
-								<div class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-									<button
-										title={copied ? 'Copied!' : 'Copy Link'}
-										aria-label={copied ? 'Invite link copied' : 'Copy invite link'}
-										on:click={copyLink}
-										class="p-1 hover:bg-muted"
-									>
-										<Icon
-											icon={copied ? 'radix-icons:check' : 'radix-icons:copy'}
-											font-size="1.2rem"
-										/>
-									</button>
-								</div>
-							</div>
-						</div>
-					{/if}
 				</div>
 				{#if errorMessage}
 					<p class="text-sm text-red-500">{errorMessage}</p>
 				{/if}
-				{#if opponentLink}
-					<Button class="w-full" on:click={navigateToGame}>Join Game</Button>
-				{:else}
-					<Button class={`w-full ${loading ? 'animate-pulse' : ''}`} on:click={createGame}
-						>Create Game</Button
-					>
-				{/if}
+				<Button
+					class={`w-full ${loading ? 'animate-pulse' : ''}`}
+					disabled={loading}
+					on:click={createGame}>{loading ? 'Creating…' : 'Create Game'}</Button
+				>
 			</div>
 		</Drawer.Content>
 	</Drawer.Root>

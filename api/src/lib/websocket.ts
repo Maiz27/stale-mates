@@ -1,77 +1,138 @@
 import WebSocket from 'ws';
 import { IncomingMessage } from 'http';
 import { URL } from 'url';
-import {
-	removePlayerFromGame,
-	handlePlayerMessage,
-	checkGameStart,
-	addPlayerToGame,
-	reconnectPlayerToGame
-} from './game';
+import { getGameRoom, removePlayerFromGame } from './game';
+import { parseClientMessage } from './validate';
+import type { Player } from './types';
 
-interface ConnectionParams {
-	id: string;
-	color: 'white' | 'black';
-	playerId: string | null;
+/** How long a socket may stay open without presenting a seat token. */
+export const JOIN_TIMEOUT_MS = 10_000;
+
+export interface ConnectionEnv {
+	ORIGIN?: string;
+	NODE_ENV?: string;
 }
 
-export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
-	trackHeartbeat(ws);
-	const params = parseConnectionParams(req);
-	if (!params) {
-		closeConnection(ws, 1008, 'Invalid game room');
-		return;
+/**
+ * Cross-site WebSocket hijacking guard (audit SM-3). Browsers always send
+ * `Origin` on a WS handshake and CORS does not apply to WebSockets, so the
+ * server must check it itself. Allowed origins come from `ORIGIN` (comma
+ * separated, shared with CORS). Outside production any localhost origin and
+ * origin-less (non-browser) clients are also allowed, so local dev just works.
+ */
+export function isOriginAllowed(origin: string | undefined, env: ConnectionEnv): boolean {
+	const allowed = (env.ORIGIN || 'http://localhost:5173')
+		.split(',')
+		.map((o) => o.trim())
+		.filter(Boolean);
+	if (origin && allowed.includes(origin)) return true;
+	if (env.NODE_ENV === 'production') return false;
+	if (!origin) return true;
+	try {
+		const { hostname } = new URL(origin);
+		return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+	} catch {
+		return false;
 	}
+}
 
-	console.log(`New connection attempt for game ${params.id} (color: ${params.color})`);
+/**
+ * Per-connection token bucket (audit SM-3). A legitimate client sends a handful
+ * of frames per move; anything faster is abuse, and the socket is closed.
+ */
+export class MessageBudget {
+	private tokens: number;
+	private last: number;
+	constructor(
+		private readonly capacity = 20,
+		private readonly refillPerSecond = 5,
+		private readonly now: () => number = Date.now
+	) {
+		this.tokens = capacity;
+		this.last = now();
+	}
+	take(): boolean {
+		const t = this.now();
+		this.tokens = Math.min(
+			this.capacity,
+			this.tokens + ((t - this.last) / 1000) * this.refillPerSecond
+		);
+		this.last = t;
+		if (this.tokens < 1) return false;
+		this.tokens -= 1;
+		return true;
+	}
+}
+
+/**
+ * Connection lifecycle:
+ *   1. Origin + room id are checked on the handshake (`?id=` carries no secret).
+ *   2. The first frame must be `{type:'join', token}`; the token picks the seat
+ *      (colour is never taken from the client). Reconnects present the rotated
+ *      token the server returned in `seat`. No secret ever appears in a URL.
+ *   3. Every later frame is validated (validate.ts) and rate-limited.
+ */
+export function handleWebSocketConnection(
+	ws: WebSocket,
+	req: IncomingMessage,
+	env: ConnectionEnv = process.env
+) {
+	trackHeartbeat(ws);
 
 	try {
-		const activePlayerId = handlePlayerConnection(ws, params);
-		if (!activePlayerId) {
-			closeConnection(ws, 1008, 'Unable to join game');
+		if (!isOriginAllowed(req.headers.origin, env)) {
+			closeConnection(ws, 1008, 'Origin not allowed');
 			return;
 		}
 
-		setupEventListeners(ws, params.id, activePlayerId);
-		checkGameStartStatus(params.id);
+		const id = parseRoomId(req.url);
+		if (!id || !getGameRoom(id)) {
+			closeConnection(ws, 1008, 'Invalid game room');
+			return;
+		}
+
+		const budget = new MessageBudget();
+		let player: Player | null = null;
+		const joinTimer = setTimeout(() => {
+			if (!player) closeConnection(ws, 1008, 'Join timeout');
+		}, JOIN_TIMEOUT_MS);
+		joinTimer.unref?.();
+
+		ws.on('message', (raw: WebSocket.RawData) => {
+			try {
+				if (!budget.take()) {
+					closeConnection(ws, 1008, 'Rate limit exceeded');
+					return;
+				}
+				const message = parseClientMessage(raw);
+				if (!player) {
+					if (!message || message.type !== 'join') {
+						closeConnection(ws, 1008, 'Expected join');
+						return;
+					}
+					clearTimeout(joinTimer);
+					const room = getGameRoom(id);
+					player = room ? room.claimSeat(message.token, ws) : null;
+					if (!player) closeConnection(ws, 1008, 'Unable to join game');
+					return;
+				}
+				// Malformed / unknown frames are dropped (never forwarded).
+				if (!message || message.type === 'join') return;
+				getGameRoom(id)?.handleMessage(player.id, message);
+			} catch (error) {
+				console.error('Error handling player message:', error);
+			}
+		});
+
+		ws.on('close', () => {
+			clearTimeout(joinTimer);
+			// Pass the socket so a late close from a replaced socket is ignored (audit SM-1.1).
+			if (player) removePlayerFromGame(id, player.id, ws);
+		});
 	} catch (error) {
 		console.error('Error handling WebSocket connection:', error);
 		closeConnection(ws, 1011, 'Internal server error');
 	}
-}
-
-function parseConnectionParams(req: IncomingMessage): ConnectionParams | null {
-	const url = new URL(req.url!, `http://${req.headers.host}`);
-	const id = url.searchParams.get('id');
-	const color = url.searchParams.get('color') as 'white' | 'black';
-	const playerId = url.searchParams.get('playerId');
-
-	if (!id) {
-		return null;
-	}
-
-	return { id, color, playerId };
-}
-
-function handlePlayerConnection(ws: WebSocket, params: ConnectionParams): string | null {
-	if (!params.playerId) {
-		console.log('Adding new player to game');
-		const activePlayerId = addPlayerToGame(params.id, params.color, ws);
-		if (activePlayerId) {
-			ws.send(JSON.stringify({ type: 'connected', playerId: activePlayerId }));
-		}
-		return activePlayerId;
-	} else {
-		console.log('Reconnecting existing player');
-		const reconnected = reconnectPlayerToGame(params.id, params.playerId, ws);
-		return reconnected ? params.playerId : null;
-	}
-}
-
-function setupEventListeners(ws: WebSocket, gameId: string, playerId: string) {
-	ws.on('message', (message: string) => handlePlayerMessage(gameId, playerId, message));
-	// Pass the socket so a late close from a replaced socket is ignored (audit SM-1.1).
-	ws.on('close', () => removePlayerFromGame(gameId, playerId, ws));
 }
 
 // Sockets that answered the last heartbeat ping. A socket missing from this set
@@ -116,13 +177,19 @@ export function startHeartbeat(
 	return timer;
 }
 
-function checkGameStartStatus(gameId: string) {
-	const gameStarted = checkGameStart(gameId);
-	if (gameStarted) {
-		console.log(`Game ${gameId} started with both players`);
+/** The room id from `?id=`, or null for a missing id or an unparseable URL. */
+export function parseRoomId(rawUrl: string | undefined): string | null {
+	try {
+		return new URL(rawUrl ?? '/', 'http://localhost').searchParams.get('id');
+	} catch {
+		return null;
 	}
 }
 
 function closeConnection(ws: WebSocket, code: number, reason: string) {
-	ws.close(code, reason);
+	try {
+		ws.close(code, reason);
+	} catch {
+		// already closing
+	}
 }

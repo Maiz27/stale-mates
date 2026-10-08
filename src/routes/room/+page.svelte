@@ -5,20 +5,32 @@
 	import Icon from '@iconify/svelte';
 	import ChessBoard from '$lib/components/chessBoard/ChessBoard.svelte';
 	import MoveList from '$lib/components/MoveList/MoveList.svelte';
-	import type { Color } from 'chessground/types';
 	import type { GameView } from '$lib/chess/types';
 	import { MultiplayerGameState } from '$lib/chess/MultiplayerGameState';
+	import {
+		getInviteToken,
+		getSeatToken,
+		inviteLink,
+		seatTokenFromHash,
+		setSeatToken
+	} from '$lib/chess/seat';
 	import { formatTime } from '$lib/utils';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
 
 	const id = $page.url.searchParams.get('id');
-	// Validate the color param ('red' &c. must not slip through); default to white.
-	const playerColor: Color = $page.url.searchParams.get('color') === 'black' ? 'black' : 'white';
-	const opponentColor: Color = playerColor === 'white' ? 'black' : 'white';
 
 	let gameState: MultiplayerGameState | undefined;
 	let view: GameView | undefined;
 	let boardFlipped = false;
+	// No seat token for this room in this tab (e.g. a link without its #seat=… part).
+	let missingSeat = false;
+	// Only the creator's tab holds the opponent's invite token.
+	let opponentLink = '';
+	const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+	// Our colour is assigned by the server; until the `seat` arrives show white.
+	$: playerColor = view?.player ?? 'white';
 
 	// Everything the page renders is projected from the single view-model.
 	$: status = view?.connectionStatus ?? 'connecting';
@@ -60,13 +72,18 @@
 
 	let copied = false;
 
-	// Link to share with the opponent so they join as the other color.
-	$: opponentLink = id ? `${$page.url.origin}/room?id=${id}&color=${opponentColor}` : '';
-
 	const offerRematch = () => gameState?.offerRematch();
 	const acceptRematch = () => gameState?.acceptRematch();
 	const claimVictory = () => gameState?.claimVictory();
 	const reload = () => location.reload();
+
+	async function shareInvite() {
+		try {
+			await navigator.share({ title: 'Play chess with me on Stale Mates', url: opponentLink });
+		} catch {
+			// Dismissed or unsupported — the copy button is still there.
+		}
+	}
 
 	async function copyInvite() {
 		if (!navigator.clipboard) return;
@@ -86,7 +103,23 @@
 	onMount(() => {
 		if (!id) return; // invalid room — handled in markup
 
-		gameState = new MultiplayerGameState({ player: playerColor, roomId: id });
+		// An invite link carries the seat token in the fragment. Move it into this
+		// tab's sessionStorage and strip it from the address bar so it isn't left in
+		// history or accidentally re-shared.
+		const fromHash = seatTokenFromHash(location.hash);
+		if (fromHash) {
+			setSeatToken(id, fromHash);
+			history.replaceState(history.state, '', location.pathname + location.search);
+		}
+		const token = getSeatToken(id);
+		if (!token) {
+			missingSeat = true;
+			return;
+		}
+		const invite = getInviteToken(id);
+		if (invite) opponentLink = inviteLink(location.origin, id, invite);
+
+		gameState = new MultiplayerGameState({ roomId: id, token });
 		const unsubscribe = gameState.subscribe((value) => (view = value));
 
 		return () => unsubscribe();
@@ -128,6 +161,14 @@
 					</p>
 					<Button on:click={leave}>Back to Home</Button>
 				</div>
+			{:else if missingSeat}
+				<div class="space-y-3" role="alert">
+					<p class="font-semibold">This invite link is incomplete</p>
+					<p class="text-muted-foreground">
+						Ask your friend to send the full link again, or start a new game.
+					</p>
+					<Button on:click={leave}>Back to Home</Button>
+				</div>
 			{:else if status === 'rejected'}
 				<div class="space-y-3" role="alert">
 					<p class="font-semibold">Room not found or full</p>
@@ -157,18 +198,34 @@
 				{#if waiting}
 					<div class="mx-auto max-w-md space-y-3">
 						<p>Waiting for opponent to join…</p>
-						<div class="flex items-center justify-center gap-2">
-							<Button variant="outline" on:click={copyInvite} aria-label="Copy invite link">
-								<Icon icon="radix-icons:copy" class="mr-2" />
-								{copied ? 'Link copied!' : 'Copy invite link'}
-							</Button>
+						{#if opponentLink}
+							<label class="sr-only" for="invite-link">Invite link</label>
+							<Input
+								id="invite-link"
+								readonly
+								value={opponentLink}
+								type="url"
+								class="text-center"
+								on:focus={(e) => e.currentTarget.select()}
+							/>
+							<div class="flex flex-wrap items-center justify-center gap-2">
+								{#if canShare}
+									<Button on:click={shareInvite}>Share invite</Button>
+								{/if}
+								<Button variant="outline" on:click={copyInvite} aria-label="Copy invite link">
+									<Icon icon="radix-icons:copy" class="mr-2" />
+									{copied ? 'Link copied!' : 'Copy invite link'}
+								</Button>
+								<Button variant="ghost" on:click={leave}>Leave</Button>
+							</div>
+							<p class="text-xs text-muted-foreground" aria-live="polite">
+								{copied
+									? 'Invite link copied to your clipboard.'
+									: 'Send the link to a friend — it works once, for one opponent.'}
+							</p>
+						{:else}
 							<Button variant="ghost" on:click={leave}>Leave</Button>
-						</div>
-						<p class="text-xs text-muted-foreground" aria-live="polite">
-							{copied
-								? 'Invite link copied to your clipboard.'
-								: 'Share the link so your friend can join.'}
-						</p>
+						{/if}
 					</div>
 				{:else}
 					{#if opponentAway}

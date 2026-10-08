@@ -24,7 +24,9 @@ const server = http.createServer(app);
 startRoomSweep();
 
 // Create a WebSocket server attached to the HTTP server
-const wss = new WebSocket.Server({ server });
+// maxPayload: the largest legitimate frame is a ~100-byte move/join; anything
+// bigger is abuse and is refused by `ws` itself (close 1009) before parsing.
+const wss = new WebSocket.Server({ server, maxPayload: 4096 });
 
 // Handle WebSocket connections
 wss.on('connection', handleWebSocketConnection);

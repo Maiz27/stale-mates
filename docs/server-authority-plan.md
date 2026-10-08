@@ -1,8 +1,20 @@
 # Server Authority Refactor Plan
 
-**Status:** Draft / design doc
-**Scope:** Make the multiplayer backend the single source of truth for board, turn, clocks, colors, and end conditions. Turn the client into a (mostly) pure renderer.
-**Audience:** A single developer implementing this incrementally on a hobby/portfolio project.
+**Status:** Steps 0–6 implemented (see "Implementation status" below). Original design doc kept for history.
+
+> **Implementation status.** Steps 0–3 landed in the remediation pass. Steps 4–6 landed in
+> the follow-up pass (AUDIT SM-3): one shared `protocol.ts` (copied verbatim, CI-checked
+> by `scripts/sync-protocol.mjs`), runtime validation of every inbound frame, server-side
+> colour assignment and per-seat tokens. **Deviations from the plan:** the token travels in
+> the first WebSocket frame (`{type:'join', token}`) rather than `Sec-WebSocket-Protocol`
+> (no proxy/echo quirks); creation tokens are single-use and rotate on first claim
+> (a spent invite link is worthless); tokens live in per-tab `sessionStorage` and invite
+> links carry them in the URL fragment. **Not done:** the HttpOnly creator cookie (the
+> cross-origin `SameSite=None` + credentials setup was judged not worth it for this deploy),
+> so a seat token is readable by page JS (XSS on the frontend could steal an in-progress
+> seat).
+> **Scope:** Make the multiplayer backend the single source of truth for board, turn, clocks, colors, and end conditions. Turn the client into a (mostly) pure renderer.
+> **Audience:** A single developer implementing this incrementally on a hobby/portfolio project.
 
 ---
 

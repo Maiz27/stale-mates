@@ -3,7 +3,7 @@ import type WebSocket from 'ws';
 import { GameRoom } from './GameRoom';
 import type { TimeOption } from './types';
 
-// Minimal fake socket — addPlayer/startGame call ws.send; we just need it to exist.
+// Minimal fake socket — claimSeat/startGame call ws.send; we just need it to exist.
 const fakeWs = () => ({ send: () => {} }) as unknown as WebSocket;
 
 /**
@@ -45,26 +45,58 @@ describe('GameRoom constructor / convertTimeOption', () => {
 	});
 });
 
-describe('GameRoom seat assignment (audit F2)', () => {
-	it('rejects a second player requesting an already-taken color', () => {
-		const room = new GameRoom({ time: 0 });
-		room.addPlayer('white', fakeWs());
-		expect(() => room.addPlayer('white', fakeWs())).toThrow('Color already taken');
-		expect(room.players).toHaveLength(1);
-	});
+describe('GameRoom seats & tokens (audit F2 / C3)', () => {
+	const sentTo = () => {
+		const frames: Record<string, unknown>[] = [];
+		const ws = {
+			send: (d: string) => frames.push(JSON.parse(d)),
+			close: () => {}
+		} as unknown as WebSocket;
+		return { ws, frames };
+	};
 
-	it('accepts two players with distinct colors and starts the game', () => {
-		const room = new GameRoom({ time: 0 }); // unlimited -> no lingering flag timer
-		room.addPlayer('white', fakeWs());
-		room.addPlayer('black', fakeWs());
+	it('seats each token holder in its own colour and starts the game', () => {
+		const room = new GameRoom({ time: 0 });
+		const tokens = room.initialTokens();
+		expect(room.claimSeat(tokens.black, fakeWs())?.color).toBe('black');
+		expect(room.claimSeat(tokens.white, fakeWs())?.color).toBe('white');
 		expect(room.players.map((p) => p.color).sort()).toEqual(['black', 'white']);
 		expect(room.gameStarted).toBe(true);
 	});
 
-	it('rejects a third player even with a new color', () => {
+	it('rejects an unknown token', () => {
 		const room = new GameRoom({ time: 0 });
-		room.addPlayer('white', fakeWs());
-		room.addPlayer('black', fakeWs());
-		expect(() => room.addPlayer('white', fakeWs())).toThrow('Game room is full');
+		expect(room.claimSeat('not-a-real-token-xyz', fakeWs())).toBeNull();
+		expect(room.players).toHaveLength(0);
+	});
+
+	it('makes the invite token single-use: after the first claim it is rotated', () => {
+		const room = new GameRoom({ time: 0 });
+		const invite = room.initialTokens().black;
+		const { ws, frames } = sentTo();
+		room.claimSeat(invite, ws);
+		const seat = frames.find((f) => f.type === 'seat') as { color: string; token: string };
+		expect(seat.color).toBe('black');
+		expect(seat.token).not.toBe(invite);
+
+		// A leaked invite link can no longer take the seat...
+		expect(room.claimSeat(invite, fakeWs())).toBeNull();
+		// ...but the rotated token reconnects the same player.
+		const again = room.claimSeat(seat.token, fakeWs());
+		expect(again?.color).toBe('black');
+		expect(room.players).toHaveLength(1);
+	});
+
+	it('resolves a random creator colour server-side', () => {
+		for (let i = 0; i < 10; i++) {
+			const room = new GameRoom({ time: 0, creatorColor: 'random' });
+			expect(['white', 'black']).toContain(room.creatorColor);
+		}
+	});
+
+	it('rejects an invalid creator colour', () => {
+		expect(() => new GameRoom({ time: 0, creatorColor: 'red' as 'white' })).toThrow(
+			'Invalid color'
+		);
 	});
 });

@@ -1,4 +1,6 @@
-import { Color } from './types';
+import type { Color, ClockSnapshot } from './protocol';
+
+export type { ClockSnapshot };
 
 /**
  * Pure, authoritative clock math for the multiplayer server.
@@ -10,14 +12,6 @@ import { Color } from './types';
  */
 
 export type ClockMs = { white: number; black: number };
-
-/** A snapshot the client interpolates from for smooth display. */
-export type ClockSnapshot = {
-	whiteMs: number;
-	blackMs: number;
-	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
-	serverTime: number; // Date.now() on the server when the snapshot was taken
-};
 
 /**
  * Remaining ms for `color`. If `color` is the running side, the time elapsed

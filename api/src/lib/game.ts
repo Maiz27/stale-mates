@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { GameRoom } from './GameRoom';
-import { TimeOption } from './types';
+import { Color, TimeOption } from './types';
+import type { CreateGameResponse } from './protocol';
 
 const gameRooms = new Map<string, GameRoom>();
 
@@ -67,30 +68,30 @@ export function startRoomSweep(intervalMs: number = 5 * 60 * 1000): ReturnType<t
 	return timer;
 }
 
-export function createGame({ time }: { time: TimeOption }): string {
-	const room = new GameRoom({ time, disconnectGraceMs: resolveDisconnectGraceMs() });
+export function createGame({
+	time,
+	color = 'white'
+}: {
+	time: TimeOption;
+	color?: Color | 'random';
+}): CreateGameResponse {
+	const room = new GameRoom({
+		time,
+		creatorColor: color,
+		disconnectGraceMs: resolveDisconnectGraceMs()
+	});
 	gameRooms.set(room.id, room);
-	return room.id;
+	const tokens = room.initialTokens();
+	const invite: Color = room.creatorColor === 'white' ? 'black' : 'white';
+	return {
+		id: room.id,
+		you: { color: room.creatorColor, token: tokens[room.creatorColor] },
+		invite: { color: invite, token: tokens[invite] }
+	};
 }
 
 export function getGameRoom(gameId: string): GameRoom | undefined {
 	return gameRooms.get(gameId);
-}
-
-export function addPlayerToGame(
-	gameId: string,
-	color: 'white' | 'black',
-	ws: WebSocket
-): string | null {
-	const room = getGameRoom(gameId);
-	if (!room) return null;
-
-	try {
-		return room.addPlayer(color, ws);
-	} catch (error) {
-		console.error('Error adding player to game:', error);
-		return null;
-	}
 }
 
 /**
@@ -102,41 +103,6 @@ export function removePlayerFromGame(gameId: string, playerId: string, ws?: WebS
 	getGameRoom(gameId)?.removePlayer(playerId, ws);
 }
 
-export function reconnectPlayerToGame(gameId: string, playerId: string, ws: WebSocket): boolean {
-	const room = getGameRoom(gameId);
-	if (room) {
-		return room.reconnectPlayer(playerId, ws);
-	}
-	return false;
-}
-
-export function handlePlayerMessage(gameId: string, playerId: string, message: string) {
-	const room = getGameRoom(gameId);
-	if (!room) return;
-
-	let parsed;
-	try {
-		parsed = JSON.parse(message);
-	} catch (error) {
-		console.error('Error parsing player message, dropping frame:', error);
-		return;
-	}
-
-	// JSON.parse can legitimately yield null/number/string; handleMessage reads
-	// `message.type`, which would throw on a non-object. Drop those frames.
-	if (typeof parsed !== 'object' || parsed === null) {
-		console.error('Dropping non-object player message frame');
-		return;
-	}
-
-	room.handleMessage(playerId, parsed);
-}
-
 export function getRoomCount() {
 	return gameRooms.size;
-}
-
-export function checkGameStart(gameId: string): boolean {
-	const room = getGameRoom(gameId);
-	return room ? room.gameStarted : false;
 }

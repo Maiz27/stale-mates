@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { MultiplayerGameState, type GameSocket } from './MultiplayerGameState';
-import type { ClientMessage, ServerMessage } from './protocol';
+import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
 import type { ConnectionStatus } from '../websocket/WebSocketManager';
 
 beforeAll(() => {
@@ -49,14 +49,38 @@ class FakeSocket implements GameSocket {
 
 const unlimited = { initial: 0, lowTimeThreshold: 0, increment: 0, isUnlimited: true };
 
-function setup(player: 'white' | 'black' = 'white') {
+function setup(token: string | null = 'seat-token-123') {
 	const socket = new FakeSocket();
+	let hello: () => ClientMessage | null = () => null;
 	const game = new MultiplayerGameState({
-		player,
 		roomId: 'room1',
-		connect: () => socket as unknown as GameSocket
+		token,
+		connect: (_url, h) => {
+			hello = h;
+			return socket as unknown as GameSocket;
+		}
 	});
-	return { game, socket };
+	return { game, socket, hello: () => hello() };
+}
+
+const NO_CLOCK = { whiteMs: 0, blackMs: 0, running: null, serverTime: 0 };
+
+/** A complete gameState frame with sensible defaults. */
+function state(partial: Partial<GameStateMessage>): GameStateMessage {
+	return {
+		type: 'gameState',
+		started: true,
+		fen: START,
+		turn: 'white',
+		moves: [],
+		clock: NO_CLOCK,
+		timeControl: unlimited,
+		gameOver: null,
+		rematch: { mine: false, opponent: false },
+		opponentConnected: true,
+		opponentGraceMs: null,
+		...partial
+	};
 }
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -69,14 +93,15 @@ afterEach(() => {
 describe('MultiplayerGameState resync (SM-1.5)', () => {
 	it('keeps the SAN move list across a gameState resync', () => {
 		const { game, socket } = setup();
-		socket.emit({
-			type: 'gameState',
-			started: true,
-			fen: AFTER_E4_E5,
-			turn: 'white',
-			moves: ['e2e4', 'e7e5'],
-			timeControl: unlimited
-		});
+		socket.emit(
+			state({
+				started: true,
+				fen: AFTER_E4_E5,
+				turn: 'white',
+				moves: ['e2e4', 'e7e5'],
+				timeControl: unlimited
+			})
+		);
 		const view = get(game);
 		expect(view.sanHistory).toEqual(['e4', 'e5']);
 		expect(view.moveHistory.map((m) => `${m.from}${m.to}`)).toEqual(['e2e4', 'e7e5']);
@@ -85,33 +110,41 @@ describe('MultiplayerGameState resync (SM-1.5)', () => {
 
 	it('drops a rejected optimistic move when the server resyncs', () => {
 		const { game, socket } = setup();
-		socket.emit({ type: 'gameStart', fen: START, turn: 'white', timeControl: unlimited });
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK
+		});
 		game.makeMove({ from: 'e2', to: 'e4' });
 		expect(get(game).moveHistory).toHaveLength(1);
 
 		// Server rejected it (e.g. flagged): resync to the start position.
-		socket.emit({
-			type: 'gameState',
-			started: true,
-			fen: START,
-			turn: 'white',
-			moves: [],
-			timeControl: unlimited
-		});
+		socket.emit(
+			state({
+				started: true,
+				fen: START,
+				turn: 'white',
+				moves: [],
+				timeControl: unlimited
+			})
+		);
 		expect(get(game).moveHistory).toEqual([]);
 		expect(get(game).sanHistory).toEqual([]);
 	});
 
 	it('falls back to the FEN when the move list does not reproduce it', () => {
 		const { game, socket } = setup();
-		socket.emit({
-			type: 'gameState',
-			started: true,
-			fen: AFTER_E4_E5,
-			turn: 'white',
-			moves: ['e2e5'],
-			timeControl: unlimited
-		});
+		socket.emit(
+			state({
+				started: true,
+				fen: AFTER_E4_E5,
+				turn: 'white',
+				moves: ['e2e5'],
+				timeControl: unlimited
+			})
+		);
 		expect(get(game).fen).toBe(AFTER_E4_E5);
 	});
 });
@@ -119,18 +152,19 @@ describe('MultiplayerGameState resync (SM-1.5)', () => {
 describe('MultiplayerGameState finished-game reconnect (SM-1.3)', () => {
 	it('shows the result and rematch state from the resync payload', () => {
 		const { game, socket } = setup();
-		socket.emit({
-			type: 'gameState',
-			started: false,
-			fen: START,
-			turn: 'white',
-			moves: [],
-			timeControl: unlimited,
-			gameOver: { winner: 'black', reason: 'resignation' },
-			rematch: { mine: true, opponent: false },
-			opponentConnected: true,
-			opponentGraceMs: null
-		});
+		socket.emit(
+			state({
+				started: false,
+				fen: START,
+				turn: 'white',
+				moves: [],
+				timeControl: unlimited,
+				gameOver: { winner: 'black', reason: 'resignation' },
+				rematch: { mine: true, opponent: false },
+				opponentConnected: true,
+				opponentGraceMs: null
+			})
+		);
 		const view = get(game);
 		expect(view.gameOver).toEqual({ isOver: true, winner: 'black', reason: 'resignation' });
 		expect(view.myRematchOffer).toBe(true);
@@ -143,16 +177,17 @@ describe('MultiplayerGameState opponent presence (SM-1.6)', () => {
 		const { game, socket } = setup();
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
-		socket.emit({
-			type: 'gameState',
-			started: true,
-			fen: START,
-			turn: 'white',
-			moves: [],
-			timeControl: unlimited,
-			opponentConnected: false,
-			opponentGraceMs: 5_000
-		});
+		socket.emit(
+			state({
+				started: true,
+				fen: START,
+				turn: 'white',
+				moves: [],
+				timeControl: unlimited,
+				opponentConnected: false,
+				opponentGraceMs: 5_000
+			})
+		);
 		expect(get(game).opponentConnected).toBe(false);
 		expect(get(game).opponentClaimableAt).toBe(15_000);
 	});
@@ -161,7 +196,13 @@ describe('MultiplayerGameState opponent presence (SM-1.6)', () => {
 		const { game, socket } = setup();
 		vi.useFakeTimers();
 		vi.setSystemTime(1_000);
-		socket.emit({ type: 'gameStart', fen: START, turn: 'white', timeControl: unlimited });
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: unlimited,
+			clock: NO_CLOCK
+		});
 		socket.emit({ type: 'opponentDisconnected', graceMs: 60_000 });
 		expect(get(game).opponentConnected).toBe(false);
 		expect(get(game).opponentClaimableAt).toBe(61_000);
@@ -199,5 +240,32 @@ describe('MultiplayerGameState connection status (SM-1.7)', () => {
 		const { game, socket } = setup();
 		socket.setStatus('rejected');
 		expect(get(game).connectionStatus).toBe('rejected');
+	});
+});
+
+describe('MultiplayerGameState seats (SM-3)', () => {
+	it('sends the seat token as the first frame, never in the URL', () => {
+		let seenUrl = '';
+		const socket = new FakeSocket();
+		let hello: () => ClientMessage | null = () => null;
+		new MultiplayerGameState({
+			roomId: 'room1',
+			token: 'seat-token-123',
+			connect: (url, h) => {
+				seenUrl = url;
+				hello = h;
+				return socket as unknown as GameSocket;
+			}
+		});
+		expect(seenUrl).toMatch(/\/game\/join\?id=room1$/);
+		expect(hello()).toEqual({ type: 'join', token: 'seat-token-123' });
+	});
+
+	it('adopts the server-assigned colour and the rotated token', () => {
+		const { game, socket, hello } = setup();
+		socket.emit({ type: 'seat', color: 'black', token: 'rotated-token-456' });
+		expect(get(game).player).toBe('black');
+		expect(game.player).toBe('black');
+		expect(hello()).toEqual({ type: 'join', token: 'rotated-token-456' });
 	});
 });

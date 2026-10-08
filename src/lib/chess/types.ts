@@ -1,22 +1,14 @@
 import type { PieceSymbol, Square } from 'chess.js';
 import type { Color } from 'chessground/types';
 import type { ConnectionStatus } from '../websocket/WebSocketManager';
+import type { GameOverReason, TimeControl, ClockSnapshot } from './protocol';
 
 export type GameMode = 'pve' | 'pvp';
 
 export type PromotionMove = { from: string; to: string } | null;
 
-export type GameOverReason =
-	| 'checkmate'
-	| 'stalemate'
-	| 'threefold'
-	| 'insufficient'
-	| 'fiftyMove'
-	| 'draw'
-	| 'timeout'
-	| 'timeoutVsInsufficient'
-	| 'resignation'
-	| 'abandonment';
+// Wire-level types come from the shared protocol (identical copy on the server).
+export type { GameOverReason, TimeControl, ClockSnapshot };
 
 export type GameOver = {
 	isOver: boolean;
@@ -34,25 +26,6 @@ export type ChessMove = {
 
 export type MoveType =
 	'normal' | 'capture' | 'castle' | 'check' | 'promote' | 'game-start' | 'game-end';
-
-// Single canonical definition, mirrored on the server at api/src/lib/types.ts.
-// All fields required (the optional fields here had drifted from the server).
-export type TimeControl = {
-	initial: number; // in seconds
-	lowTimeThreshold: number; // in seconds
-	increment: number; // in seconds
-	isUnlimited: boolean;
-};
-
-// Authoritative clock snapshot from the server; the client interpolates from it
-// for smooth display and never decides game-over from its own timer. Mirrors
-// api/src/lib/clock.ts ClockSnapshot.
-export type ClockSnapshot = {
-	whiteMs: number;
-	blackMs: number;
-	running: Color | null; // whose clock is ticking (null = paused / unlimited / over)
-	serverTime: number; // Date.now() on the server when the snapshot was taken
-};
 
 // Player-relative clock for display. The game modes resolve white/black into
 // "mine" vs "the opponent's" so consumers never branch on player color.

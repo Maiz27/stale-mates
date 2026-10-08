@@ -162,10 +162,13 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 
 **Backend (Fly secrets / container env):**
 
-- `ORIGIN` — the deployed frontend origin, used for CORS (e.g. `https://stalemates.magedfaiz.xyz`)
+- `ORIGIN` — the deployed frontend origin(s), comma-separated, used for CORS and the
+  WebSocket `Origin` allowlist (e.g. `https://stalemates.magedfaiz.xyz`)
 - `PORT` — port the server listens on (defaults to `3000`)
 - `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
   default `1800000` = 30 min). Disconnected players can rejoin until then.
+- `DISCONNECT_GRACE_MS` — how long a disconnected player has before the opponent may
+  claim the win (ms, default `60000`).
 
 ### Deploying the Frontend (Vercel)
 

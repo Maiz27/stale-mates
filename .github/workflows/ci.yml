@@ -50,6 +50,9 @@ jobs:
       - name: Format (prettier)
         run: bunx prettier --check .
 
+      - name: Shared protocol copies match
+        run: node scripts/sync-protocol.mjs --check
+
       - name: Lint
         run: bunx eslint .
 

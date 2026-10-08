@@ -17,11 +17,13 @@ const API_URL = process.env.VITE_API_URL ?? 'http://localhost:3000';
  * (so the test skips rather than failing on a missing server). A reachable
  * server that responds badly is a real regression and is thrown, failing the test.
  */
-async function createRoom(page: Page): Promise<string | null> {
+type Room = { id: string; white: string; black: string };
+
+async function createRoom(page: Page): Promise<Room | null> {
 	let res;
 	try {
 		res = await page.request.post(`${API_URL}/game/create`, {
-			data: { time: 0 },
+			data: { time: 0, color: 'white' },
 			timeout: 5_000
 		});
 	} catch {
@@ -31,16 +33,27 @@ async function createRoom(page: Page): Promise<string | null> {
 	if (!res.ok()) {
 		throw new Error(`POST /game/create failed: ${res.status()} ${res.statusText()}`);
 	}
-	const body = (await res.json()) as { id?: string };
-	if (!body.id) throw new Error('POST /game/create returned no room id');
-	return body.id;
+	const body = (await res.json()) as {
+		id?: string;
+		you?: { color: string; token: string };
+		invite?: { color: string; token: string };
+	};
+	if (!body.id || !body.you || !body.invite) {
+		throw new Error('POST /game/create returned no room id / seats');
+	}
+	// The creator asked for white, so the invite seat is black.
+	return { id: body.id, white: body.you.token, black: body.invite.token };
 }
+
+/** Invite-style link: the seat token rides in the URL fragment. */
+const seatUrl = (room: Room, color: 'white' | 'black') =>
+	`/room?id=${room.id}#seat=${color === 'white' ? room.white : room.black}`;
 
 test.describe('Multiplayer mode', () => {
 	test('white move propagates to black', async ({ browser, page }) => {
-		const roomId = await createRoom(page);
+		const room = await createRoom(page);
 		test.skip(
-			roomId === null,
+			room === null,
 			'API server at ' +
 				API_URL +
 				' not reachable (or frontend build lacks VITE_API_URL). ' +
@@ -54,8 +67,8 @@ test.describe('Multiplayer mode', () => {
 		const black = await blackCtx.newPage();
 
 		try {
-			await white.goto(`/room?id=${roomId}&color=white`);
-			await black.goto(`/room?id=${roomId}&color=black`);
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
 
 			// Once both sockets are connected the game starts and both boards render.
 			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
@@ -102,7 +115,46 @@ test.describe('Multiplayer mode', () => {
 		const probe = await createRoom(page);
 		test.skip(probe === null, 'API server not reachable');
 		await page.goto('/room?id=does-not-exist&color=white');
+		await expect(page.getByText('This invite link is incomplete')).toBeVisible({ timeout: 15_000 });
+
+		await page.goto('/room?id=does-not-exist#seat=abcdefghijklmnop');
 		await expect(page.getByText('Room not found or full')).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole('button', { name: 'Back to Home' })).toBeVisible();
+	});
+
+	test('a used invite link cannot take over the seat', async ({ browser, page }) => {
+		const room = await createRoom(page);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const black = await a.newPage();
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(black.getByText('You are playing as')).toBeVisible({ timeout: 15_000 });
+			await expect(black.getByText('black', { exact: true })).toBeVisible();
+
+			// Someone else opens the same (now spent) invite link.
+			const intruder = await b.newPage();
+			await intruder.goto(seatUrl(room!, 'black'));
+			await expect(intruder.getByText('Room not found or full')).toBeVisible({ timeout: 15_000 });
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
+	test('creating a game from home goes straight to the waiting room with an invite link', async ({
+		page
+	}) => {
+		const probe = await createRoom(page);
+		test.skip(probe === null, 'API server not reachable');
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Play Friend: Friendly Duel' }).click();
+		await page.getByRole('button', { name: 'Create Game' }).click();
+		await expect(page).toHaveURL(/\/room\?id=/);
+		await expect(page.getByText('Waiting for opponent to join…')).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByLabel('Invite link', { exact: true })).toHaveValue(
+			/\/room\?id=.+#seat=/
+		);
 	});
 });

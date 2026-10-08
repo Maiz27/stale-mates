@@ -38,9 +38,16 @@ function setup(time: TimeOption = 0, opts: { graceMs?: number } = {}) {
 	const room = new GameRoom({ time, disconnectGraceMs: opts.graceMs ?? 60_000, now: clock.get });
 	const white = new FakeWs();
 	const black = new FakeWs();
-	const whiteId = room.addPlayer('white', asWs(white));
-	const blackId = room.addPlayer('black', asWs(black));
-	return { room, white, black, whiteId, blackId, clock };
+	const tokens = room.initialTokens();
+	const whiteId = room.claimSeat(tokens.white, asWs(white))!.id;
+	const blackId = room.claimSeat(tokens.black, asWs(black))!.id;
+	const tokenOf = (ws: FakeWs) => (ws.last('seat') as { token: string }).token;
+	// Test helper: reconnect a seat with the rotated token it was given.
+	const reconnect = (id: string, ws: FakeWs) => {
+		const seatWs = id === whiteId ? white : black;
+		return room.claimSeat(tokenOf(seatWs), asWs(ws)) !== null;
+	};
+	return { room, white, black, whiteId, blackId, clock, reconnect };
 }
 
 beforeEach(() => {
@@ -52,9 +59,9 @@ afterEach(() => {
 
 describe('reconnect race (SM-1.1)', () => {
 	it('ignores a late close from the old socket after the seat reconnected', () => {
-		const { room, white, whiteId } = setup();
+		const { reconnect, room, white, whiteId } = setup();
 		const fresh = new FakeWs();
-		expect(room.reconnectPlayer(whiteId, asWs(fresh))).toBe(true);
+		expect(reconnect(whiteId, asWs(fresh))).toBe(true);
 
 		// The old socket's close event arrives late.
 		room.removePlayer(whiteId, asWs(white));
@@ -65,8 +72,8 @@ describe('reconnect race (SM-1.1)', () => {
 	});
 
 	it('closes the superseded socket when a seat reconnects', () => {
-		const { room, white, whiteId } = setup();
-		room.reconnectPlayer(whiteId, asWs(new FakeWs()));
+		const { reconnect, white, whiteId } = setup();
+		reconnect(whiteId, asWs(new FakeWs()));
 		expect(white.closed?.code).toBe(CLOSE_REPLACED);
 	});
 
@@ -81,44 +88,44 @@ describe('reconnect race (SM-1.1)', () => {
 	});
 
 	it('tells the opponent when the player comes back', () => {
-		const { room, white, black, whiteId } = setup();
+		const { reconnect, room, white, black, whiteId } = setup();
 		room.removePlayer(whiteId, asWs(white));
-		room.reconnectPlayer(whiteId, asWs(new FakeWs()));
+		reconnect(whiteId, asWs(new FakeWs()));
 		expect(black.of('opponentReconnected')).toHaveLength(1);
 	});
 });
 
 describe('resync payload (SM-1.3 / SM-1.5 / SM-1.6)', () => {
 	it('carries the move list so the client can rebuild SAN history', () => {
-		const { room, whiteId, blackId } = setup();
+		const { reconnect, room, whiteId, blackId } = setup();
 		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
 		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
 
 		const fresh = new FakeWs();
-		room.reconnectPlayer(whiteId, asWs(fresh));
+		reconnect(whiteId, asWs(fresh));
 		const state = fresh.last('gameState') as { moves: string[]; started: boolean };
 		expect(state.moves).toEqual(['e2e4', 'e7e5']);
 		expect(state.started).toBe(true);
 	});
 
 	it('includes the result and rematch state when reconnecting into a finished game', () => {
-		const { room, whiteId, blackId } = setup();
+		const { reconnect, room, whiteId, blackId } = setup();
 		room.handleMessage(whiteId, { type: 'resign' });
 		room.handleMessage(blackId, { type: 'offerRematch' });
 
 		const fresh = new FakeWs();
-		room.reconnectPlayer(whiteId, asWs(fresh));
+		reconnect(whiteId, asWs(fresh));
 		const state = fresh.last('gameState') as Record<string, unknown>;
 		expect(state.gameOver).toEqual({ winner: 'black', reason: 'resignation' });
 		expect(state.rematch).toEqual({ mine: false, opponent: true });
 	});
 
 	it('reports opponent presence instead of assuming it', () => {
-		const { room, white, black, whiteId, blackId } = setup();
+		const { reconnect, room, white, black, whiteId, blackId } = setup();
 		room.removePlayer(blackId, asWs(black));
 		room.removePlayer(whiteId, asWs(white));
 		const fresh = new FakeWs();
-		room.reconnectPlayer(whiteId, asWs(fresh));
+		reconnect(whiteId, asWs(fresh));
 		const state = fresh.last('gameState') as Record<string, unknown>;
 		expect(state.opponentConnected).toBe(false);
 		expect(state.opponentGraceMs).toBe(60_000);

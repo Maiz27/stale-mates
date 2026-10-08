@@ -2,7 +2,6 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';
-import Cookies from 'js-cookie';
 import { DIFFICULTY_OPTIONS } from './constants';
 
 export function cn(...inputs: ClassValue[]) {
@@ -74,34 +73,3 @@ export const formatTime = (seconds: number): string => {
 
 	return `${minutesStr}:${secondsStr}`;
 };
-
-export function AddItemToCookies({
-	key,
-	value,
-	expiration
-}: {
-	key: string;
-	value: string;
-	/** Lifetime in DAYS (js-cookie's `expires` unit). */
-	expiration: number;
-}) {
-	const cookie = {
-		data: value
-	};
-
-	Cookies.set(key, JSON.stringify(cookie), {
-		expires: expiration
-	});
-}
-
-export function GetItemFromCookies(key: string) {
-	const storedData = Cookies.get(key);
-	if (!storedData) return null;
-	// A corrupted/hand-edited cookie must not crash the page (SM-2.9).
-	try {
-		const parsed = JSON.parse(storedData);
-		return parsed && typeof parsed === 'object' && 'data' in parsed ? parsed.data : null;
-	} catch {
-		return null;
-	}
-}

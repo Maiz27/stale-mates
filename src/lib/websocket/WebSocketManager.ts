@@ -21,10 +21,9 @@ type ServerMessageHandler<T extends ServerMessageType> = (data: ServerMessageOf<
 
 /**
  * Manages a single game WebSocket with automatic reconnect (exponential backoff
- * + jitter). The URL is resolved lazily via a provider so reconnects can pick up
- * the `playerId` persisted after the first `connected` message — that's what
- * lets the server rebind us to our existing seat (reconnectPlayer) rather than
- * treating us as a fresh join.
+ * + jitter). On every (re)connect the `hello` frame (the seat `join`) is sent
+ * first and re-evaluated each time, so a reconnect presents the rotated seat
+ * token the server handed out — that's what rebinds us to our existing seat.
  */
 export class WebSocketManager {
 	private ws: WebSocket | null = null;
@@ -41,8 +40,15 @@ export class WebSocketManager {
 	private readonly baseReconnectDelay = 500;
 	private readonly maxReconnectDelay = 10_000;
 
-	constructor(url: string | (() => string)) {
+	private hello: (() => ClientMessage | null) | null;
+
+	/**
+	 * @param hello Frame sent first on every (re)connect — the seat `join`, so the
+	 *   credential travels in the message body, never in the URL (audit C3).
+	 */
+	constructor(url: string | (() => string), options: { hello?: () => ClientMessage | null } = {}) {
 		this.urlProvider = typeof url === 'string' ? () => url : url;
+		this.hello = options.hello ?? null;
 		this.connect();
 	}
 
@@ -61,6 +67,8 @@ export class WebSocketManager {
 		ws.onopen = () => {
 			if (!isCurrent()) return;
 			this.reconnectAttempts = 0;
+			const hello = this.hello?.();
+			if (hello) ws.send(JSON.stringify(hello));
 			this.setStatus('open');
 		};
 

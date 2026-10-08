@@ -10,8 +10,15 @@ const app = express();
 // behind a proxy all collapse into the proxy's IP bucket.
 app.set('trust proxy', 1);
 
+// ORIGIN may list several comma-separated origins (also used for the WebSocket
+// Origin allowlist in lib/websocket.ts).
+const allowedOrigins = (process.env.ORIGIN || 'http://localhost:5173')
+	.split(',')
+	.map((o) => o.trim())
+	.filter(Boolean);
+
 const corsOptions = {
-	origin: process.env.ORIGIN || 'http://localhost:5173',
+	origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
 	optionsSuccessStatus: 200
 };
 

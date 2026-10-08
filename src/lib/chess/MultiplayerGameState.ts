@@ -2,9 +2,9 @@ import { GameModel } from './GameModel';
 import type { Color } from 'chessground/types';
 import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './types';
 import type { ServerMessageOf } from './protocol';
+import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
-import { AddItemToCookies, GetItemFromCookies } from '$lib/utils';
-import { PLAYER_ID_EXPIRATION } from '$lib/constants';
+import { getSeatToken, setSeatToken } from './seat';
 
 /** The slice of {@link WebSocketManager} the game mode uses (lets tests inject a fake). */
 export type GameSocket = Pick<
@@ -13,10 +13,11 @@ export type GameSocket = Pick<
 >;
 
 export interface MultiplayerGameStateOptions {
-	player: Color;
 	roomId: string;
+	/** Seat token; defaults to the one stored for this room in this tab. */
+	token?: string | null;
 	/** Factory for the socket; defaults to a real reconnecting {@link WebSocketManager}. */
-	connect?: (url: () => string) => GameSocket;
+	connect?: (url: string, hello: () => ClientMessage | null) => GameSocket;
 }
 
 export class MultiplayerGameState extends GameModel {
@@ -32,32 +33,26 @@ export class MultiplayerGameState extends GameModel {
 	private lowTimeThreshold = 0;
 
 	roomId: string;
+	private token: string | null;
 
-	constructor({ player, roomId, connect }: MultiplayerGameStateOptions) {
-		super('pvp', player);
+	constructor({ roomId, token, connect }: MultiplayerGameStateOptions) {
+		// Our colour is assigned by the server (`seat`); white is only a placeholder.
+		super('pvp', 'white');
 		this.roomId = roomId;
-		// Resolve the URL lazily so a reconnect re-reads the playerId cookie that
-		// the first `connected` message stored — the server then rebinds our seat
-		// instead of treating us as a brand-new (rejected) join.
-		const url = () =>
-			this.constructWebSocketUrl(player, roomId, GetItemFromCookies(`${this.roomId}-playerId`));
-		this.wsManager = connect ? connect(url) : new WebSocketManager(url);
+		this.token = token ?? getSeatToken(roomId);
+		// The room id is public; the seat token goes in the first frame, never the URL.
+		const url = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${encodeURIComponent(roomId)}`;
+		// Re-evaluated on every reconnect so it presents the latest (rotated) token.
+		const hello = (): ClientMessage | null =>
+			this.token ? { type: 'join', token: this.token } : null;
+		this.wsManager = connect ? connect(url, hello) : new WebSocketManager(url, { hello });
 		this.wsManager.onStatus((status) => this.patch({ connectionStatus: status }));
 		this.setupMessageHandlers();
 	}
 
-	private constructWebSocketUrl(player: Color, roomId: string, playerId: string | null): string {
-		// Encode values that originate from the page URL / cookies so stray special
-		// characters can't break or inject into the query string.
-		const baseUrl = `${import.meta.env.VITE_API_WS_URL}/game/join?id=${encodeURIComponent(
-			roomId
-		)}&color=${player}`;
-		return playerId ? `${baseUrl}&playerId=${encodeURIComponent(playerId)}` : baseUrl;
-	}
-
 	private setupMessageHandlers() {
 		const ws = this.wsManager;
-		ws.addMessageHandler('connected', (data) => this.handleConnected(data.playerId));
+		ws.addMessageHandler('seat', (data) => this.handleSeat(data.color, data.token));
 		ws.addMessageHandler('opponentMove', (data) => this.handleOpponentMove(data.move));
 		ws.addMessageHandler('opponentJoined', () => this.handleOpponentPresent());
 		ws.addMessageHandler('opponentReconnected', () => this.handleOpponentPresent());
@@ -150,12 +145,15 @@ export class MultiplayerGameState extends GameModel {
 		this.patch({ opponentConnected: false, opponentClaimableAt: Date.now() + graceMs });
 	}
 
-	private handleConnected(playerId: string) {
-		AddItemToCookies({
-			key: `${this.roomId}-playerId`,
-			value: playerId,
-			expiration: PLAYER_ID_EXPIRATION
-		});
+	/** The server seated us: adopt its colour and keep the rotated token for reconnects. */
+	private handleSeat(color: Color, token: string) {
+		this.token = token;
+		setSeatToken(this.roomId, token);
+		if (color !== this.player) {
+			this.player = color;
+			this.patch({ player: color });
+			if (this.clockSnapshot) this.renderClock();
+		}
 	}
 
 	private handleGameStart(data: ServerMessageOf<'gameStart'>) {

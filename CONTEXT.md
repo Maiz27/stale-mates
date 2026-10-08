@@ -31,28 +31,28 @@ the players, time control, and rematch state.
 Lives in `api/src/lib/GameRoom.ts` (the `GameRoom` class); the registry of all rooms
 is the `Map<string, GameRoom>` in `api/src/lib/game.ts`.
 
-### Seat / color
+### Seat / color / seat token
 
-A `color` is a side of the board, `'white' | 'black'`. There is no first-class "seat"
-object yet — a color is a slot a `Player` claims. The color is still **requested by the
-client** via a URL query param, but the server now **validates it** (`GameRoom.addPlayer`
-rejects an out-of-domain color and rejects a second player requesting an already-taken
-color, so the two players can't both be white). Full seat-token assignment remains a gap
-(see ADR 0002, plan Steps 4–5, audit C3/F3).
-`Color` type: `api/src/lib/types.ts` and `src/lib/chess/types.ts`. Color is read off
-the WS URL in `api/src/lib/websocket.ts` (`parseConnectionParams`) and validated in
-`GameRoom.addPlayer`.
+A `color` is a side of the board, `'white' | 'black'`. Each room has exactly two
+**seats**, one per colour, each guarded by a secret **seat token** minted when the room
+is created (`POST /game/create` returns `you` and `invite` seats). The **server assigns
+colours** — the creator's request (`white`/`black`/`random`, resolved server-side) picks
+their seat and the invitee gets the other; the client never sends a colour.
+A WebSocket must present a seat token in its first frame (`{ type: 'join', token }`).
+The creation tokens are single-use: the first claim rotates the token and returns the
+new one in `seat`, which the tab keeps in `sessionStorage` for reconnects (so two tabs
+can't share a seat). Invite links carry the opponent's token in the URL fragment
+(`/room?id=…#seat=…`), never in a query string the server would log.
+Server: `GameRoom.claimSeat` (`api/src/lib/GameRoom.ts`), connection handling in
+`api/src/lib/websocket.ts`. Client: `src/lib/chess/seat.ts`, `MultiplayerGameState`.
 
-### Player / playerId
+### Player
 
-A connected participant in a room. A `Player` holds `{ id, color, ws, connected }`
-(clocks now live on the room, not the player — see Clock below). The `playerId` is a
-server-minted `nanoid` returned in the `connected`
-message; it doubles as the **reconnect credential** (the client stores it in a
-JS-readable cookie and replays it on the WS URL — another authority gap, see ADR 0002).
-`Player` type: `api/src/lib/types.ts`. Created in `GameRoom.addPlayer`
-(`api/src/lib/GameRoom.ts`). Client-side cookie handling: `src/lib/chess/MultiplayerGameState.ts`
-(`handleConnected`).
+A seated participant: `{ id, color, ws, connected, disconnectedAt }` (`api/src/lib/types.ts`).
+The `id` is internal to the server and never sent to clients. Only one live socket per
+seat exists; a newer connection replaces the older one (close code `4000`). When a
+player's socket drops, the opponent is told (`opponentDisconnected`) and may claim the
+win after `DISCONNECT_GRACE_MS`; the room itself survives until the TTL sweep.
 
 ### Game state
 
@@ -147,8 +147,8 @@ The frontend's game logic is composition plus a thin concrete base:
 The frontend's thin wrapper around the browser `WebSocket` for multiplayer
 (`src/lib/websocket/WebSocketManager.ts`). It opens one socket, dispatches inbound
 messages by `type` to registered handlers, and sends outbound messages.
-It **reconnects automatically** with exponential backoff + jitter (stopping on an
-intentional close or a 1008 rejection), resolves its URL lazily so a reconnect re-sends
-the `playerId` for the server to rebind the seat, and exposes connection status via
-`onStatus` (audit H2 fixed). The server-side counterpart is the connection plumbing in
+It **reconnects automatically** with exponential backoff + jitter, sends the seat `join`
+frame first on every (re)connect, and exposes connection status via `onStatus`
+(`connecting`/`open`/`reconnecting`/`closed`, plus the terminal `rejected` — room gone,
+full or bad seat — and `replaced` — the seat was opened elsewhere). The server-side counterpart is the connection plumbing in
 `api/src/lib/websocket.ts`.

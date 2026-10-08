@@ -1,9 +1,10 @@
 import express from 'express';
 import { createGame } from '../lib/game';
-import { TimeOption } from '../lib/types';
+import { Color, TimeOption } from '../lib/types';
 import { RateLimiter } from '../lib/rateLimiter';
 
 const ALLOWED_TIME_OPTIONS: TimeOption[] = [0, 1, 3, 10];
+const ALLOWED_COLORS = ['white', 'black', 'random'] as const;
 
 // Per-IP rate limit on room creation (audit H4): ~30 creates / 10 min / IP.
 // In-memory and single-instance only — see README "Limitations / scaling".
@@ -26,7 +27,8 @@ GameRouter.post('/create', (req, res) => {
 		return res.status(429).json({ error: 'Too many game creations, please try again later' });
 	}
 
-	const rawTime = req.body.time;
+	const body = (req.body ?? {}) as Record<string, unknown>;
+	const rawTime = body.time;
 
 	// Gate on type before coercion: Number(true) === 1 and Number([]) === 0, so a
 	// boolean/array/object could otherwise be coerced into a "valid" time option.
@@ -46,21 +48,17 @@ GameRouter.post('/create', (req, res) => {
 		return res.status(400).json({ error: 'Invalid time option' });
 	}
 
+	// The creator's seat. Optional (defaults to white); 'random' is resolved on the
+	// server so the client can't bias it. The joiner always gets the other seat.
+	const rawColor = body.color ?? 'white';
+	if (typeof rawColor !== 'string' || !(ALLOWED_COLORS as readonly string[]).includes(rawColor)) {
+		return res.status(400).json({ error: 'Invalid color' });
+	}
+
 	try {
-		const id = createGame({ time: time as TimeOption });
-		res.json({ id });
+		res.json(createGame({ time: time as TimeOption, color: rawColor as Color | 'random' }));
 	} catch (error) {
 		console.error('Error creating game:', error);
 		res.status(500).json({ error: 'Failed to create game' });
 	}
-});
-
-GameRouter.post('/join', (req, res) => {
-	const id = req.query.id as string;
-
-	if (!id) {
-		return res.status(400).json({ error: 'Room ID is required' });
-	}
-
-	res.json({ success: true });
 });

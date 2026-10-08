@@ -1,15 +1,19 @@
 import WebSocket from 'ws';
 import { Chess } from 'chess.js';
 import { nanoid } from 'nanoid';
+import { timingSafeEqual } from 'crypto';
 import {
 	Player,
 	TimeControl,
 	TimeOption,
 	Color,
-	GameMessage,
+	ClientMessage,
 	GameOverReason,
-	GameResult
+	GameResult,
+	ServerMessage,
+	WireMove
 } from './types';
+import type { GameStateMessage } from './protocol';
 import { ClockMs, ClockSnapshot, buildSnapshot, clockAfterMove, remainingMs } from './clock';
 import { gameOutcome, hasMatingMaterial } from './outcome';
 
@@ -21,12 +25,23 @@ export const CLOSE_REPLACED = 4000;
 
 export interface GameRoomOptions {
 	time: TimeOption;
+	/** The creator's seat; 'random' is resolved server-side. Defaults to white. */
+	creatorColor?: Color | 'random';
 	disconnectGraceMs?: number;
 	/** Injectable clock for tests. */
 	now?: () => number;
 }
 
 const opposite = (color: Color): Color => (color === 'white' ? 'black' : 'white');
+
+/** Seat secrets: long enough to be unguessable, URL/JSON safe. */
+const newToken = () => nanoid(24);
+
+function sameToken(a: string, b: string): boolean {
+	const x = Buffer.from(a);
+	const y = Buffer.from(b);
+	return x.length === y.length && timingSafeEqual(x, y);
+}
 
 export class GameRoom {
 	id: string = nanoid();
@@ -45,6 +60,15 @@ export class GameRoom {
 	private timeControl: TimeControl;
 	private readonly disconnectGraceMs: number;
 	private readonly now: () => number;
+	/** The creator's seat colour (server-assigned; never trusted from the client). */
+	readonly creatorColor: Color;
+	/**
+	 * Per-seat secrets (audit C3/F3). A connection must present a seat's token in
+	 * its first frame to sit there. The token handed out at creation is single-use:
+	 * the first claim rotates it to a fresh secret that only that client learns
+	 * (via `seat`), so a leaked invite link is worthless once the friend has joined.
+	 */
+	private seats: Record<Color, { token: string }>;
 
 	// Authoritative clock state (ms). The server is the single source of truth
 	// for time; the client only interpolates from snapshots for smooth display.
@@ -55,38 +79,63 @@ export class GameRoom {
 	// a reconnecting player see how the game ended (audit SM-1.3).
 	private result: GameResult | null = null;
 
-	constructor({ time = 0, disconnectGraceMs, now }: GameRoomOptions) {
+	constructor({ time = 0, creatorColor = 'white', disconnectGraceMs, now }: GameRoomOptions) {
 		this.timeControl = this.convertTimeOption(time);
+		this.creatorColor =
+			creatorColor === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : creatorColor;
+		if (this.creatorColor !== 'white' && this.creatorColor !== 'black') {
+			throw new Error('Invalid color');
+		}
+		this.seats = { white: { token: newToken() }, black: { token: newToken() } };
 		this.disconnectGraceMs = disconnectGraceMs ?? DEFAULT_DISCONNECT_GRACE_MS;
 		this.now = now ?? Date.now;
 		this.createdAt = this.now();
 		this.lastActivityAt = this.createdAt;
 	}
 
-	addPlayer(color: Color, ws: WebSocket): string {
-		if (this.players.length >= 2) {
-			throw new Error('Game room is full');
+	/** The initial (single-use) seat tokens, for the create response. */
+	initialTokens(): Record<Color, string> {
+		return { white: this.seats.white.token, black: this.seats.black.token };
+	}
+
+	/**
+	 * Bind `ws` to the seat whose token it presented (first join or reconnect).
+	 * Returns the seated player, or null for an unknown/stale token. The colour
+	 * comes from the seat, never from the client (audit F2/C3).
+	 */
+	claimSeat(token: string, ws: WebSocket): Player | null {
+		const color = (['white', 'black'] as const).find((c) => sameToken(this.seats[c].token, token));
+		if (!color) return null;
+
+		const existing = this.players.find((p) => p.color === color);
+		if (existing) {
+			this.sendTo(ws, { type: 'seat', color, token: this.seats[color].token });
+			this.reconnect(existing, ws);
+			return existing;
 		}
-		// Validate the requested color is a real seat before anything is stored.
-		if (color !== 'white' && color !== 'black') {
-			throw new Error('Invalid color');
-		}
-		// Enforce distinct seats server-side (audit F2).
-		if (this.players.some((p) => p.color === color)) {
-			throw new Error('Color already taken');
-		}
-		const playerId = nanoid();
-		const player: Player = { id: playerId, color, ws, connected: true, disconnectedAt: null };
+
+		// First claim: rotate the single-use token and seat the player.
+		this.seats[color].token = newToken();
+		const player: Player = {
+			id: nanoid(),
+			color,
+			ws,
+			connected: true,
+			disconnectedAt: null
+		};
 		this.players.push(player);
 		this.touch();
+		this.sendToPlayer(player, { type: 'seat', color, token: this.seats[color].token });
 
-		this.notifyPlayersOfJoin(playerId);
-
-		if (this.players.length === 2) {
+		const opponent = this.opponentOf(player);
+		if (opponent) {
+			this.sendToPlayer(opponent, { type: 'opponentJoined' });
+			this.sendToPlayer(player, { type: 'opponentJoined' });
 			this.startGame();
+		} else {
+			this.resyncPlayer(player);
 		}
-
-		return playerId;
+		return player;
 	}
 
 	/**
@@ -126,12 +175,7 @@ export class GameRoom {
 		return this.players.some((p) => p.connected);
 	}
 
-	reconnectPlayer(playerId: string, ws: WebSocket): boolean {
-		const player = this.findPlayerById(playerId);
-		if (!player) {
-			return false;
-		}
-
+	private reconnect(player: Player, ws: WebSocket) {
 		// A previous socket for this seat may still be open (a half-dead network
 		// path, or the same seat in another tab). Close it so only one live socket
 		// per seat ever exists; its late `close` is ignored by removePlayer.
@@ -158,11 +202,10 @@ export class GameRoom {
 		if (opponent) {
 			this.sendToPlayer(opponent, { type: 'opponentReconnected' });
 		}
-
-		return true;
 	}
 
-	handleMessage(playerId: string, message: GameMessage) {
+	/** Dispatch an already-validated client message (see validate.ts). */
+	handleMessage(playerId: string, message: ClientMessage) {
 		const player = this.findPlayerById(playerId);
 		if (!player) return;
 		this.touch();
@@ -189,7 +232,7 @@ export class GameRoom {
 		}
 	}
 
-	private handleMove(player: Player, move: { from: string; to: string; promotion?: string }) {
+	private handleMove(player: Player, move: WireMove) {
 		if (!this.gameStarted || player.color !== this.currentTurn) {
 			this.resyncPlayer(player);
 			return;
@@ -269,10 +312,7 @@ export class GameRoom {
 		this.sendToPlayer(player, this.stateMessageFor(player));
 	}
 
-	private updateGameStateAfterMove(
-		player: Player,
-		move: { from: string; to: string; promotion?: string }
-	) {
+	private updateGameStateAfterMove(player: Player, move: WireMove) {
 		const now = this.now();
 
 		// Apply the clock to the mover (the side whose turn just ended), then flip.
@@ -397,9 +437,9 @@ export class GameRoom {
 		});
 	}
 
-	private broadcastMove(senderId: string, move: { from: string; to: string; promotion?: string }) {
+	private broadcastMove(senderId: string, move: WireMove) {
 		// Normalised from chess.js's result — never the raw client frame.
-		const normalized: { from: string; to: string; promotion?: string } = {
+		const normalized: WireMove = {
 			from: move.from,
 			to: move.to
 		};
@@ -412,11 +452,11 @@ export class GameRoom {
 		this.broadcastToAllPlayers({ type: 'clock', clock: this.currentSnapshot() });
 	}
 
-	private broadcastToAllPlayers(message: object) {
+	private broadcastToAllPlayers(message: ServerMessage) {
 		this.players.forEach((player) => this.sendToPlayer(player, message));
 	}
 
-	private broadcastToOtherPlayers(senderId: string, message: object) {
+	private broadcastToOtherPlayers(senderId: string, message: ServerMessage) {
 		this.players.forEach((player) => {
 			if (player.id !== senderId) {
 				this.sendToPlayer(player, message);
@@ -424,13 +464,17 @@ export class GameRoom {
 		});
 	}
 
-	private sendToPlayer(player: Player, message: object) {
+	private sendToPlayer(player: Player, message: ServerMessage) {
 		if (player.connected && player.ws) {
-			try {
-				player.ws.send(JSON.stringify(message));
-			} catch (error) {
-				console.error('Failed to send to player:', error);
-			}
+			this.sendTo(player.ws, message);
+		}
+	}
+
+	private sendTo(ws: WebSocket, message: ServerMessage) {
+		try {
+			ws.send(JSON.stringify(message));
+		} catch (error) {
+			console.error('Failed to send to player:', error);
 		}
 	}
 
@@ -447,16 +491,6 @@ export class GameRoom {
 			throw new Error('Invalid time option');
 		}
 		return timeControl;
-	}
-
-	private notifyPlayersOfJoin(newPlayerId: string) {
-		this.players.forEach((player) => {
-			if (this.players.length === 2) {
-				this.sendToPlayer(player, { type: 'opponentJoined' });
-			} else if (player.id !== newPlayerId) {
-				this.sendToPlayer(player, { type: 'opponentJoined' });
-			}
-		});
 	}
 
 	private startGame() {
@@ -510,11 +544,11 @@ export class GameRoom {
 	 * PGN survive a resync, audit SM-1.5), clocks, the last result and rematch
 	 * state (audit SM-1.3), and opponent presence (audit SM-1.6).
 	 */
-	stateMessageFor(player: Player) {
+	stateMessageFor(player: Player): GameStateMessage {
 		const opponent = this.opponentOf(player);
 		const opponentGone = opponent && !opponent.connected && opponent.disconnectedAt !== null;
 		return {
-			type: 'gameState' as const,
+			type: 'gameState',
 			started: this.gameStarted,
 			fen: this.chess.fen(),
 			turn: this.currentTurn,
