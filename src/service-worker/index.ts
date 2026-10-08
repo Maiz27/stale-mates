@@ -1,8 +1,3 @@
-/// <reference types="@sveltejs/kit" />
-/// <reference no-default-lib="true"/>
-/// <reference lib="esnext" />
-/// <reference lib="webworker" />
-
 /**
  * Offline support (audit SM-6), modest scope: AI mode works offline once the
  * site has been visited online.
@@ -19,8 +14,8 @@
  */
 import { immutable, assets, prerendered } from '$app/manifest';
 import { version } from '$app/env';
+import { self as sw } from '$app/service-worker';
 
-const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `stalemates-${version}`;
 
 // Manifest paths are relative to the base path (none here); normalise to "/…".

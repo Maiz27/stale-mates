@@ -1,0 +1,11 @@
+{
+	// The service worker runs in a WebWorker global scope (no DOM), so it gets its
+	// own config extending SvelteKit's generated service-worker base. The root
+	// tsconfig.json excludes this directory; `bun run check` checks it with
+	// `tsc -p src/service-worker`.
+	"extends": "$app/tsconfig/service-worker",
+	"compilerOptions": {
+		"strict": true
+	},
+	"include": ["."]
+}

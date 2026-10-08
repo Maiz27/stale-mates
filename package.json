@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "bun run test:integration && bun run test:unit",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "prettier --check . && eslint . && node scripts/sync-protocol.mjs --check",
     "format": "prettier --write .",

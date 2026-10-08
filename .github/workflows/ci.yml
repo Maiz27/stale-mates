@@ -39,9 +39,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # The project standardises on Bun (see package.json scripts) and Vercel
-      # deploys with Bun. npm install fails here on the svelte-chessground peer
-      # dependency (it wants svelte@3 while the app is on svelte@4); Bun resolves
-      # it the same way the deploy does.
+      # deploys with Bun, so CI installs from bun.lock the same way the deploy does.
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -62,8 +60,14 @@ jobs:
       - name: Lint
         run: bunx eslint .
 
+      # tsconfig.json extends `$app/tsconfig`, which `svelte-kit sync` (above)
+      # generates into node_modules on a clean checkout. The service worker has
+      # its own config (src/service-worker/tsconfig.json, WebWorker lib).
       - name: Type-check (svelte-check)
         run: bunx svelte-check --tsconfig ./tsconfig.json
+
+      - name: Type-check (service worker)
+        run: bunx tsc -p src/service-worker
 
       - name: Unit tests
         run: bunx vitest run
@@ -123,8 +127,8 @@ jobs:
 
       # Node is needed by the Playwright webServer commands (`npm run build`,
       # `npm run preview`, `npx tsc`, `node api/dist/index.js`). Bun installs
-      # deps (it resolves the svelte-chessground peer dep the way the deploy
-      # does); Node runs the previewed app and the API server.
+      # deps from bun.lock (as the deploy does); Node runs the previewed app and
+      # the API server.
       - name: Setup Node
         uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
         with:
