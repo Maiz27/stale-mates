@@ -152,6 +152,32 @@ test.describe('AI mode', () => {
 		}
 	});
 
+	test('an engine that fails to load shows an error and can be retried (CR-10)', async ({
+		page
+	}) => {
+		await page.route('**/engine/**', (route) => route.abort());
+		await page.goto('/ai');
+		await expect(page.getByText('Engine failed to load.')).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute('**/engine/**');
+		await page.getByRole('button', { name: 'Retry' }).click();
+		await expect(page.getByText('Engine failed to load.')).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Start New Game' }).click();
+		await clickMove(page, 'e2', 'e4', 'white');
+		const list = page
+			.locator('div')
+			.filter({ has: page.getByRole('heading', { name: 'Moves' }) })
+			.getByRole('list');
+		await expect
+			.poll(
+				async () =>
+					(await list.innerText()).split(/\s+/).filter((t) => t && !/^\d+\.$/.test(t)).length,
+				{ timeout: 30_000 }
+			)
+			.toBeGreaterThanOrEqual(2);
+	});
+
 	test('a move can be typed instead of dragged', async ({ page }) => {
 		await page.goto('/ai');
 		await page.getByRole('button', { name: 'Start New Game' }).click();

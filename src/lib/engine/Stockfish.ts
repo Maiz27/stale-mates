@@ -29,7 +29,12 @@ export interface StockfishOptions {
 	worker?: EngineWorker;
 	/** Worker script URL. */
 	url?: string;
+	/** Report a failure if the engine hasn't answered `readyok` by then (ms). */
+	initTimeoutMs?: number;
 }
+
+/** How long the worker gets to download/compile the WASM and answer `readyok`. */
+export const ENGINE_INIT_TIMEOUT_MS = 30_000;
 
 type InFlight = 'move' | 'hint' | null;
 
@@ -54,7 +59,6 @@ export class Stockfish {
 	private bestMove: ChessMove;
 	private ponder: ChessMove;
 	private searchParams: SearchParams;
-	private multiPV = 1;
 	private messageCallback: ((message: string) => void) | null = null;
 	private errorCallback: ((error: unknown) => void) | null = null;
 	private currentFen: string = STARTING_FEN;
@@ -64,12 +68,14 @@ export class Stockfish {
 	private inFlight: InFlight = null;
 	private staleBestmoves = 0;
 	private hintResolve: ((move: ChessMove | null) => void) | null = null;
+	private initTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor({
 		debug = false,
 		difficulty = 10,
 		worker,
-		url = STOCKFISH_URL
+		url = STOCKFISH_URL,
+		initTimeoutMs = ENGINE_INIT_TIMEOUT_MS
 	}: StockfishOptions = {}) {
 		this.worker = worker ?? (new Worker(url) as unknown as EngineWorker);
 		this.difficulty = difficulty; // Default difficulty level (range: 1-20)
@@ -82,7 +88,20 @@ export class Stockfish {
 		// Derive search params now; the UCI options are (re)sent during the handshake.
 		this.setDifficulty(difficulty);
 		this.queue = [];
+		// A WASM that fails to fetch/compile doesn't always raise a worker error;
+		// treat "never ready" as a failure too, so the UI can offer a retry (CR-10).
+		this.initTimer = setTimeout(() => {
+			this.initTimer = null;
+			if (!this.ready) this.handleError(new Error('Stockfish did not start in time'));
+		}, initTimeoutMs);
 		this.worker.postMessage('uci');
+	}
+
+	private clearInitTimer(): void {
+		if (this.initTimer) {
+			clearTimeout(this.initTimer);
+			this.initTimer = null;
+		}
 	}
 
 	/** Post a command, holding it until the engine has answered `readyok`. */
@@ -96,7 +115,9 @@ export class Stockfish {
 	}
 
 	private handleError(event: unknown): void {
+		if (this.failed) return;
 		this.failed = true;
+		this.clearInitTimer();
 		this.log(`Stockfish worker error: ${String((event as ErrorEvent)?.message ?? event)}`, 'error');
 		this.clearPendingGo();
 		this.inFlight = null;
@@ -115,6 +136,7 @@ export class Stockfish {
 		if (message.startsWith('readyok')) {
 			if (!this.ready) {
 				this.ready = true;
+				this.clearInitTimer();
 				this.log('Engine is fully initialized and ready', 'info');
 				const queued = this.queue;
 				this.queue = [];
@@ -183,64 +205,40 @@ export class Stockfish {
 	 * Sets the difficulty level of the chess engine.
 	 * @param level - Difficulty level (1-20, where 1 is easiest and 20 is hardest)
 	 *
-	 * This method adjusts several Stockfish parameters based on the difficulty level:
-	 * 1. Skill Level (0-20): Mapped using a sigmoid function for a more gradual increase.
-	 *    Lower values make the engine play weaker, allowing for more mistakes.
-	 *    At 0, the engine plays randomly from a selection of good moves.
+	 * Stockfish 18 is far stronger than the old SF10 build, and even its
+	 * `UCI_LimitStrength`/`UCI_Elo` floor (1320, CCRL-calibrated) beats most
+	 * beginners, so strength is shaped with three knobs instead (CR-10):
 	 *
-	 * 2. Contempt (-100 to 100): Mapped using a sigmoid function centered at 0.
-	 *    Positive values make the engine play more aggressively and take more risks to avoid draws.
-	 *    Negative values make the engine more accepting of draws.
-	 *    At 0, the engine plays objectively.
+	 * 1. Skill Level (0-20), linear in the level. Below 20 Stockfish picks, with
+	 *    some randomness, among its top few moves, more loosely the lower it is.
+	 * 2. Depth cap (1-20), growing slowly at first (`((level-1)/19)^1.5`): level 1
+	 *    looks one ply ahead and so misses simple tactics; level 20 is uncapped
+	 *    in practice.
+	 * 3. Move time (50-2000 ms), quadratic, so low levels answer almost instantly
+	 *    and high levels get time for deep search.
 	 *
-	 * 3. MultiPV (5-1): Decreases linearly as difficulty increases.
-	 *    Determines the number of alternative moves the engine considers.
-	 *    At lower difficulties, more alternatives are considered, making play more varied.
-	 *    At higher difficulties, fewer alternatives are considered, focusing on the best moves.
-	 *
-	 * 4. Move Time (100-1800 ms): Increases non-linearly with difficulty.
-	 *    Determines how long the engine thinks about each move.
-	 *    Longer times at higher difficulties allow for deeper, more accurate analysis.
-	 *
-	 * 5. Depth (1-15): Increases non-linearly with difficulty.
-	 *    Determines how many moves ahead the engine calculates.
-	 *    Greater depth at higher difficulties results in stronger, more strategic play.
-	 *
-	 * 6. Move Delay (400-0 ms): Decreases linearly with difficulty.
-	 *    Adds a delay before the engine makes its move, ensuring a more engaging user experience.
-	 *    Shorter delays at higher difficulties balance out the longer move times.
-	 *
-	 * The new mappings ensure a smoother progression of difficulty:
-	 * - Beginner and Casual levels have longer delays and shorter move times for quick, varied play.
-	 * - Intermediate to Expert levels balance move time and delay for a natural progression.
-	 * - Master and Grandmaster levels have longer move times but shorter delays for deep analysis and quicker responses.
-	 * This progression aims to provide a more natural increase in difficulty while maintaining engagement.
+	 * Plus a cosmetic move delay (400-0 ms) so fast low-level replies don't feel
+	 * instant. The engine keeps MultiPV 1: Skill Level widens its own candidate
+	 * set internally.
 	 */
 	setDifficulty(level: number): void {
 		this.difficulty = level;
 		const skillLevel = this.mapLevelToSkill(level);
-		const contempt = this.mapLevelToContempt(level);
 		const moveTime = this.mapLevelToMoveTime(level);
 		const depth = this.mapLevelToDepth(level);
-		const multiPV = this.mapLevelToMultiPV(level);
 		const moveDelay = this.mapLevelToMoveDelay(level);
 
 		this.log(
-			`Setting difficulty: Skill Level ${skillLevel}, Contempt ${contempt}, MultiPV ${multiPV}, Move Time ${moveTime}, Depth ${depth}, Move Delay ${moveDelay}`,
+			`Setting difficulty: Skill Level ${skillLevel}, Move Time ${moveTime}, Depth ${depth}, Move Delay ${moveDelay}`,
 			'info'
 		);
-		this.multiPV = multiPV;
 		this.searchParams = { moveTime, depth, moveDelay };
 		// Queued until readyok if the handshake hasn't finished yet.
 		this.applyDifficultyOptions((cmd) => this.send(cmd));
 	}
 
 	private applyDifficultyOptions(post: (command: string) => void): void {
-		const level = this.difficulty;
-		this.multiPV = this.mapLevelToMultiPV(level);
-		post(`setoption name Skill Level value ${this.mapLevelToSkill(level)}`);
-		post(`setoption name Contempt value ${this.mapLevelToContempt(level)}`);
-		post(`setoption name MultiPV value ${this.multiPV}`);
+		post(`setoption name Skill Level value ${this.mapLevelToSkill(this.difficulty)}`);
 	}
 
 	/** Cancel a queued (not yet posted) search. */
@@ -301,6 +299,7 @@ export class Stockfish {
 
 	terminate(): void {
 		this.log('Stockfish: Terminating worker', 'info');
+		this.clearInitTimer();
 		this.clearPendingGo();
 		this.resolveHint(null);
 		this.messageCallback = null;
@@ -330,11 +329,9 @@ export class Stockfish {
 		resolve?.(move);
 	}
 
-	/** Undo the analysis-only options a hint search set (audit SM-2.5). */
+	/** Restore the difficulty options after a full-strength hint search (audit SM-2.5). */
 	private restoreAfterHint(): void {
-		this.send('setoption name UCI_AnalyseMode value false');
-		this.send('setoption name Analysis Contempt value Both');
-		this.send(`setoption name MultiPV value ${this.multiPV}`);
+		this.applyDifficultyOptions((cmd) => this.send(cmd));
 	}
 
 	/**
@@ -342,12 +339,13 @@ export class Stockfish {
 	 * or `null` if the hint was cancelled (the position changed, the game was
 	 * reset, or the engine failed).
 	 *
-	 * Temporarily enables UCI_AnalyseMode, sets Analysis Contempt to the
-	 * player's colour and a difficulty-scaled MultiPV/depth/movetime; all are
-	 * restored when the hint search finishes or is cancelled. A hint replaces
-	 * any search already in flight.
+	 * The hint is searched at full strength (Skill Level 20) with a
+	 * difficulty-scaled depth/movetime; the difficulty's Skill Level is restored
+	 * when the hint search finishes or is cancelled. A hint replaces any search
+	 * already in flight.
 	 */
-	getHint(playerColor: 'w' | 'b'): Promise<ChessMove | null> {
+	getHint(_playerColor?: 'w' | 'b'): Promise<ChessMove | null> {
+		void _playerColor; // the side to move is in the FEN
 		this.cancelSearch();
 		return new Promise((resolve) => {
 			if (this.failed) {
@@ -360,87 +358,32 @@ export class Stockfish {
 			const hintDepth = Math.min(15, Math.max(8, Math.floor(7 + this.difficulty / 2)));
 			// Scale move time based on difficulty (1000ms to 2000ms)
 			const hintTime = Math.min(2000, Math.max(1000, 1000 + this.difficulty * 125));
-			// Vary MultiPV based on difficulty (5 to 1)
-			const multiPV = Math.max(1, Math.min(5, 6 - Math.floor(this.difficulty / 4)));
-			const forcedColor = playerColor === 'w' ? 'White' : 'Black';
 
-			this.send(`setoption name UCI_AnalyseMode value true`);
-			this.send(`setoption name Analysis Contempt value ${forcedColor}`);
-			this.send(`setoption name MultiPV value ${multiPV}`);
+			this.send('setoption name Skill Level value 20');
 			this.send(`position fen ${this.currentFen}`);
 			this.inFlight = 'hint';
 			this.send(`go depth ${hintDepth} movetime ${hintTime}`);
 		});
 	}
 
-	/**
-	 * Maps the difficulty level (1-20) to a Stockfish Skill Level (0-20).
-	 * Uses a sigmoid function for a more gradual increase in skill level.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding Stockfish Skill Level (0-20)
-	 */
+	/** Level 1-20 → Stockfish Skill Level 0-20 (linear). */
 	private mapLevelToSkill(level: number): number {
-		const x = (level - 10) / 5; // Center the sigmoid at level 10
-		const sigmoid = 1 / (1 + Math.exp(-x));
-		return Math.round(sigmoid * 20);
+		return Math.round(((clampLevel(level) - 1) * 20) / 19);
 	}
 
-	/**
-	 * Maps the difficulty level (1-20) to a Stockfish Contempt value (-100 to 100).
-	 * Uses a sigmoid function for a more balanced progression, centered at 0.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding Stockfish Contempt value (-100 to 100)
-	 */
-	private mapLevelToContempt(level: number): number {
-		const x = (level - 10) / 3; // Center the sigmoid at level 10
-		const sigmoid = 1 / (1 + Math.exp(-x));
-		return Math.round((sigmoid * 2 - 1) * 100); // Map to range -100 to 100
-	}
-
-	/**
-	 * Maps the difficulty level (1-20) to a search depth (1-15).
-	 * Uses a power function with exponent 1.4 for a balanced depth increase.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding search depth (1-15)
-	 */
+	/** Level 1-20 → search depth cap 1-20, slow at first: ((level-1)/19)^1.5. */
 	private mapLevelToDepth(level: number): number {
-		return Math.round(1 + Math.pow((level - 1) / 19, 1.4) * 14);
+		return Math.round(1 + Math.pow((clampLevel(level) - 1) / 19, 1.5) * 19);
 	}
 
-	/**
-	 * Maps the difficulty level (1-20) to a move time (100-1800 ms).
-	 * Uses a power function with exponent 1.5 for a more balanced time progression.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding move time in milliseconds (100-1800)
-	 */
+	/** Level 1-20 → move time 50-2000 ms, quadratic. */
 	private mapLevelToMoveTime(level: number): number {
-		return Math.round(100 + Math.pow((level - 1) / 19, 1.5) * 1700);
+		return Math.round(50 + Math.pow((clampLevel(level) - 1) / 19, 2) * 1950);
 	}
 
-	/**
-	 * Maps the difficulty level (1-20) to a move delay (400-0 ms).
-	 * Uses a linear function to provide a smooth decrease in delay.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding move delay in milliseconds (400-0)
-	 */
+	/** Level 1-20 → cosmetic delay before searching, 400-0 ms (linear). */
 	private mapLevelToMoveDelay(level: number): number {
-		return Math.round(400 - ((level - 1) / 19) * 400);
-	}
-
-	/**
-	 * Maps the difficulty level (1-20) to a MultiPV value (5-1).
-	 * MultiPV decreases as difficulty increases, making the engine consider fewer alternative moves at higher difficulties.
-	 *
-	 * @param level - The input difficulty level (1-20)
-	 * @returns The corresponding MultiPV value (5-1)
-	 */
-	private mapLevelToMultiPV(level: number): number {
-		return Math.max(1, Math.floor((21 - level) / 4));
+		return Math.round(400 - ((clampLevel(level) - 1) / 19) * 400);
 	}
 
 	private log(message: string, level: 'info' | 'log' | 'warn' | 'error' = 'log'): void {
@@ -464,3 +407,5 @@ export class Stockfish {
 		}
 	}
 }
+
+const clampLevel = (level: number) => Math.min(20, Math.max(1, level));

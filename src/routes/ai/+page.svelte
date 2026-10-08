@@ -69,6 +69,7 @@
 	const undoMove = () => gameState.undoMove();
 	const resign = () => gameState.resign();
 	const flipBoard = () => (boardFlipped = !boardFlipped);
+	const retryEngine = () => gameState.retryEngine();
 
 	const playAgain = () => {
 		gameState.endGame();
@@ -140,6 +141,16 @@
 				</div>
 			</div>
 		</div>
+
+		{#if $gameState.engineError}
+			<div
+				role="alert"
+				class="flex flex-wrap items-center justify-center gap-2 rounded-md border border-destructive p-3"
+			>
+				<span class="font-semibold">Engine failed to load.</span>
+				<Button variant="outline" onclick={retryEngine}>Retry</Button>
+			</div>
+		{/if}
 
 		<div class="flex flex-wrap items-center justify-center gap-2">
 			{#if !$gameState.started}

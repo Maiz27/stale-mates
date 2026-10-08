@@ -4,10 +4,12 @@ import { Stockfish } from '$lib/engine/Stockfish';
 export function initializeEngine(
 	messageHandler: (message: string) => void,
 	difficulty: number = 10,
-	debug: boolean = true
+	debug: boolean = true,
+	errorHandler?: (error: unknown) => void
 ): Stockfish {
 	const engine = new Stockfish({ debug, difficulty });
 	engine.onMessage(messageHandler);
+	if (errorHandler) engine.onError(errorHandler);
 	return engine;
 }
 

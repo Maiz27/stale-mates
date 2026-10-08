@@ -50,6 +50,7 @@ export class GameModel implements Readable<GameView> {
 			hint: null,
 			hintPending: false,
 			thinking: false,
+			engineError: false,
 			moveHistory: [],
 			sanHistory: [],
 			opponentConnected: false,

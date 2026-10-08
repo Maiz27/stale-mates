@@ -26,7 +26,11 @@ class FakeEngine implements AIEngine {
 	positions: string[] = [];
 	best: ChessMove = { from: '', to: '' };
 	hintResolve: ((m: ChessMove | null) => void) | null = null;
-	constructor(private onMessage: (m: string) => void) {}
+	terminated = false;
+	constructor(
+		private onMessage: (m: string) => void,
+		readonly onError: (e: unknown) => void = () => {}
+	) {}
 	newGame() {
 		this.generation++;
 	}
@@ -44,7 +48,9 @@ class FakeEngine implements AIEngine {
 		return new Promise<ChessMove | null>((resolve) => (this.hintResolve = resolve));
 	}
 	setDifficulty() {}
-	terminate() {}
+	terminate() {
+		this.terminated = true;
+	}
 	getSearchGeneration() {
 		return this.generation;
 	}
@@ -204,5 +210,45 @@ describe('AIGameState persistence (SM-5)', () => {
 		game.newGame();
 		game.resign();
 		expect(game.serialize()).toBeNull();
+	});
+});
+
+describe('AIGameState engine failure (CR-10)', () => {
+	function setupWithEngines(player: 'white' | 'black' = 'black') {
+		const engines: FakeEngine[] = [];
+		const game = new AIGameState({
+			player,
+			difficulty: 5,
+			debug: false,
+			createEngine: (onMessage, _difficulty, onError) => {
+				const engine = new FakeEngine(onMessage, onError);
+				engines.push(engine);
+				return engine;
+			}
+		});
+		return { game, engines };
+	}
+
+	it('stops "Thinking…" and surfaces an error when the engine fails', () => {
+		const { game, engines } = setupWithEngines('black');
+		game.newGame(); // AI (white) to move
+		expect(get(game).thinking).toBe(true);
+		engines[0].onError(new Error('wasm failed to load'));
+		expect(get(game).thinking).toBe(false);
+		expect(get(game).engineError).toBe(true);
+	});
+
+	it('retry starts a fresh engine and resumes the AI move', () => {
+		const { game, engines } = setupWithEngines('black');
+		game.newGame();
+		engines[0].onError(new Error('boom'));
+		game.retryEngine();
+		expect(engines[0].terminated).toBe(true);
+		expect(engines).toHaveLength(2);
+		expect(get(game).engineError).toBe(false);
+		expect(get(game).thinking).toBe(true);
+		expect(engines[1].goCalls).toBe(1);
+		engines[1].reply({ from: 'e2', to: 'e4' });
+		expect(get(game).moveHistory).toHaveLength(1);
 	});
 });

@@ -23,8 +23,12 @@ export interface AIGameStateOptions {
 	player: Color;
 	difficulty: number;
 	debug: boolean;
-	/** Factory for the engine; receives the bestmove callback. Defaults to Stockfish. */
-	createEngine?: (onMessage: (message: string) => void, difficulty: number) => AIEngine;
+	/** Factory for the engine; receives the bestmove and failure callbacks. Defaults to Stockfish. */
+	createEngine?: (
+		onMessage: (message: string) => void,
+		difficulty: number,
+		onError: (error: unknown) => void
+	) => AIEngine;
 }
 
 /** What's persisted to resume an AI game after a refresh. */
@@ -37,13 +41,46 @@ export class AIGameState extends GameModel {
 	// Bumped on every position change so a hint computed for an older position is dropped.
 	private hintToken = 0;
 
+	private readonly startEngine: () => AIEngine;
+
 	constructor({ player, difficulty, debug = false, createEngine }: AIGameStateOptions) {
 		super('pve', player);
 		this.difficulty = difficulty;
-		const onMessage = this.handleEngineMessage.bind(this);
-		this.engine = createEngine
-			? createEngine(onMessage, difficulty)
-			: initializeEngine(onMessage, difficulty, debug);
+		this.startEngine = () => {
+			// Callbacks are bound to the engine they came from, so a failed engine's
+			// late events can't affect its replacement.
+			let engine: AIEngine | null = null;
+			const onMessage = (message: string) => {
+				if (engine === this.engine) this.handleEngineMessage(message);
+			};
+			const onError = (error: unknown) => {
+				if (engine === null || engine === this.engine) this.handleEngineError(error);
+			};
+			engine = createEngine
+				? createEngine(onMessage, this.difficulty, onError)
+				: initializeEngine(onMessage, this.difficulty, debug, onError);
+			return engine;
+		};
+		this.engine = this.startEngine();
+	}
+
+	/**
+	 * Replace a failed engine with a fresh one and pick the game back up: the
+	 * position is re-sent and, if it's the AI's turn, it moves (CR-10).
+	 */
+	retryEngine() {
+		this.engine.terminate();
+		this.patch({ engineError: false });
+		this.engine = this.startEngine();
+		this.resetEngine();
+		this.triggerAiMove();
+	}
+
+	/** The engine failed (worker error, WASM didn't load, or never became ready). */
+	private handleEngineError(error: unknown) {
+		console.error('Chess engine failed:', error);
+		this.hintToken++;
+		this.patch({ engineError: true, thinking: false, hint: null, hintPending: false });
 	}
 
 	newGame() {

@@ -63,6 +63,8 @@ export type GameView = {
 	hintPending: boolean;
 	/** AI mode: the engine is computing its move. */
 	thinking: boolean;
+	/** AI mode: the engine failed to load or crashed; offer a retry. */
+	engineError: boolean;
 	moveHistory: ChessMove[];
 	sanHistory: string[];
 	// Multiplayer-only.
