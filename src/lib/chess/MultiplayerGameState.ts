@@ -4,7 +4,14 @@ import type { ChessMove, ClockSnapshot, GameOverReason, TimeControl } from './ty
 import type { ServerMessageOf } from './protocol';
 import type { ClientMessage } from './protocol';
 import { WebSocketManager } from '../websocket/WebSocketManager';
-import { clearSeat, getSeatToken, setSeatToken, touchSeat } from './seat';
+import {
+	clearRoomEnded,
+	clearSeat,
+	getSeatToken,
+	markRoomEnded,
+	setSeatToken,
+	touchSeat
+} from './seat';
 import type { GameView } from './types';
 import { apiUrls } from '../apiConfig';
 
@@ -98,8 +105,12 @@ export class MultiplayerGameState extends GameModel {
 					? connect(url, hello)
 					: new WebSocketManager(url, { hello });
 		this.wsManager.onStatus((status, rejection) => {
-			// The room is gone or the token is dead: don't keep offering it (CR-5).
-			if (rejection === 'notFound') clearSeat(roomId);
+			// The room is gone or the token is dead: don't keep offering it (CR-5),
+			// but remember why, so a reload says so instead of "incomplete link" (CR3-7).
+			if (rejection === 'notFound') {
+				clearSeat(roomId);
+				markRoomEnded(roomId);
+			}
 			this.patch({ connectionStatus: status, rejection });
 		});
 		this.setupMessageHandlers();
@@ -244,6 +255,7 @@ export class MultiplayerGameState extends GameModel {
 	private handleSeat(color: Color, token: string) {
 		this.token = token;
 		setSeatToken(this.roomId, token);
+		clearRoomEnded(this.roomId);
 		if (color !== this.player) {
 			this.player = color;
 			this.patch({ player: color });

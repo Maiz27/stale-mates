@@ -127,6 +127,58 @@ export function clearSeat(roomId: string): void {
 	remove(inviteKey(roomId));
 }
 
+const ENDED_PREFIX = 'stalemates:ended:';
+
+/**
+ * How long this tab remembers that the server refused a room as gone
+ * ({@link markRoomEnded}). Short: it only has to outlive a reload or two.
+ */
+export const ENDED_ROOM_TTL_MS = 30 * 60 * 1000;
+
+function session(): Storage | null {
+	try {
+		return typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Remember (in this tab, briefly) that the server said the room is gone or the
+ * seat is dead. The seat itself is cleared at the same time, so without this a
+ * reload of `/room?id=…` would claim the invite link is incomplete (CR3-7).
+ */
+export function markRoomEnded(roomId: string): void {
+	try {
+		session()?.setItem(`${ENDED_PREFIX}${roomId}`, String(Date.now()));
+	} catch {
+		// Storage disabled: a reload shows the generic missing-seat message.
+	}
+}
+
+/** Whether this tab was recently told that `roomId` is gone (see {@link markRoomEnded}). */
+export function wasRoomEnded(roomId: string): boolean {
+	try {
+		const store = session();
+		const key = `${ENDED_PREFIX}${roomId}`;
+		const at = Number(store?.getItem(key) ?? NaN);
+		if (Number.isFinite(at) && Date.now() - at < ENDED_ROOM_TTL_MS) return true;
+		store?.removeItem(key);
+	} catch {
+		// ignore
+	}
+	return false;
+}
+
+/** Forget an ended-room marker (the room let us in after all). */
+export function clearRoomEnded(roomId: string): void {
+	try {
+		session()?.removeItem(`${ENDED_PREFIX}${roomId}`);
+	} catch {
+		// ignore
+	}
+}
+
 /**
  * The token to join `roomId` with, given an invite-link token (`#seat=…`), if
  * any. A seat already held in this browser wins: the creator opening their own

@@ -9,7 +9,11 @@ import {
 	clearSeat,
 	resolveSeatToken,
 	touchSeat,
-	SEAT_TTL_MS
+	SEAT_TTL_MS,
+	markRoomEnded,
+	wasRoomEnded,
+	clearRoomEnded,
+	ENDED_ROOM_TTL_MS
 } from './seat';
 
 /** Minimal Web Storage stand-in. */
@@ -130,5 +134,19 @@ describe('seat storage survives closing the tab (CR-5)', () => {
 		expect(local.getItem('stalemates:board-theme')).toBe('green');
 		// Unparseable seat entries are still cleaned up.
 		expect(local.getItem('stalemates:seat:junk')).toBeNull();
+	});
+
+	it('remembers an ended room per tab, briefly (CR3-7)', () => {
+		markRoomEnded('r1');
+		expect(session.getItem('stalemates:ended:r1')).not.toBeNull();
+		expect(local.length).toBe(0);
+		expect(wasRoomEnded('r1')).toBe(true);
+		expect(wasRoomEnded('r2')).toBe(false);
+		vi.setSystemTime(1_000_000 + ENDED_ROOM_TTL_MS + 1);
+		expect(wasRoomEnded('r1')).toBe(false);
+		expect(session.getItem('stalemates:ended:r1')).toBeNull();
+		markRoomEnded('r1');
+		clearRoomEnded('r1');
+		expect(wasRoomEnded('r1')).toBe(false);
 	});
 });

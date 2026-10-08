@@ -15,7 +15,13 @@
 	import type { GameView } from '$lib/chess/types';
 	import type { Rejection } from '$lib/websocket/WebSocketManager';
 	import { MultiplayerGameState, canOfferDraw } from '$lib/chess/MultiplayerGameState';
-	import { getInviteToken, inviteLink, resolveSeatToken, seatTokenFromHash } from '$lib/chess/seat';
+	import {
+		getInviteToken,
+		inviteLink,
+		resolveSeatToken,
+		seatTokenFromHash,
+		wasRoomEnded
+	} from '$lib/chess/seat';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { API_NOT_CONFIGURED_MESSAGE } from '$lib/apiConfig';
@@ -29,6 +35,8 @@
 	let boardFlipped = $state(false);
 	// No seat token for this room in this browser (e.g. a link without its #seat=… part).
 	let missingSeat = $state(false);
+	// ...because this tab was told the room is gone (the seat was cleared then) (CR3-7).
+	let roomEnded = $state(false);
 	// Only the creator's tab holds the opponent's invite token.
 	let opponentLink = $state('');
 	const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
@@ -170,7 +178,8 @@
 		}
 		const token = resolveSeatToken(id, fromHash);
 		if (!token) {
-			missingSeat = true;
+			if (wasRoomEnded(id)) roomEnded = true;
+			else missingSeat = true;
 			return;
 		}
 		const invite = getInviteToken(id);
@@ -218,6 +227,15 @@
 				<div class="space-y-3">
 					<p class="text-muted-foreground">
 						This room link is missing a game ID. Start a new game from the home page.
+					</p>
+					<Button onclick={leave}>Back to Home</Button>
+				</div>
+			{:else if roomEnded}
+				<div class="space-y-3" role="alert">
+					<p class="font-semibold">Room not found or ended</p>
+					<p class="text-muted-foreground">
+						This game has ended or expired, or your seat in it is no longer valid. Start a new game
+						from the home page.
 					</p>
 					<Button onclick={leave}>Back to Home</Button>
 				</div>

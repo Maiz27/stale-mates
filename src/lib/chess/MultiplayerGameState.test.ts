@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { MultiplayerGameState, canOfferDraw, type GameSocket } from './MultiplayerGameState';
 import type { ClientMessage, GameStateMessage, ServerMessage } from './protocol';
 import type { ConnectionStatus, Rejection } from '../websocket/WebSocketManager';
-import { getSeatToken, setSeatToken } from './seat';
+import { getSeatToken, setSeatToken, wasRoomEnded } from './seat';
 
 class AudioStub {
 	volume = 0;
@@ -320,6 +320,43 @@ describe('MultiplayerGameState connection status (SM-1.7)', () => {
 			expect(getSeatToken('room1')).toBe('seat-token-123');
 			socket.setStatus('rejected', 'notFound');
 			expect(getSeatToken('room1')).toBeNull();
+		} finally {
+			vi.unstubAllGlobals();
+			vi.stubGlobal('Audio', AudioStub);
+		}
+	});
+
+	it('remembers in this tab that the room ended, until a seat is granted (CR3-7)', () => {
+		const memory = () => {
+			const store = new Map<string, string>();
+			return {
+				get length() {
+					return store.size;
+				},
+				key: (i: number) => [...store.keys()][i] ?? null,
+				getItem: (k: string) => store.get(k) ?? null,
+				setItem: (k: string, v: string) => void store.set(k, v),
+				removeItem: (k: string) => void store.delete(k)
+			};
+		};
+		vi.stubGlobal('localStorage', memory());
+		vi.stubGlobal('sessionStorage', memory());
+		try {
+			setSeatToken('room1', 'seat-token-123');
+			// Other refusals don't mean the room is gone.
+			const other = setup();
+			other.socket.setStatus('rejected', 'rateLimited');
+			expect(wasRoomEnded('room1')).toBe(false);
+			const { socket } = setup();
+			socket.setStatus('rejected', 'notFound');
+			// A reload now finds no seat, but knows why.
+			expect(getSeatToken('room1')).toBeNull();
+			expect(wasRoomEnded('room1')).toBe(true);
+			expect(wasRoomEnded('room2')).toBe(false);
+			// A later successful join (e.g. a fresh invite link) clears the marker.
+			const again = setup();
+			again.socket.emit({ type: 'seat', color: 'white', token: 'rotated-token-456' });
+			expect(wasRoomEnded('room1')).toBe(false);
 		} finally {
 			vi.unstubAllGlobals();
 			vi.stubGlobal('Audio', AudioStub);

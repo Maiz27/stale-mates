@@ -121,6 +121,13 @@ test.describe('Multiplayer mode', () => {
 		await page.goto('/room?id=does-not-exist#seat=abcdefghijklmnop');
 		await expect(page.getByText('Room not found or full')).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole('button', { name: 'Back to Home' })).toBeVisible();
+
+		// The refused seat was forgotten; a reload (the #seat part is gone from the
+		// address bar) says the room ended rather than blaming the link (CR3-7).
+		await expect(page).toHaveURL(/\/room\?id=does-not-exist$/);
+		await page.reload();
+		await expect(page.getByText('Room not found or ended')).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText('This invite link is incomplete')).toHaveCount(0);
 	});
 
 	test('joining after the creator left shows them as disconnected, with the full grace (CR-3)', async ({
