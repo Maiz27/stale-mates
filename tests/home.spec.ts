@@ -42,3 +42,17 @@ test.describe('home', () => {
 		await expect(page.locator('html')).toHaveClass(/dark/);
 	});
 });
+
+test('old <roomId>-playerId cookies are removed on load (CR3-8)', async ({
+	page,
+	context,
+	baseURL
+}) => {
+	await context.addCookies([
+		{ name: 'V1StGXR8_Z5jdHi6B-myT-playerId', value: '%7B%7D', url: baseURL },
+		{ name: 'keep-me', value: '1', url: baseURL }
+	]);
+	await page.goto('/');
+	await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+	await expect.poll(async () => (await context.cookies()).map((c) => c.name)).toEqual(['keep-me']);
+});

@@ -1,11 +1,17 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import { ModeWatcher } from 'mode-watcher';
 	import Header from '$lib/components/header/Header.svelte';
+	import { sweepLegacyCookies } from '$lib/legacyCookies';
 	import '../app.css';
 
 	let { children }: { children: Snippet } = $props();
+
+	// Drop the old version's never-expiring `<roomId>-playerId` cookies (CR3-8).
+	onMount(() => {
+		sweepLegacyCookies();
+	});
 </script>
 
 <svelte:head>
