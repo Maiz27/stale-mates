@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
-import { gameOutcome, canStillCheckmate } from './outcome';
+import { gameOutcome, canStillCheckmate, isDarkSquare } from './outcome';
 
 describe('gameOutcome', () => {
 	it('returns null when the game is not over', () => {
@@ -72,5 +72,24 @@ describe('canStillCheckmate (FIDE 6.9, CR-6)', () => {
 		expect(can('5b2/8/8/4k3/8/8/8/2B1K3 w - - 0 1', 'white')).toBe(false);
 		// Black bishop on a light square: a helpmate exists.
 		expect(can('4b3/8/8/4k3/8/8/8/2B1K3 w - - 0 1', 'white')).toBe(true);
+	});
+});
+
+describe('isDarkSquare (CR2-10)', () => {
+	it('matches the board: a1 and h8 are dark, h1 and a8 light', () => {
+		expect(['a1', 'h8', 'c1', 'd4', 'e5'].map(isDarkSquare)).toEqual([
+			true,
+			true,
+			true,
+			true,
+			true
+		]);
+		expect(['h1', 'a8', 'b1', 'd5', 'e4'].map(isDarkSquare)).toEqual([
+			false,
+			false,
+			false,
+			false,
+			false
+		]);
 	});
 });

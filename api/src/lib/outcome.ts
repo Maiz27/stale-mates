@@ -24,8 +24,8 @@ export function gameOutcome(chess: Chess): { winner?: Color; reason: GameOverRea
 	return { reason: 'draw' };
 }
 
-/** Square colour of an algebraic square: true for light squares (a1 is dark). */
-const isLightSquare = (square: string) =>
+/** Square colour of an algebraic square: true for dark squares (a1 is dark, h1 light). */
+export const isDarkSquare = (square: string) =>
 	(square.charCodeAt(0) - 'a'.charCodeAt(0) + Number(square[1])) % 2 === 1;
 
 /**
@@ -61,6 +61,6 @@ export function canStillCheckmate(chess: Chess, color: Color): boolean {
 
 	// Only bishops. The opponent's non-bishop material can always be used to block.
 	if (theirs.some((p) => p.type !== 'b')) return true;
-	const colours = new Set([...mine, ...theirs].map((p) => isLightSquare(p.square)));
+	const colours = new Set([...mine, ...theirs].map((p) => isDarkSquare(p.square)));
 	return colours.size > 1;
 }
