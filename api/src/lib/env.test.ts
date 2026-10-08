@@ -79,13 +79,17 @@ describe('validateEnv DISCONNECT_GRACE_MS', () => {
 });
 
 describe('TRUST_PROXY / MAX_WS_CONNECTIONS_PER_IP (CR-8)', () => {
-	it('defaults to one trusted proxy hop and 20 sockets per IP', () => {
-		expect(trustProxyHops({})).toBe(1);
+	it('defaults to trusting no proxy (CR2-5) and 20 sockets per IP', () => {
+		// Exposed directly, a trusted hop would let clients spoof X-Forwarded-For;
+		// deploys behind a proxy (fly.toml) opt in with TRUST_PROXY=1.
+		expect(trustProxyHops({})).toBe(0);
+		expect(trustProxyHops({ TRUST_PROXY: '' })).toBe(0);
 		expect(maxWsConnectionsPerIp({})).toBe(20);
 	});
 
 	it('parses configured values', () => {
 		expect(trustProxyHops({ TRUST_PROXY: '0' })).toBe(0);
+		expect(trustProxyHops({ TRUST_PROXY: '1' })).toBe(1);
 		expect(trustProxyHops({ TRUST_PROXY: '2' })).toBe(2);
 		expect(maxWsConnectionsPerIp({ MAX_WS_CONNECTIONS_PER_IP: '5' })).toBe(5);
 	});

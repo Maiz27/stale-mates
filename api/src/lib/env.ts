@@ -18,8 +18,12 @@ export interface EnvInput {
 	NODE_ENV?: string;
 }
 
-/** Default number of reverse-proxy hops trusted for the client IP (Fly.io's edge = 1). */
-export const DEFAULT_TRUST_PROXY_HOPS = 1;
+/**
+ * Default number of reverse-proxy hops trusted for the client IP: none, so a
+ * server exposed directly can't be fooled by a client-supplied X-Forwarded-For
+ * (CR2-5). Deploys behind a proxy opt in (`fly.toml` sets `TRUST_PROXY=1`).
+ */
+export const DEFAULT_TRUST_PROXY_HOPS = 0;
 /** Default cap on concurrent WebSocket connections from one client IP. */
 export const DEFAULT_MAX_WS_CONNECTIONS_PER_IP = 20;
 

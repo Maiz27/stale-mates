@@ -7,10 +7,11 @@ import { EnvInput, trustProxyHops } from './lib/env';
 export function createApp(env: EnvInput = process.env) {
 	const app = express();
 
-	// Trust TRUST_PROXY reverse-proxy hops (default 1, Fly.io's edge) so `req.ip`
-	// resolves the real client IP from X-Forwarded-For for per-IP rate limiting.
-	// Behind a proxy with 0, everyone collapses into the proxy's IP bucket; exposed
-	// directly with 1, a client could spoof its IP — so set it to match the deploy.
+	// Trust TRUST_PROXY reverse-proxy hops (default 0; fly.toml sets 1 for Fly.io's
+	// edge) so `req.ip` resolves the real client IP from X-Forwarded-For for per-IP
+	// rate limiting. Behind a proxy with 0, everyone collapses into the proxy's IP
+	// bucket; exposed directly with 1, a client could spoof its IP — so set it to
+	// match the deploy.
 	app.set('trust proxy', trustProxyHops(env));
 
 	// ORIGIN may list several comma-separated origins (also used for the WebSocket

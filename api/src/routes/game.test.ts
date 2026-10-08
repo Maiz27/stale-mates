@@ -49,9 +49,37 @@ describe('POST /game/create (Express 5)', () => {
 	});
 });
 
-describe('trust proxy (CR-8)', () => {
-	it('is configurable via TRUST_PROXY (default: one hop)', () => {
-		expect(createApp({}).get('trust proxy')).toBe(1);
+describe('trust proxy (CR-8, CR2-5)', () => {
+	it('is configurable via TRUST_PROXY (default: none)', () => {
+		expect(createApp({}).get('trust proxy')).toBe(0);
 		expect(createApp({ TRUST_PROXY: '0' }).get('trust proxy')).toBe(0);
+		expect(createApp({ TRUST_PROXY: '1' }).get('trust proxy')).toBe(1);
+	});
+
+	/** `req.ip` as the app resolves it for a request carrying a spoofed X-Forwarded-For. */
+	async function ipSeenBy(env: Record<string, string>): Promise<string> {
+		const probe = createApp(env);
+		probe.get('/__ip', (req, res) => {
+			res.send(req.ip);
+		});
+		const server = probe.listen(0);
+		await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+		try {
+			const { port } = server.address() as AddressInfo;
+			const res = await fetch(`http://127.0.0.1:${port}/__ip`, {
+				headers: { 'x-forwarded-for': '6.6.6.6' }
+			});
+			return await res.text();
+		} finally {
+			server.close();
+		}
+	}
+
+	it('ignores X-Forwarded-For by default, so a client cannot spoof its IP', async () => {
+		expect(await ipSeenBy({})).toMatch(/127\.0\.0\.1$/);
+	});
+
+	it('reads the client IP from X-Forwarded-For with TRUST_PROXY=1 (behind Fly)', async () => {
+		expect(await ipSeenBy({ TRUST_PROXY: '1' })).toBe('6.6.6.6');
 	});
 });

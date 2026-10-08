@@ -119,3 +119,60 @@ describe('per-IP connection cap (CR-8)', () => {
 		d.ws.close();
 	});
 });
+
+describe('TRUST_PROXY default for WebSockets (CR2-5)', () => {
+	const servers: { server: http.Server; wss: ReturnType<typeof createWebSocketServer> }[] = [];
+	afterAll(() => {
+		for (const { server, wss } of servers) {
+			wss.close();
+			server.close();
+		}
+	});
+
+	async function start(options: { trustProxyHops?: number }) {
+		const server = http.createServer();
+		// `trustProxyHops` omitted = the env default (TRUST_PROXY is unset in tests).
+		const wss = createWebSocketServer(server, {
+			env: dev,
+			heartbeatMs: 0,
+			maxConnectionsPerIp: 1,
+			...options
+		});
+		servers.push({ server, wss });
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		return (server.address() as AddressInfo).port;
+	}
+
+	/** Open a socket claiming `xff`; resolves with its close code, or 'open' if it stays up. */
+	async function connect(port: number, xff: string) {
+		const { id } = createGame({ time: 0 });
+		const ws = new WebSocket(`ws://127.0.0.1:${port}/game/join?id=${id}`, {
+			headers: { origin: 'http://localhost:5173', 'x-forwarded-for': xff }
+		});
+		ws.on('error', () => {});
+		const outcome = await Promise.race([
+			new Promise<number>((resolve) => ws.on('close', (code) => resolve(code))),
+			new Promise<'open'>((resolve) => setTimeout(() => resolve('open'), 150))
+		]);
+		return { ws, outcome };
+	}
+
+	it('ignores X-Forwarded-For by default: spoofed addresses share one per-IP budget', async () => {
+		const port = await start({});
+		const a = await connect(port, '1.1.1.1');
+		const b = await connect(port, '2.2.2.2');
+		expect(a.outcome).toBe('open');
+		expect(b.outcome).toBe(1013);
+		a.ws.close();
+	});
+
+	it('honours X-Forwarded-For when one proxy hop is trusted', async () => {
+		const port = await start({ trustProxyHops: 1 });
+		const a = await connect(port, '1.1.1.1');
+		const b = await connect(port, '2.2.2.2');
+		expect(a.outcome).toBe('open');
+		expect(b.outcome).toBe('open');
+		a.ws.close();
+		b.ws.close();
+	});
+});
