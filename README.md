@@ -175,7 +175,10 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 **Backend (Fly secrets / container env):**
 
 - `ORIGIN` — the deployed frontend origin(s), comma-separated, used for CORS and the
-  WebSocket `Origin` allowlist (e.g. `https://stalemates.magedfaiz.xyz`)
+  WebSocket `Origin` allowlist (e.g. `https://stalemates.magedfaiz.xyz`). Each entry is
+  normalised (`https://site/` → `https://site`); an entry with a path, query or fragment,
+  or a non-http(s) scheme, stops the server at startup. The parsed allowlist is logged.
+- `ORIGIN_PATTERNS` — optional, for Vercel preview deployments (see below).
 - `PORT` — port the server listens on (defaults to `3000`)
 - `ROOM_TTL_MS` — how long an empty room is kept before the sweep reaps it (ms,
   default `1800000` = 30 min). Disconnected players can rejoin until then.
@@ -191,6 +194,27 @@ The backend stores active game rooms in an **in-memory `Map`** inside a single l
 ### Deploying the Frontend (Vercel)
 
 Connect the repository to a Vercel project, set `VITE_API_URL` and `VITE_API_WS_URL` in the project's environment variables, and deploy. `adapter-vercel` handles the build.
+
+**Preview deployments.** Every Vercel preview has its own URL, which the backend's exact
+`ORIGIN` list can't know, so multiplayer is refused there (`Origin not allowed`). Pick one:
+
+- **Leave previews without a game server** (simplest, safest): set `VITE_API_URL` /
+  `VITE_API_WS_URL` for the _Production_ environment only. Preview builds then show "no
+  game server configured" on the multiplayer page; single-player works.
+- **Allow this project's previews** on the backend with an opt-in pattern:
+
+  ```bash
+  fly secrets set ORIGIN_PATTERNS='https://stale-mates-*-maiz27s-projects.vercel.app'
+  ```
+
+  and set `VITE_API_URL` / `VITE_API_WS_URL` for the _Preview_ environment too. A pattern
+  is https-only with exactly one `*` in the first host label, after a non-empty literal
+  prefix (`https://*.vercel.app` is refused at startup — it would admit everyone's apps);
+  the `*` never matches a dot. Keep the team suffix (`-maiz27s-projects`) in it: Vercel
+  preview hosts are `<project>-<hash>-<team>.vercel.app`, and the suffix is what keeps
+  other people's deployments out. It is defence in depth (seat tokens never leave the
+  site's own storage), but an unscoped pattern would still let another site open game
+  sockets from its visitors' browsers.
 
 ### Deploying the Backend (Fly.io / Docker)
 

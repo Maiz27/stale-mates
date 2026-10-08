@@ -1,8 +1,9 @@
 import express from 'express';
-import cors from 'cors';
+import cors, { type CorsOptions } from 'cors';
 import { GameRouter } from './routes/game';
 import { getRoomCount } from './lib/game';
 import { EnvInput, trustProxyHops } from './lib/env';
+import { originMatcher } from './lib/origins';
 
 export function createApp(env: EnvInput = process.env) {
 	const app = express();
@@ -14,15 +15,11 @@ export function createApp(env: EnvInput = process.env) {
 	// match the deploy.
 	app.set('trust proxy', trustProxyHops(env));
 
-	// ORIGIN may list several comma-separated origins (also used for the WebSocket
-	// Origin allowlist in lib/websocket.ts).
-	const allowedOrigins = (env.ORIGIN || 'http://localhost:5173')
-		.split(',')
-		.map((o) => o.trim())
-		.filter(Boolean);
-
-	const corsOptions = {
-		origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
+	// The same allowlist as the WebSocket Origin check (lib/origins.ts): ORIGIN's
+	// exact, normalised origins plus any opt-in ORIGIN_PATTERNS (CR3-1, CR3-2).
+	const isAllowed = originMatcher(env);
+	const corsOptions: CorsOptions = {
+		origin: (origin, callback) => callback(null, isAllowed(origin)),
 		optionsSuccessStatus: 200
 	};
 

@@ -83,3 +83,37 @@ describe('trust proxy (CR-8, CR2-5)', () => {
 		expect(await ipSeenBy({ TRUST_PROXY: '1' })).toBe('6.6.6.6');
 	});
 });
+
+describe('CORS allowlist (CR3-1, CR3-2)', () => {
+	async function acao(env: Record<string, string>, origin: string): Promise<string | null> {
+		const server = createApp(env).listen(0);
+		await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+		try {
+			const { port } = server.address() as AddressInfo;
+			const res = await fetch(`http://127.0.0.1:${port}/game/create`, {
+				method: 'OPTIONS',
+				headers: { origin, 'access-control-request-method': 'POST' }
+			});
+			return res.headers.get('access-control-allow-origin');
+		} finally {
+			server.close();
+		}
+	}
+
+	it('allows the normalised ORIGIN even when configured with a trailing slash', async () => {
+		expect(await acao({ ORIGIN: 'https://a.example/' }, 'https://a.example')).toBe(
+			'https://a.example'
+		);
+		expect(await acao({ ORIGIN: 'https://a.example/' }, 'https://evil.example')).toBeNull();
+	});
+
+	it('allows ORIGIN_PATTERNS matches only', async () => {
+		const env = {
+			ORIGIN: 'https://a.example',
+			ORIGIN_PATTERNS: 'https://app-*-team.vercel.app'
+		};
+		const preview = 'https://app-git-x-team.vercel.app';
+		expect(await acao(env, preview)).toBe(preview);
+		expect(await acao(env, 'https://other-git-x-team.vercel.app')).toBeNull();
+	});
+});

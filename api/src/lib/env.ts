@@ -8,9 +8,12 @@
  * that are required in production, are rejected.
  */
 
+import { parseOrigins } from './origins';
+
 export interface EnvInput {
 	PORT?: string;
 	ORIGIN?: string;
+	ORIGIN_PATTERNS?: string;
 	ROOM_TTL_MS?: string;
 	DISCONNECT_GRACE_MS?: string;
 	TRUST_PROXY?: string;
@@ -75,6 +78,10 @@ export function validateEnv(env: EnvInput): EnvValidationResult {
 	if (isProduction && (env.ORIGIN === undefined || env.ORIGIN.trim() === '')) {
 		errors.push('ORIGIN is required in production');
 	}
+	// Each ORIGIN entry must be a bare http(s) origin and each ORIGIN_PATTERNS
+	// entry a tightly scoped https pattern; otherwise nothing could ever match
+	// and multiplayer would be silently dead (CR3-1, CR3-2).
+	errors.push(...parseOrigins(env).errors);
 
 	// ROOM_TTL_MS: optional, but if present it must be a positive integer.
 	if (env.ROOM_TTL_MS !== undefined && env.ROOM_TTL_MS.trim() !== '') {

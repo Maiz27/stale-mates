@@ -7,6 +7,7 @@ import app from './app';
 import { createWebSocketServer } from './lib/websocket';
 import type { CloseReason } from './lib/protocol';
 import { assertValidEnv } from './lib/env';
+import { describeOrigins } from './lib/origins';
 import { startRoomSweep } from './lib/game';
 
 // Fail fast on invalid configuration before binding any sockets (audit M4).
@@ -16,6 +17,9 @@ try {
 	console.error(error instanceof Error ? error.message : String(error));
 	process.exit(1);
 }
+// The parsed browser-origin allowlist (CORS + WebSocket), so a misconfigured
+// ORIGIN is visible in the deploy logs (CR3-1).
+console.log(describeOrigins(process.env));
 
 const server = http.createServer(app);
 

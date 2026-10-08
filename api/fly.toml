@@ -16,6 +16,8 @@ primary_region = "fra"
   TRUST_PROXY = "1"
   # ORIGIN (deployed frontend origin) is set as a secret/runtime env, not here:
   #   fly secrets set ORIGIN=https://stalemates.magedfaiz.xyz
+  # Optional, to let this project's Vercel previews play multiplayer (see README):
+  #   fly secrets set ORIGIN_PATTERNS='https://stale-mates-*-maiz27s-projects.vercel.app'
 
 [http_service]
   internal_port = 3000

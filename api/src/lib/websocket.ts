@@ -6,28 +6,24 @@ import { parseClientMessage } from './validate';
 import type { Player } from './types';
 import type { CloseReason } from './protocol';
 import { maxWsConnectionsPerIp, trustProxyHops } from './env';
+import { originMatcher, type OriginEnv } from './origins';
 
 /** How long a socket may stay open without presenting a seat token. */
 export const JOIN_TIMEOUT_MS = 10_000;
 
-export interface ConnectionEnv {
-	ORIGIN?: string;
+export interface ConnectionEnv extends OriginEnv {
 	NODE_ENV?: string;
 }
 
 /**
  * Cross-site WebSocket hijacking guard (audit SM-3). Browsers always send
  * `Origin` on a WS handshake and CORS does not apply to WebSockets, so the
- * server must check it itself. Allowed origins come from `ORIGIN` (comma
- * separated, shared with CORS). Outside production any localhost origin and
+ * server must check it itself. The allowlist is shared with CORS
+ * (lib/origins.ts: normalised `ORIGIN` entries plus opt-in `ORIGIN_PATTERNS`). Outside production any localhost origin and
  * origin-less (non-browser) clients are also allowed, so local dev just works.
  */
 export function isOriginAllowed(origin: string | undefined, env: ConnectionEnv): boolean {
-	const allowed = (env.ORIGIN || 'http://localhost:5173')
-		.split(',')
-		.map((o) => o.trim())
-		.filter(Boolean);
-	if (origin && allowed.includes(origin)) return true;
+	if (originMatcher(env)(origin)) return true;
 	if (env.NODE_ENV === 'production') return false;
 	if (!origin) return true;
 	try {
