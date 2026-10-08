@@ -2,7 +2,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { mediaQuery } from 'svelte-legos';
+	import { isDesktop } from '$lib/media';
 
 	/**
 	 * A trigger button that asks for confirmation (dialog on desktop, drawer on
@@ -21,7 +21,6 @@
 	export let disabled = false;
 
 	let open = false;
-	const isDesktop = mediaQuery('(min-width: 768px)');
 
 	const handleConfirm = () => {
 		open = false;
@@ -29,7 +28,7 @@
 	};
 </script>
 
-{#if $isDesktop}
+{#if isDesktop.current}
 	<Dialog.Root bind:open>
 		<Dialog.Trigger asChild let:builder>
 			<Button

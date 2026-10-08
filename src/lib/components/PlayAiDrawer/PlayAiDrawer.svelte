@@ -2,7 +2,7 @@
 	import Gear from 'svelte-radix/Gear.svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { mediaQuery } from 'svelte-legos';
+	import { isDesktop } from '$lib/media';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -14,7 +14,6 @@
 	export let onSettingsUpdate: ((settings: GameSettings) => void) | null = null;
 
 	let open = false;
-	const isDesktop = mediaQuery('(min-width: 768px)');
 
 	$: title = isGameStarted ? 'Game Settings' : 'Play AI: Adaptive Challenge';
 	$: description = isGameStarted
@@ -36,7 +35,7 @@
 	};
 </script>
 
-{#if $isDesktop}
+{#if isDesktop.current}
 	<Dialog.Root bind:open>
 		<Dialog.Trigger asChild let:builder>
 			<Button

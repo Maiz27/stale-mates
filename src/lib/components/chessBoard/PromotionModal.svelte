@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { mediaQuery } from 'svelte-legos';
+	import { isDesktop } from '$lib/media';
 	import { createEventDispatcher } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
@@ -8,7 +8,6 @@
 
 	export let open = false;
 	const dispatch = createEventDispatcher<{ promotion: { piece: string }; cancel: void }>();
-	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Choose Promotion Piece';
 	const description = 'Choose the piece you want to promote to a queen, rook, bishop, or knight.';
 
@@ -29,7 +28,7 @@
 	}
 </script>
 
-{#if $isDesktop}
+{#if isDesktop.current}
 	<Dialog.Root bind:open>
 		<Dialog.Content class="sm:max-w-[425px]">
 			<Dialog.Header>

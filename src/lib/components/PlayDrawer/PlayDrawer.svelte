@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { mediaQuery } from 'svelte-legos';
+	import { isDesktop } from '$lib/media';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Drawer from '$lib/components/ui/drawer/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -17,7 +17,6 @@
 	let errorMessage = '';
 	let loading = false;
 
-	const isDesktop = mediaQuery('(min-width: 768px)');
 	const title = 'Play Friend: Friendly Duel';
 	const description =
 		'Match wits with friends in casual or competitive games. Enjoy chess together and improve your skills!';
@@ -75,7 +74,7 @@
 	};
 </script>
 
-{#if $isDesktop}
+{#if isDesktop.current}
 	<Dialog.Root bind:open>
 		<Dialog.Trigger asChild let:builder>
 			<Button builders={[builder]} variant="outline">{title}</Button>
