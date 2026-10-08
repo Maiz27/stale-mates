@@ -69,7 +69,7 @@ function setup(token: string | null = 'seat-token-123') {
 	return { game, socket, hello: () => hello() };
 }
 
-const NO_CLOCK = { whiteMs: 0, blackMs: 0, running: null, serverTime: 0 };
+const NO_CLOCK = { whiteMs: 0, blackMs: 0, running: null, serverTime: 0, firstMoveMs: null };
 
 /** A complete gameState frame with sensible defaults. */
 function state(partial: Partial<GameStateMessage>): GameStateMessage {
@@ -146,7 +146,13 @@ describe('MultiplayerGameState resync (SM-1.5)', () => {
 	it('takes back a move the server refused because our flag had fallen (CR2-4)', () => {
 		const { game, socket } = setup();
 		const clock3 = { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false };
-		const flagged = { whiteMs: 0, blackMs: 120_000, running: null, serverTime: 0 };
+		const flagged = {
+			whiteMs: 0,
+			blackMs: 120_000,
+			running: null,
+			serverTime: 0,
+			firstMoveMs: null
+		};
 		socket.emit({
 			type: 'gameStart',
 			fen: START,
@@ -292,7 +298,13 @@ describe('MultiplayerGameState clock view', () => {
 			fen: START,
 			turn: 'white',
 			timeControl: { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false },
-			clock: { whiteMs: 180_000, blackMs: 180_000, running: 'white', serverTime: Date.now() },
+			clock: {
+				whiteMs: 180_000,
+				blackMs: 180_000,
+				running: 'white',
+				serverTime: Date.now(),
+				firstMoveMs: null
+			},
 			opponentConnected: true,
 			opponentGraceMs: null
 		});
@@ -595,6 +607,76 @@ describe('MultiplayerGameState actions while reconnecting (CR3-3)', () => {
 		game.resign();
 		expect(socket.sent).toEqual([{ type: 'resign' }]);
 		expect(get(game).notice).toBeNull();
+		game.destroy();
+	});
+});
+
+describe('MultiplayerGameState first-move window (CR3-4)', () => {
+	const timed = { initial: 60, lowTimeThreshold: 10, increment: 3, isUnlimited: false };
+	const waiting = {
+		whiteMs: 60_000,
+		blackMs: 60_000,
+		running: null,
+		serverTime: 0,
+		firstMoveMs: 30_000
+	};
+
+	it('shows full, stopped clocks and the first-move deadline', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000_000);
+		const { game, socket } = setup();
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: timed,
+			clock: { ...waiting, serverTime: 1_000_000 },
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		expect(get(game).firstMoveDeadline).toBe(1_030_000);
+		vi.advanceTimersByTime(10_000);
+		// Nothing ticks before the first moves.
+		expect(get(game).clock).toMatchObject({ myClock: 60, opponentClock: 60 });
+
+		// Both have moved: the window is gone and White's clock runs.
+		socket.emit({
+			type: 'clock',
+			clock: { ...waiting, running: 'white', firstMoveMs: null, serverTime: Date.now() }
+		});
+		expect(get(game).firstMoveDeadline).toBeNull();
+		vi.advanceTimersByTime(2_000);
+		expect(get(game).clock.myClock).toBeCloseTo(58, 0);
+		game.destroy();
+	});
+
+	it('clears the window and shows the abort when the game is aborted', () => {
+		const { game, socket } = setup();
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: timed,
+			clock: waiting,
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		socket.emit({
+			type: 'gameOver',
+			winner: null,
+			reason: 'aborted',
+			clock: { ...waiting, firstMoveMs: null }
+		});
+		const view = get(game);
+		expect(view.firstMoveDeadline).toBeNull();
+		expect(view.gameOver).toEqual({ isOver: true, winner: null, reason: 'aborted' });
+		game.destroy();
+	});
+
+	it('has no window in untimed games', () => {
+		const { game, socket } = setup();
+		socket.emit(state({ timeControl: unlimited, clock: { ...waiting, firstMoveMs: null } }));
+		expect(get(game).firstMoveDeadline).toBeNull();
 		game.destroy();
 	});
 });

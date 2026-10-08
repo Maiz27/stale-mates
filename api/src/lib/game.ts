@@ -22,6 +22,13 @@ function resolveDisconnectGraceMs(): number | undefined {
 	return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+function resolveFirstMoveTimeoutMs(): number | undefined {
+	const raw = process.env.FIRST_MOVE_TIMEOUT_MS;
+	if (!raw || raw.trim() === '') return undefined;
+	const parsed = Number(raw);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 /**
  * Pure predicate (audit H4): a room is "abandoned" — eligible for sweeping —
  * when nobody is connected AND nothing has happened in it (no join, leave or
@@ -78,7 +85,8 @@ export function createGame({
 	const room = new GameRoom({
 		time,
 		creatorColor: color,
-		disconnectGraceMs: resolveDisconnectGraceMs()
+		disconnectGraceMs: resolveDisconnectGraceMs(),
+		firstMoveTimeoutMs: resolveFirstMoveTimeoutMs()
 	});
 	gameRooms.set(room.id, room);
 	const tokens = room.initialTokens();

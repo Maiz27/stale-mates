@@ -33,3 +33,11 @@ describe('formatResult', () => {
 		expect(formatResult({ isOver: true, winner: 'draw' })).toBe('Game Over: Draw');
 	});
 });
+
+describe('formatResult: aborted games (CR3-4)', () => {
+	it('announces an abort without a winner', () => {
+		expect(formatResult({ isOver: true, winner: null, reason: 'aborted' })).toBe(
+			'Game Over: Aborted — no first move in time'
+		);
+	});
+});

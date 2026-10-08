@@ -102,3 +102,14 @@ describe('TRUST_PROXY / MAX_WS_CONNECTIONS_PER_IP (CR-8)', () => {
 		expect(validateEnv({ TRUST_PROXY: '0', MAX_WS_CONNECTIONS_PER_IP: '10' }).ok).toBe(true);
 	});
 });
+
+describe('validateEnv FIRST_MOVE_TIMEOUT_MS (CR3-4)', () => {
+	it('accepts a positive integer and rejects anything else', () => {
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '30000' }).ok).toBe(true);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '' }).ok).toBe(true);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '0' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '-5' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: '1.5' }).ok).toBe(false);
+		expect(validateEnv({ FIRST_MOVE_TIMEOUT_MS: 'soon' }).ok).toBe(false);
+	});
+});

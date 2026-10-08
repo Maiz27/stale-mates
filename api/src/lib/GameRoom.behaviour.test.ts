@@ -27,7 +27,7 @@ class FakeWs {
 }
 const asWs = (f: FakeWs) => f as unknown as WebSocket;
 
-function setup(time: TimeOption = 0, opts: { graceMs?: number } = {}) {
+function setup(time: TimeOption = 0, opts: { graceMs?: number; firstMoveTimeoutMs?: number } = {}) {
 	let now = 1_000_000;
 	const clock = {
 		get: () => now,
@@ -35,7 +35,12 @@ function setup(time: TimeOption = 0, opts: { graceMs?: number } = {}) {
 			now += ms;
 		}
 	};
-	const room = new GameRoom({ time, disconnectGraceMs: opts.graceMs ?? 60_000, now: clock.get });
+	const room = new GameRoom({
+		time,
+		disconnectGraceMs: opts.graceMs ?? 60_000,
+		firstMoveTimeoutMs: opts.firstMoveTimeoutMs,
+		now: clock.get
+	});
 	const white = new FakeWs();
 	const black = new FakeWs();
 	const tokens = room.initialTokens();
@@ -48,6 +53,12 @@ function setup(time: TimeOption = 0, opts: { graceMs?: number } = {}) {
 		return room.claimSeat(tokenOf(seatWs), asWs(ws)) !== null;
 	};
 	return { room, white, black, whiteId, blackId, clock, reconnect };
+}
+
+/** Play 1. e4 e5: clocks only run once both sides have made their first move (CR3-4). */
+function playFirstMoves(room: GameRoom, whiteId: string, blackId: string) {
+	room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+	room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
 }
 
 beforeEach(() => {
@@ -141,9 +152,12 @@ describe('resync payload (SM-1.3 / SM-1.5 / SM-1.6)', () => {
 
 describe('flag fall (SM-1.4)', () => {
 	it('rejects a move that arrives after the mover flagged and ends the game on time', () => {
-		const { room, white, black, whiteId, clock } = setup(1); // 60s + 3s
-		clock.advance(61_000); // white never moved; the watchdog hasn't fired yet
-		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		const { room, white, black, whiteId, blackId, clock } = setup(1); // 60s + 3s
+		playFirstMoves(room, whiteId, blackId);
+		white.clear();
+		black.clear();
+		clock.advance(61_000); // white's clock ran out; the watchdog hasn't fired yet
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'g1', to: 'f3' } });
 
 		expect(white.of('opponentMove')).toHaveLength(0);
 		expect(black.of('opponentMove')).toHaveLength(0);
@@ -153,24 +167,27 @@ describe('flag fall (SM-1.4)', () => {
 
 	it('resyncs the mover after a late move so its optimistic move is undone (CR2-4)', () => {
 		const { room, white, black, whiteId, blackId, clock } = setup(1);
-		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		playFirstMoves(room, whiteId, blackId);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'g1', to: 'f3' } });
 		clock.advance(70_000); // black flags before its reply reaches the server
 		black.clear();
-		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+		white.clear();
+		room.handleMessage(blackId, { type: 'move', move: { from: 'b8', to: 'c6' } });
 
 		expect(black.last('gameOver')).toMatchObject({ winner: 'white', reason: 'timeout' });
 		// The mover's board showed e7e5; the authoritative state follows the result.
 		const sent = black.sent.map((m) => m.type);
 		expect(sent.indexOf('gameState')).toBeGreaterThan(sent.indexOf('gameOver'));
 		expect(black.last('gameState')).toMatchObject({
-			moves: ['e2e4'],
+			moves: ['e2e4', 'e7e5', 'g1f3'],
 			gameOver: { winner: 'white', reason: 'timeout' }
 		});
 		expect(white.of('opponentMove')).toHaveLength(0);
 	});
 
 	it('scores a timeout against a lone king as a draw', () => {
-		const { room, black, clock } = setup(1);
+		const { room, black, whiteId, blackId, clock } = setup(1);
+		playFirstMoves(room, whiteId, blackId);
 		// White to move with K+Q; black has a lone king. If white flags, black
 		// cannot possibly mate, so it's a draw.
 		(room as unknown as { chess: Chess }).chess.load('8/8/8/4k3/8/8/8/3QK3 w - - 0 1');
@@ -183,7 +200,8 @@ describe('flag fall (SM-1.4)', () => {
 	});
 
 	it('scores a timeout against K+N vs a lone king as a draw (CR-6)', () => {
-		const { room, black, clock } = setup(1);
+		const { room, black, whiteId, blackId, clock } = setup(1);
+		playFirstMoves(room, whiteId, blackId);
 		// White flags; black has only K+N against white's lone king: no mate possible.
 		(room as unknown as { chess: Chess }).chess.load('8/8/8/4k3/8/8/2n5/4K3 w - - 0 1');
 		clock.advance(61_000);
@@ -195,16 +213,19 @@ describe('flag fall (SM-1.4)', () => {
 	});
 
 	it('clears the pending watchdog when a late move triggers the flag check (CR-7)', () => {
-		const { room, whiteId, clock } = setup(1);
+		const { room, whiteId, blackId, clock } = setup(1);
+		playFirstMoves(room, whiteId, blackId);
 		expect(vi.getTimerCount()).toBe(1); // the flag watchdog for white
 		clock.advance(61_000); // fake clock only: the watchdog hasn't fired
-		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'g1', to: 'f3' } });
 		expect(room.gameStarted).toBe(false);
+		expect(room.stateMessageFor(room.players[0]).gameOver?.reason).toBe('timeout');
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it('awards the win on time when the opponent has mating material', () => {
-		const { room, black, clock } = setup(1);
+		const { room, black, whiteId, blackId, clock } = setup(1);
+		playFirstMoves(room, whiteId, blackId);
 		clock.advance(61_000);
 		room.onFlagFall();
 		expect(black.last('gameOver')).toMatchObject({ winner: 'black', reason: 'timeout' });
@@ -419,5 +440,170 @@ describe('repeat draw offer at the same ply (CR-4)', () => {
 		room.handleMessage(whiteId, { type: 'offerDraw' });
 		expect(black.of('drawOffer')).toHaveLength(1);
 		expect(white.of('drawDeclined')).toHaveLength(2);
+	});
+});
+
+describe('first moves and the first-move timeout (CR3-4)', () => {
+	type Snap = {
+		whiteMs: number;
+		blackMs: number;
+		running: string | null;
+		firstMoveMs: number | null;
+	};
+	const clockOf = (room: GameRoom) => room.stateMessageFor(room.players[0]).clock as Snap;
+	/** Advance the room's clock and fire any watchdog that is due. */
+	const elapse = (clock: { advance: (ms: number) => void }, ms: number) => {
+		clock.advance(ms);
+		vi.advanceTimersByTime(ms);
+	};
+
+	it('starts a timed game with no clock running and White’s first-move window', () => {
+		const { room, white, clock } = setup(1, { firstMoveTimeoutMs: 30_000 });
+		expect(white.last('gameStart')).toMatchObject({
+			clock: { whiteMs: 60_000, blackMs: 60_000, running: null, firstMoveMs: 30_000 }
+		});
+		elapse(clock, 20_000);
+		expect(clockOf(room)).toMatchObject({
+			whiteMs: 60_000,
+			blackMs: 60_000,
+			running: null,
+			firstMoveMs: 10_000
+		});
+		expect(room.gameStarted).toBe(true);
+	});
+
+	it('does not run Black’s clock before Black’s first move, then runs clocks with increment', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(1, {
+			firstMoveTimeoutMs: 30_000
+		});
+		elapse(clock, 5_000);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		// White's first move cost nothing and earned no increment; Black now has the window.
+		expect(black.last('clock')).toMatchObject({
+			clock: { whiteMs: 60_000, blackMs: 60_000, running: null, firstMoveMs: 30_000 }
+		});
+		elapse(clock, 25_000);
+		expect(clockOf(room)).toMatchObject({ blackMs: 60_000, running: null, firstMoveMs: 5_000 });
+
+		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+		// Both have moved: White's clock runs, the window is gone.
+		expect(white.last('clock')).toMatchObject({
+			clock: { whiteMs: 60_000, blackMs: 60_000, running: 'white', firstMoveMs: null }
+		});
+		elapse(clock, 4_000);
+		expect(clockOf(room)).toMatchObject({ whiteMs: 56_000, running: 'white' });
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'g1', to: 'f3' } });
+		// 60 - 4 + 3 s increment.
+		expect(clockOf(room)).toMatchObject({ whiteMs: 59_000, blackMs: 60_000, running: 'black' });
+		expect(room.gameStarted).toBe(true);
+	});
+
+	it('aborts the game when White does not make a first move in time', () => {
+		const { room, white, black, clock } = setup(3, { firstMoveTimeoutMs: 30_000 });
+		elapse(clock, 29_999);
+		expect(room.gameStarted).toBe(true);
+		elapse(clock, 1);
+		for (const ws of [white, black]) {
+			expect(ws.last('gameOver')).toMatchObject({
+				winner: null,
+				reason: 'aborted',
+				clock: { whiteMs: 180_000, blackMs: 180_000, running: null, firstMoveMs: null }
+			});
+		}
+		expect(room.stateMessageFor(room.players[0]).gameOver).toEqual({
+			winner: null,
+			reason: 'aborted'
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('aborts the game when Black does not answer White’s first move in time', () => {
+		const { room, black, whiteId, clock } = setup(1, { firstMoveTimeoutMs: 30_000 });
+		elapse(clock, 20_000);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		elapse(clock, 29_000);
+		expect(room.gameStarted).toBe(true); // Black gets its own full window
+		elapse(clock, 1_000);
+		expect(black.last('gameOver')).toMatchObject({ winner: null, reason: 'aborted' });
+	});
+
+	it('aborts on a first move that arrives after the deadline, and resyncs the mover', () => {
+		const { room, white, black, whiteId, clock } = setup(1, { firstMoveTimeoutMs: 30_000 });
+		clock.advance(30_000); // the watchdog hasn't fired yet
+		white.clear();
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		expect(black.of('opponentMove')).toHaveLength(0);
+		expect(white.last('gameOver')).toMatchObject({ winner: null, reason: 'aborted' });
+		expect(white.last('gameState')).toMatchObject({
+			moves: [],
+			gameOver: { winner: null, reason: 'aborted' }
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('allows a rematch after an abort, with a fresh first-move window', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(1, {
+			firstMoveTimeoutMs: 30_000
+		});
+		elapse(clock, 30_000);
+		room.handleMessage(whiteId, { type: 'offerRematch' });
+		room.handleMessage(blackId, { type: 'acceptRematch' });
+		expect(white.last('rematchAccepted')).toMatchObject({
+			color: 'black',
+			clock: { running: null, firstMoveMs: 30_000 }
+		});
+		expect(black.last('rematchAccepted')).toMatchObject({ color: 'white' });
+		expect(room.gameStarted).toBe(true);
+	});
+
+	it('refuses a win-by-abandonment claim before both sides have moved', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(1, {
+			graceMs: 10_000,
+			firstMoveTimeoutMs: 30_000
+		});
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		room.removePlayer(blackId, asWs(black));
+		elapse(clock, 15_000); // past the grace, but Black hasn't made its first move
+		room.handleMessage(whiteId, { type: 'claimVictory' });
+		expect(white.of('gameOver')).toHaveLength(0);
+		// Black never comes back to move: the game is aborted, not won.
+		elapse(clock, 15_000);
+		expect(white.last('gameOver')).toMatchObject({ winner: null, reason: 'aborted' });
+	});
+
+	it('allows the claim once both sides have moved', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(10, { graceMs: 10_000 });
+		playFirstMoves(room, whiteId, blackId);
+		room.removePlayer(blackId, asWs(black));
+		elapse(clock, 10_000);
+		room.handleMessage(whiteId, { type: 'claimVictory' });
+		expect(white.last('gameOver')).toMatchObject({ winner: 'white', reason: 'abandonment' });
+	});
+
+	it('aborts on reconnect when the window passed while nobody was connected', () => {
+		const { room, white, black, whiteId, blackId, clock, reconnect } = setup(1, {
+			firstMoveTimeoutMs: 30_000
+		});
+		room.removePlayer(whiteId, asWs(white));
+		room.removePlayer(blackId, asWs(black));
+		expect(vi.getTimerCount()).toBe(0);
+		clock.advance(60_000);
+		const back = new FakeWs();
+		reconnect(whiteId, back);
+		vi.advanceTimersByTime(0);
+		expect(back.last('gameOver')).toMatchObject({ winner: null, reason: 'aborted' });
+	});
+
+	it('leaves untimed games alone: no window, no abort', () => {
+		const { room, white, clock } = setup(0, { firstMoveTimeoutMs: 30_000 });
+		expect(white.last('gameStart')).toMatchObject({ clock: { running: null, firstMoveMs: null } });
+		expect(vi.getTimerCount()).toBe(0);
+		elapse(clock, 10 * 60_000);
+		expect(room.gameStarted).toBe(true);
+	});
+
+	it('defaults the window to 30 s', () => {
+		const { white } = setup(1);
+		expect(white.last('gameStart')).toMatchObject({ clock: { firstMoveMs: 30_000 } });
 	});
 });

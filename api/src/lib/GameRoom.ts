@@ -20,6 +20,12 @@ import { gameOutcome, canStillCheckmate } from './outcome';
 /** How long a disconnected opponent has to come back before the other side may claim the win. */
 export const DEFAULT_DISCONNECT_GRACE_MS = 60_000;
 
+/**
+ * Timed games: how long each side has to make its first move before the game
+ * is aborted (no clock runs until then).
+ */
+export const DEFAULT_FIRST_MOVE_TIMEOUT_MS = 30_000;
+
 /** WS close code sent to a socket superseded by a newer connection for the same seat. */
 export const CLOSE_REPLACED = 4000;
 
@@ -28,6 +34,8 @@ export interface GameRoomOptions {
 	/** The creator's seat; 'random' is resolved server-side. Defaults to white. */
 	creatorColor?: Color | 'random';
 	disconnectGraceMs?: number;
+	/** Timed games: ms each side has for its first move before the game is aborted. */
+	firstMoveTimeoutMs?: number;
 	/** Injectable clock for tests. */
 	now?: () => number;
 }
@@ -65,6 +73,7 @@ export class GameRoom {
 	private lastDrawOfferPly: Record<Color, number> = { white: -1, black: -1 };
 	private timeControl: TimeControl;
 	private readonly disconnectGraceMs: number;
+	private readonly firstMoveTimeoutMs: number;
 	private readonly now: () => number;
 	/** The creator's seat colour (server-assigned; never trusted from the client). */
 	readonly creatorColor: Color;
@@ -80,12 +89,24 @@ export class GameRoom {
 	// for time; the client only interpolates from snapshots for smooth display.
 	private clocksMs: ClockMs = { white: 0, black: 0 };
 	private turnStartedAt: number | null = null;
+	// Timed games follow the Lichess convention (CR3-4): no clock runs before
+	// White's first move, and Black's doesn't run before Black's first move. Until
+	// both have moved this is the server time by which the side to move must make
+	// its first move, or the game is aborted; null afterwards (and when untimed).
+	private firstMoveDeadlineAt: number | null = null;
+	// One watchdog timer: the flag fall, or the first-move abort while pending.
 	private flagTimer: ReturnType<typeof setTimeout> | null = null;
 	// The last finished game's result. Non-null gates rematch (audit F5) and lets
 	// a reconnecting player see how the game ended (audit SM-1.3).
 	private result: GameResult | null = null;
 
-	constructor({ time = 0, creatorColor = 'white', disconnectGraceMs, now }: GameRoomOptions) {
+	constructor({
+		time = 0,
+		creatorColor = 'white',
+		disconnectGraceMs,
+		firstMoveTimeoutMs,
+		now
+	}: GameRoomOptions) {
 		this.timeControl = this.convertTimeOption(time);
 		this.creatorColor =
 			creatorColor === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : creatorColor;
@@ -94,6 +115,7 @@ export class GameRoom {
 		}
 		this.seats = { white: { token: newToken() }, black: { token: newToken() } };
 		this.disconnectGraceMs = disconnectGraceMs ?? DEFAULT_DISCONNECT_GRACE_MS;
+		this.firstMoveTimeoutMs = firstMoveTimeoutMs ?? DEFAULT_FIRST_MOVE_TIMEOUT_MS;
 		this.now = now ?? Date.now;
 		this.createdAt = this.now();
 		this.lastActivityAt = this.createdAt;
@@ -263,6 +285,13 @@ export class GameRoom {
 			return;
 		}
 
+		// Likewise a first move after the first-move deadline: the game is aborted.
+		if (this.firstMoveDeadlineAt !== null && this.now() >= this.firstMoveDeadlineAt) {
+			this.onFirstMoveTimeout();
+			this.resyncPlayer(player);
+			return;
+		}
+
 		// The mover's flag may already have fallen before the watchdog fired (timer
 		// latency, event-loop stalls). A move that arrives after the deadline must
 		// lose on time, not be accepted with a clamped clock (audit SM-1.4).
@@ -342,6 +371,12 @@ export class GameRoom {
 	 */
 	private handleClaimVictory(player: Player) {
 		if (!this.gameStarted) return;
+		// Before both sides have moved there is no win to claim: a side that never
+		// makes its first move gets the game aborted instead (CR3-4).
+		if (this.firstMoveDeadlineAt !== null) {
+			this.resyncPlayer(player);
+			return;
+		}
 		const opponent = this.opponentOf(player);
 		if (!opponent || opponent.connected || opponent.disconnectedAt === null) {
 			this.resyncPlayer(player);
@@ -364,9 +399,12 @@ export class GameRoom {
 
 	private updateGameStateAfterMove(player: Player, move: WireMove) {
 		const now = this.now();
+		const firstMoves = this.firstMoveDeadlineAt !== null;
 
 		// Apply the clock to the mover (the side whose turn just ended), then flip.
-		if (!this.timeControl.isUnlimited) {
+		// A side's first move costs no time and earns no increment: its clock
+		// wasn't running (CR3-4).
+		if (!this.timeControl.isUnlimited && !firstMoves) {
 			this.clocksMs[player.color] = clockAfterMove(
 				this.clocksMs[player.color],
 				this.turnStartedAt,
@@ -376,7 +414,17 @@ export class GameRoom {
 		}
 
 		this.currentTurn = opposite(player.color);
-		this.turnStartedAt = this.timeControl.isUnlimited ? null : now;
+		if (this.timeControl.isUnlimited) {
+			this.turnStartedAt = null;
+		} else if (firstMoves && player.color === 'white') {
+			// White's first move: Black's clock stays stopped until Black's first move.
+			this.turnStartedAt = null;
+			this.firstMoveDeadlineAt = now + this.firstMoveTimeoutMs;
+		} else {
+			// Both sides have moved (or this is a later move): White's clock runs now.
+			this.turnStartedAt = now;
+			this.firstMoveDeadlineAt = null;
+		}
 
 		// Moving instead of answering declines the opponent's pending draw offer.
 		if (this.drawOffer === opposite(player.color)) {
@@ -400,6 +448,14 @@ export class GameRoom {
 		this.clearFlagTimer();
 		if (this.timeControl.isUnlimited || !this.gameStarted) return;
 
+		if (this.firstMoveDeadlineAt !== null) {
+			this.flagTimer = setTimeout(
+				() => this.onFirstMoveTimeout(),
+				Math.max(0, this.firstMoveDeadlineAt - this.now())
+			);
+			return;
+		}
+
 		const remaining = remainingMs(
 			this.clocksMs,
 			this.currentTurn,
@@ -415,6 +471,20 @@ export class GameRoom {
 			clearTimeout(this.flagTimer);
 			this.flagTimer = null;
 		}
+	}
+
+	/**
+	 * The side to move didn't make its first move in time: abort the game, with
+	 * no winner (CR3-4). Exposed for tests.
+	 */
+	onFirstMoveTimeout() {
+		this.clearFlagTimer();
+		if (!this.gameStarted || this.firstMoveDeadlineAt === null) return;
+		if (this.now() < this.firstMoveDeadlineAt) {
+			this.scheduleFlagTimer();
+			return;
+		}
+		this.finishGame(null, 'aborted');
 	}
 
 	/** Exposed for tests: run the flag-fall check now. */
@@ -449,8 +519,9 @@ export class GameRoom {
 		}
 	}
 
-	private finishGame(winner: Color | 'draw', reason: GameOverReason) {
+	private finishGame(winner: Color | 'draw' | null, reason: GameOverReason) {
 		this.gameStarted = false;
+		this.firstMoveDeadlineAt = null;
 		this.result = { winner, reason };
 		this.rematchOffers.clear();
 		this.drawOffer = null;
@@ -594,16 +665,31 @@ export class GameRoom {
 		}
 	}
 
-	/** Reset both clocks to the initial control and start white's clock now. */
+	/**
+	 * Reset both clocks to the initial control. Neither runs yet: a timed game
+	 * starts with White's first-move window instead (CR3-4).
+	 */
 	private initClocks() {
 		const initialMs = this.timeControl.isUnlimited ? 0 : this.timeControl.initial * 1000;
 		this.clocksMs = { white: initialMs, black: initialMs };
-		this.turnStartedAt = this.timeControl.isUnlimited ? null : this.now();
+		this.turnStartedAt = null;
+		this.firstMoveDeadlineAt = this.timeControl.isUnlimited
+			? null
+			: this.now() + this.firstMoveTimeoutMs;
 	}
 
 	private currentSnapshot(): ClockSnapshot {
-		const running = this.timeControl.isUnlimited || !this.gameStarted ? null : this.currentTurn;
-		return buildSnapshot(this.clocksMs, running, this.turnStartedAt, this.now());
+		const running =
+			this.timeControl.isUnlimited || !this.gameStarted || this.turnStartedAt === null
+				? null
+				: this.currentTurn;
+		return buildSnapshot(
+			this.clocksMs,
+			running,
+			this.turnStartedAt,
+			this.now(),
+			this.gameStarted ? this.firstMoveDeadlineAt : null
+		);
 	}
 
 	private findPlayerById(playerId: string): Player | undefined {

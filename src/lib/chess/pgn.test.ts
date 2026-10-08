@@ -46,3 +46,9 @@ describe('describeMove', () => {
 		expect(describeMove(3, 'Qh4#')).toBe('Black played Qh4, checkmate');
 	});
 });
+
+describe('resultToken: aborted games (CR3-4)', () => {
+	it('records an aborted game as "*" (no result)', () => {
+		expect(resultToken({ isOver: true, winner: null, reason: 'aborted' })).toBe('*');
+	});
+});

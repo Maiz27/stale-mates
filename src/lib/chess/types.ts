@@ -83,6 +83,12 @@ export type GameView = {
 	/** Ply (moves played) at my last draw offer; the server refuses another until it changes. */
 	lastDrawOfferPly: number | null;
 	clock: ClockView;
+	/**
+	 * Multiplayer, timed games: local `Date.now()` by which the side to move must
+	 * make its first move or the game is aborted; null once both sides have moved.
+	 * No clock runs while this is set.
+	 */
+	firstMoveDeadline: number | null;
 	/** Multiplayer: a short-lived message for the player, e.g. an action not sent while reconnecting. */
 	notice: string | null;
 };

@@ -12,7 +12,8 @@ export const REASON_LABELS: Record<GameOverReason, string> = {
 	timeout: 'Timeout',
 	timeoutVsInsufficient: 'Draw — timeout vs insufficient material',
 	resignation: 'Resignation',
-	abandonment: 'Abandonment'
+	abandonment: 'Abandonment',
+	aborted: 'Aborted — no first move in time'
 };
 
 /**

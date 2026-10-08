@@ -1,5 +1,6 @@
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test';
 import { boardLocator, clickMove } from './helpers/board';
+import { FIRST_MOVE_TIMEOUT_MS } from './helpers/timeouts';
 
 /**
  * Multiplayer mode (`/room?id=…#seat=<token>`) needs the API server on :3000.
@@ -373,6 +374,42 @@ test.describe('Multiplayer mode', () => {
 		}
 	});
 
+	test('timed games: no clock runs before the first moves, and a stalled start is aborted (CR3-4)', async ({
+		browser,
+		page
+	}) => {
+		const room = await createRoom(page, 1);
+		test.skip(room === null, 'API server not reachable');
+		const a = await browser.newContext();
+		const b = await browser.newContext();
+		try {
+			const white = await a.newPage();
+			const black = await b.newPage();
+			await white.goto(seatUrl(room!, 'white'));
+			await black.goto(seatUrl(room!, 'black'));
+			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			await expect(white.getByTestId('first-move')).toContainText('Make yours within');
+			await expect(black.getByTestId('first-move')).toContainText("Waiting for your opponent's");
+			await expect(white.getByText('Waiting for first move')).toBeVisible();
+			// Neither clock moves before White's first move.
+			await white.waitForTimeout(2_000);
+			await expect(white.getByLabel('You clock 01:00')).toBeVisible();
+			await expect(white.getByLabel('Opponent clock 01:00')).toBeVisible();
+
+			// White never moves: the server aborts the game; no winner, rematch offered.
+			for (const p of [white, black]) {
+				await expect(p.getByText('Game Over: Aborted — no first move in time')).toBeVisible({
+					timeout: FIRST_MOVE_TIMEOUT_MS + 5_000
+				});
+			}
+			await expect(white.getByTestId('first-move')).toHaveCount(0);
+			await expect(white.getByRole('button', { name: 'Offer Rematch' })).toBeEnabled();
+		} finally {
+			await a.close();
+			await b.close();
+		}
+	});
+
 	test('a running clock does not wipe arrows drawn on the board', async ({ browser, page }) => {
 		const room = await createRoom(page, 3);
 		test.skip(room === null, 'API server not reachable');
@@ -384,16 +421,25 @@ test.describe('Multiplayer mode', () => {
 			await white.goto(seatUrl(room!, 'white'));
 			await black.goto(seatUrl(room!, 'black'));
 			await expect(boardLocator(white)).toBeVisible({ timeout: 20_000 });
+			// Clocks only run once both sides have moved (CR3-4).
+			await clickMove(white, 'e2', 'e4', 'white');
+			await expect(black.getByRole('list').getByText('e4', { exact: true })).toBeVisible();
+			await clickMove(black, 'e7', 'e5', 'black');
+			await expect(white.getByRole('list').getByText('e5', { exact: true })).toBeVisible();
+			await expect(white.getByLabel(/^You clock/)).not.toHaveAttribute(
+				'aria-label',
+				'You clock 03:00'
+			);
 
-			// Right-drag e2 -> e4 draws a user arrow.
+			// Right-drag d2 -> d4 draws a user arrow.
 			const box = (await white.locator('.cg-wrap').boundingBox())!;
 			const sq = box.width / 8;
 			const at = (file: number, rank: number) => ({
 				x: box.x + file * sq + sq / 2,
 				y: box.y + (7 - rank) * sq + sq / 2
 			});
-			const from = at(4, 1);
-			const to = at(4, 3);
+			const from = at(3, 1);
+			const to = at(3, 3);
 			await white.mouse.move(from.x, from.y);
 			await white.mouse.down({ button: 'right' });
 			await white.mouse.move(to.x, to.y, { steps: 5 });

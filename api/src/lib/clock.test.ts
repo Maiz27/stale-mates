@@ -68,4 +68,11 @@ describe('buildSnapshot', () => {
 		expect(snap.serverTime).toBe(1234);
 		expect(snap.whiteMs).toBe(10_000);
 	});
+
+	it('reports the first-move window left, clamped at zero (CR3-4)', () => {
+		const clocks: ClockMs = { white: 60_000, black: 60_000 };
+		expect(buildSnapshot(clocks, null, null, 1000).firstMoveMs).toBeNull();
+		expect(buildSnapshot(clocks, null, null, 1000, 31_000).firstMoveMs).toBe(30_000);
+		expect(buildSnapshot(clocks, null, null, 40_000, 31_000).firstMoveMs).toBe(0);
+	});
 });

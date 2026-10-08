@@ -46,17 +46,23 @@ export function clockAfterMove(
 	return remaining + incrementMs;
 }
 
-/** Build a wire snapshot, clamping displayed remaining time at zero. */
+/**
+ * Build a wire snapshot, clamping displayed remaining time at zero.
+ * `firstMoveDeadline` is the server time by which the side to move must make
+ * its first move (null outside that phase).
+ */
 export function buildSnapshot(
 	clocks: ClockMs,
 	running: Color | null,
 	turnStartedAt: number | null,
-	now: number
+	now: number,
+	firstMoveDeadline: number | null = null
 ): ClockSnapshot {
 	return {
 		whiteMs: Math.max(0, remainingMs(clocks, running, turnStartedAt, 'white', now)),
 		blackMs: Math.max(0, remainingMs(clocks, running, turnStartedAt, 'black', now)),
 		running,
-		serverTime: now
+		serverTime: now,
+		firstMoveMs: firstMoveDeadline === null ? null : Math.max(0, firstMoveDeadline - now)
 	};
 }

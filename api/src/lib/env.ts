@@ -16,6 +16,7 @@ export interface EnvInput {
 	ORIGIN_PATTERNS?: string;
 	ROOM_TTL_MS?: string;
 	DISCONNECT_GRACE_MS?: string;
+	FIRST_MOVE_TIMEOUT_MS?: string;
 	TRUST_PROXY?: string;
 	MAX_WS_CONNECTIONS_PER_IP?: string;
 	NODE_ENV?: string;
@@ -97,6 +98,17 @@ export function validateEnv(env: EnvInput): EnvValidationResult {
 		if (!Number.isInteger(grace) || grace < 0) {
 			errors.push(
 				`DISCONNECT_GRACE_MS must be a non-negative integer in ms (got "${env.DISCONNECT_GRACE_MS}")`
+			);
+		}
+	}
+
+	// FIRST_MOVE_TIMEOUT_MS: optional, a positive integer (timed games are aborted
+	// when a side doesn't make its first move within it).
+	if (isSet(env.FIRST_MOVE_TIMEOUT_MS)) {
+		const ms = Number(env.FIRST_MOVE_TIMEOUT_MS);
+		if (!Number.isInteger(ms) || ms <= 0) {
+			errors.push(
+				`FIRST_MOVE_TIMEOUT_MS must be a positive integer in ms (got "${env.FIRST_MOVE_TIMEOUT_MS}")`
 			);
 		}
 	}

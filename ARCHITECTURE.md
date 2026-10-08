@@ -47,7 +47,12 @@ it wraps chessground 9 via the in-repo `Chessground.svelte`).
 The multiplayer backend (`api/`) holds the canonical `chess.js` per `GameRoom` and is now
 **authoritative for outcomes and clocks**: game-over (and its reason) comes only from the rules
 (`outcome.ts`) or the server's flag-fall watchdog (`clock.ts`), and the client interpolates a
-server clock snapshot rather than declaring timeouts itself. The remaining authority gap is
+server clock snapshot rather than declaring timeouts itself. Timed games follow the Lichess
+convention: no clock runs before each side's first move; until then the snapshot carries
+`firstMoveMs` (the side to move's window, `FIRST_MOVE_TIMEOUT_MS`, default 30 s) and the same
+per-room watchdog that flags time-outs aborts the game (reason `aborted`, `winner: null`) when
+the window passes — a first move arriving after it is refused the same way a late move loses
+on time. Abandonment can't be claimed in that phase (the game aborts instead). The remaining authority gap is
 seat-token join/identity (plan Steps 4–5) — see `docs/server-authority-plan.md`.
 
 ### Known structural smells (most now resolved — kept for history)

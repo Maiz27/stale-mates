@@ -88,7 +88,23 @@
 	);
 	const turn = $derived(view?.turn ?? 'white');
 	const running = $derived(started && !gameOver);
-	const opponentStatus = $derived(opponentAway ? 'Disconnected' : '');
+	// Timed games: no clock runs until each side has made its first move; the side
+	// to move has a window instead, after which the server aborts the game (CR3-4).
+	const firstMoveDeadline = $derived(running ? (view?.firstMoveDeadline ?? null) : null);
+	const firstMoveIn = $derived(
+		firstMoveDeadline === null ? null : Math.max(0, Math.ceil((firstMoveDeadline - now) / 1000))
+	);
+	const FIRST_MOVE_STATUS = 'Waiting for first move';
+	const opponentStatus = $derived(
+		opponentAway
+			? 'Disconnected'
+			: firstMoveDeadline !== null && turn === opponentColor
+				? FIRST_MOVE_STATUS
+				: ''
+	);
+	const myStatus = $derived(
+		firstMoveDeadline !== null && turn === playerColor ? FIRST_MOVE_STATUS : ''
+	);
 	const whiteName = $derived(playerColor === 'white' ? 'You' : 'Opponent');
 	const blackName = $derived(playerColor === 'black' ? 'You' : 'Opponent');
 
@@ -326,7 +342,9 @@
 					{#if opponentAway}
 						<div role="status" aria-live="polite" class="mx-auto max-w-md space-y-2">
 							<p class="font-semibold text-amber-600 dark:text-amber-400">Opponent disconnected</p>
-							{#if claimInSeconds !== null && claimInSeconds > 0}
+							{#if firstMoveDeadline !== null}
+								<!-- No win to claim before both first moves: the game is aborted instead. -->
+							{:else if claimInSeconds !== null && claimInSeconds > 0}
 								<p class="text-sm text-muted-foreground">
 									You can claim the win in {claimInSeconds}s if they don't return.
 								</p>
@@ -337,6 +355,17 @@
 					{/if}
 					{#if isUnlimited}
 						<p class="text-sm text-muted-foreground">Untimed game</p>
+					{:else if firstMoveIn !== null}
+						<p class="text-sm text-muted-foreground" data-testid="first-move">
+							{#if turn === playerColor}
+								Clocks start after each side's first move. Make yours within
+								<span class="font-semibold tabular-nums">{firstMoveIn}s</span> or the game is aborted.
+							{:else}
+								Clocks start after each side's first move. Waiting for your opponent's — the game is
+								aborted in <span class="font-semibold tabular-nums">{firstMoveIn}s</span> if they don't
+								move.
+							{/if}
+						</p>
 					{/if}
 				{/if}
 			{/if}
@@ -418,6 +447,7 @@
 						clock={isUnlimited ? null : myTime}
 						active={running && turn === playerColor}
 						low={!isUnlimited && isLow(myTime, lowTime)}
+						status={myStatus}
 					/>
 				{/if}
 				<ChessBoard
@@ -435,6 +465,7 @@
 						clock={isUnlimited ? null : myTime}
 						active={running && turn === playerColor}
 						low={!isUnlimited && isLow(myTime, lowTime)}
+						status={myStatus}
 					/>
 				{:else}
 					<PlayerBar

@@ -81,11 +81,15 @@ increment, isUnlimited }`. Derived from a `TimeOption` (`0 | 1 | 3 | 10` minutes
   **milliseconds** (`GameRoom.clocksMs` + `turnStartedAt`) and flags time-outs with a
   single per-room watchdog; the pure math lives in `api/src/lib/clock.ts`.
 - **Increment** — seconds added to a player's clock after their move (Fischer-style).
+- **First moves** — in timed games no clock runs until each side has made its first move
+  (no time charged, no increment). Meanwhile the side to move has `FIRST_MOVE_TIMEOUT_MS`
+  (default 30 s; `ClockSnapshot.firstMoveMs`), or the server **aborts** the game (reason
+  `aborted`, no winner, PGN `*`).
 - **lowTimeThreshold** — the remaining-time level below which the UI flags "low time".
   `TimeControl` / `TimeOption` types: `api/src/lib/types.ts` and `src/lib/chess/types.ts`
   (now a **single canonical** definition with all fields required; the earlier drift in
   audit M1 is resolved). The server broadcasts a `ClockSnapshot` (`whiteMs`, `blackMs`,
-  `running`, `serverTime`); the client interpolates it for **display only** in
+  `running`, `serverTime`, `firstMoveMs`); the client interpolates it for **display only** in
   `MultiplayerGameState` (`applyClockSnapshot`/`renderClock`) and never declares a timeout.
   Clocks are server-authoritative — see ADR 0002.
 

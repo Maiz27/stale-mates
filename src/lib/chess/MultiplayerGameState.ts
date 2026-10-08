@@ -322,7 +322,8 @@ export class MultiplayerGameState extends GameModel {
 		if (timeControl.isUnlimited) {
 			this.stopClockTick();
 			this.patch({
-				clock: { isUnlimited: true, myClock: 0, opponentClock: 0, lowTimeThreshold: 0 }
+				clock: { isUnlimited: true, myClock: 0, opponentClock: 0, lowTimeThreshold: 0 },
+				firstMoveDeadline: null
 			});
 			return;
 		}
@@ -338,6 +339,11 @@ export class MultiplayerGameState extends GameModel {
 		if (!snapshot) return;
 		this.clockSnapshot = snapshot;
 		this.serverOffset = snapshot.serverTime - Date.now();
+		// Before both first moves no clock runs; the side to move has a window
+		// instead, after which the server aborts the game (CR3-4).
+		this.patch({
+			firstMoveDeadline: snapshot.firstMoveMs == null ? null : Date.now() + snapshot.firstMoveMs
+		});
 		this.startClockTick();
 	}
 
@@ -408,6 +414,7 @@ export class MultiplayerGameState extends GameModel {
 		this.stopClockTick();
 		this.patch({
 			gameOver: { isOver: true, winner: data.winner ?? null, reason: data.reason },
+			firstMoveDeadline: null,
 			rematchOffer: false,
 			myRematchOffer: false,
 			drawOffer: null

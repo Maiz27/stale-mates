@@ -62,6 +62,7 @@ export class GameModel implements Readable<GameView> {
 			drawOffer: null,
 			lastDrawOfferPly: null,
 			clock: NO_CLOCK,
+			firstMoveDeadline: null,
 			notice: null
 		});
 		this.subscribe = this.store.subscribe;
