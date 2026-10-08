@@ -14,9 +14,17 @@ interface SearchParams {
 	depth: number;
 }
 
+/**
+ * Stockfish.js's download-progress hook: posting `{ progressPort }` makes the
+ * worker report the WASM download (`{ loaded, total, percent }`) on that port.
+ */
+export interface ProgressPortMessage {
+	progressPort: MessagePort;
+}
+
 /** The subset of the Web Worker API the engine uses (lets tests inject a fake). */
 export interface EngineWorker {
-	postMessage(message: string): void;
+	postMessage(message: string | ProgressPortMessage, transfer?: Transferable[]): void;
 	terminate(): void;
 	onmessage: ((event: MessageEvent) => void) | null;
 	onerror: ((event: ErrorEvent) => void) | null;
@@ -29,11 +37,18 @@ export interface StockfishOptions {
 	worker?: EngineWorker;
 	/** Worker script URL. */
 	url?: string;
-	/** Report a failure if the engine hasn't answered `readyok` by then (ms). */
+	/**
+	 * Report a failure if the engine goes this long (ms) without a sign of life
+	 * — WASM download progress or a message — before answering `readyok`.
+	 */
 	initTimeoutMs?: number;
 }
 
-/** How long the worker gets to download/compile the WASM and answer `readyok`. */
+/**
+ * How long loading may stall before the engine is reported as failed. Measured
+ * from the last sign of progress, not from construction, so a slow but moving
+ * download of the ~7 MB WASM is never cut off (CR2-6).
+ */
 export const ENGINE_INIT_TIMEOUT_MS = 30_000;
 
 type InFlight = 'move' | 'hint' | null;
@@ -69,6 +84,8 @@ export class Stockfish {
 	private staleBestmoves = 0;
 	private hintResolve: ((move: ChessMove | null) => void) | null = null;
 	private initTimer: ReturnType<typeof setTimeout> | null = null;
+	private readonly initTimeoutMs: number;
+	private progressPort: MessagePort | null = null;
 
 	constructor({
 		debug = false,
@@ -89,18 +106,52 @@ export class Stockfish {
 		this.setDifficulty(difficulty);
 		this.queue = [];
 		// A WASM that fails to fetch/compile doesn't always raise a worker error;
-		// treat "never ready" as a failure too, so the UI can offer a retry (CR-10).
+		// treat a load that stops making progress as a failure too, so the UI can
+		// offer a retry (CR-10). The watchdog is re-armed by every download
+		// progress report and engine message, so it only fires on a stall (CR2-6).
+		this.initTimeoutMs = initTimeoutMs;
+		this.watchDownloadProgress();
+		this.armInitWatchdog();
+		this.worker.postMessage('uci');
+	}
+
+	/** (Re)start the countdown to "the engine stalled while loading". */
+	private armInitWatchdog(): void {
+		this.clearInitTimer();
+		if (this.ready || this.failed) return;
 		this.initTimer = setTimeout(() => {
 			this.initTimer = null;
-			if (!this.ready) this.handleError(new Error('Stockfish did not start in time'));
-		}, initTimeoutMs);
-		this.worker.postMessage('uci');
+			if (!this.ready) this.handleError(new Error('Stockfish stopped loading'));
+		}, this.initTimeoutMs);
+	}
+
+	/** Ask the worker to report WASM download progress; each report re-arms the watchdog. */
+	private watchDownloadProgress(): void {
+		if (typeof MessageChannel === 'undefined') return;
+		try {
+			const channel = new MessageChannel();
+			channel.port1.onmessage = () => this.armInitWatchdog();
+			this.worker.postMessage({ progressPort: channel.port2 }, [channel.port2]);
+			this.progressPort = channel.port1;
+		} catch {
+			// No progress reports: the watchdog then measures from construction.
+		}
 	}
 
 	private clearInitTimer(): void {
 		if (this.initTimer) {
 			clearTimeout(this.initTimer);
 			this.initTimer = null;
+		}
+	}
+
+	/** Loading is over (ready, failed or terminated): stop watching it. */
+	private stopWatchingLoad(): void {
+		this.clearInitTimer();
+		if (this.progressPort) {
+			this.progressPort.onmessage = null;
+			this.progressPort.close();
+			this.progressPort = null;
 		}
 	}
 
@@ -117,7 +168,7 @@ export class Stockfish {
 	private handleError(event: unknown): void {
 		if (this.failed) return;
 		this.failed = true;
-		this.clearInitTimer();
+		this.stopWatchingLoad();
 		this.log(`Stockfish worker error: ${String((event as ErrorEvent)?.message ?? event)}`, 'error');
 		this.clearPendingGo();
 		this.inFlight = null;
@@ -127,6 +178,8 @@ export class Stockfish {
 
 	private handleMessage(message: string): void {
 		this.log('Stockfish message: ' + message);
+		// Still loading, but alive: give the rest of the handshake a fresh window.
+		if (!this.ready) this.armInitWatchdog();
 		if (message.startsWith('uciok')) {
 			// Configure before anything queued runs, then wait for readyok.
 			this.applyDifficultyOptions((cmd) => this.worker.postMessage(cmd));
@@ -136,7 +189,7 @@ export class Stockfish {
 		if (message.startsWith('readyok')) {
 			if (!this.ready) {
 				this.ready = true;
-				this.clearInitTimer();
+				this.stopWatchingLoad();
 				this.log('Engine is fully initialized and ready', 'info');
 				const queued = this.queue;
 				this.queue = [];
@@ -299,7 +352,7 @@ export class Stockfish {
 
 	terminate(): void {
 		this.log('Stockfish: Terminating worker', 'info');
-		this.clearInitTimer();
+		this.stopWatchingLoad();
 		this.clearPendingGo();
 		this.resolveHint(null);
 		this.messageCallback = null;

@@ -1,13 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Stockfish, type EngineWorker } from './Stockfish';
+import { Stockfish, type EngineWorker, type ProgressPortMessage } from './Stockfish';
+
+// Captured before the fake timers are installed: MessagePort delivery is real.
+const realSetTimeout = globalThis.setTimeout;
 
 class FakeWorker implements EngineWorker {
 	posted: string[] = [];
+	progressPort: MessagePort | null = null;
 	terminated = false;
 	onmessage: ((event: MessageEvent) => void) | null = null;
 	onerror: ((event: ErrorEvent) => void) | null = null;
-	postMessage(message: string) {
-		this.posted.push(message);
+	postMessage(message: string | ProgressPortMessage) {
+		if (typeof message === 'string') this.posted.push(message);
+		else this.progressPort = message.progressPort;
+	}
+	/** Report WASM download progress the way Stockfish.js does, and let it arrive. */
+	async progress(loaded: number, total = 7_295_411) {
+		this.progressPort?.postMessage({ loaded, total, percent: loaded / total });
+		await new Promise((resolve) => realSetTimeout(resolve, 20));
 	}
 	terminate() {
 		this.terminated = true;
@@ -185,5 +195,42 @@ describe('Stockfish 18 options and difficulty (CR-10)', () => {
 		worker.handshake();
 		vi.advanceTimersByTime(10_000);
 		expect(errors).toEqual([]);
+	});
+
+	it('does not time out while the WASM download is still progressing (CR2-6)', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const worker = new FakeWorker();
+		const engine = new Stockfish({ worker, initTimeoutMs: 5_000 });
+		const errors: unknown[] = [];
+		engine.onError((e) => errors.push(e));
+		expect(worker.progressPort).not.toBeNull();
+
+		// A slow connection: 20 s of download, a progress report every 4 s.
+		for (let i = 1; i <= 5; i++) {
+			vi.advanceTimersByTime(4_000);
+			await worker.progress(i * 1_000_000);
+		}
+		expect(errors).toEqual([]);
+		worker.reply('uciok');
+		vi.advanceTimersByTime(4_000);
+		worker.reply('readyok');
+		vi.advanceTimersByTime(60_000);
+		expect(errors).toEqual([]);
+		engine.terminate();
+	});
+
+	it('still reports a load that stalls part-way (CR2-6)', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const worker = new FakeWorker();
+		const engine = new Stockfish({ worker, initTimeoutMs: 5_000 });
+		const errors: unknown[] = [];
+		engine.onError((e) => errors.push(e));
+		vi.advanceTimersByTime(4_000);
+		await worker.progress(1_000_000);
+		vi.advanceTimersByTime(4_999);
+		expect(errors).toEqual([]);
+		vi.advanceTimersByTime(1);
+		expect(errors).toHaveLength(1);
+		engine.terminate();
 	});
 });

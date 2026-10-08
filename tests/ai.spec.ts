@@ -193,4 +193,34 @@ test.describe('AI mode', () => {
 			.getByRole('list');
 		await expect(list.getByText('Nf3', { exact: true })).toBeVisible();
 	});
+
+	test('the engine worker reports WASM download progress (CR2-6)', async ({ page }) => {
+		// The engine's load watchdog is re-armed by these reports, so a slow but
+		// moving download isn't mistaken for a failure. Guard the Stockfish.js hook.
+		await page.goto('/ai');
+		// Keep in sync with STOCKFISH_URL (src/lib/engine/Stockfish.ts).
+		const engineUrl = '/engine/stockfish-18.0.8/stockfish-18-lite-single.js';
+		const reports = await page.evaluate(async (url) => {
+			const worker = new Worker(url);
+			const channel = new MessageChannel();
+			const seen: { loaded: number; total: number; percent: number }[] = [];
+			// Resolves on the final report (or after 20 s, failing the assertions below).
+			await new Promise<void>((resolve) => {
+				const timer = setTimeout(resolve, 20_000);
+				channel.port1.onmessage = (event) => {
+					seen.push(event.data);
+					if (event.data.percent >= 1) {
+						clearTimeout(timer);
+						resolve();
+					}
+				};
+				worker.postMessage({ progressPort: channel.port2 }, [channel.port2]);
+				worker.postMessage('uci');
+			});
+			worker.terminate();
+			return seen;
+		}, engineUrl);
+		expect(reports.length).toBeGreaterThan(0);
+		expect(reports.at(-1)).toMatchObject({ loaded: reports.at(-1)!.total });
+	});
 });
