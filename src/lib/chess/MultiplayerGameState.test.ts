@@ -137,6 +137,41 @@ describe('MultiplayerGameState resync (SM-1.5)', () => {
 		expect(get(game).sanHistory).toEqual([]);
 	});
 
+	it('takes back a move the server refused because our flag had fallen (CR2-4)', () => {
+		const { game, socket } = setup();
+		const clock3 = { initial: 180, lowTimeThreshold: 30, increment: 4, isUnlimited: false };
+		const flagged = { whiteMs: 0, blackMs: 120_000, running: null, serverTime: 0 };
+		socket.emit({
+			type: 'gameStart',
+			fen: START,
+			turn: 'white',
+			timeControl: clock3,
+			clock: { ...flagged, whiteMs: 1, running: 'white' },
+			opponentConnected: true,
+			opponentGraceMs: null
+		});
+		game.makeMove({ from: 'e2', to: 'e4' });
+		expect(get(game).sanHistory).toEqual(['e4']);
+
+		// What the server sends the late mover: the result, then the authoritative state.
+		socket.emit({ type: 'gameOver', winner: 'black', reason: 'timeout', clock: flagged });
+		socket.emit(
+			state({
+				started: false,
+				fen: START,
+				moves: [],
+				clock: flagged,
+				timeControl: clock3,
+				gameOver: { winner: 'black', reason: 'timeout' }
+			})
+		);
+		const view = get(game);
+		expect(view.sanHistory).toEqual([]);
+		expect(view.fen).toBe(START);
+		expect(view.gameOver).toMatchObject({ isOver: true, winner: 'black', reason: 'timeout' });
+		game.destroy();
+	});
+
 	it('falls back to the FEN when the move list does not reproduce it', () => {
 		const { game, socket } = setup();
 		socket.emit(

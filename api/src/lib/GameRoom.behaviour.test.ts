@@ -151,6 +151,24 @@ describe('flag fall (SM-1.4)', () => {
 		expect(room.gameStarted).toBe(false);
 	});
 
+	it('resyncs the mover after a late move so its optimistic move is undone (CR2-4)', () => {
+		const { room, white, black, whiteId, blackId, clock } = setup(1);
+		room.handleMessage(whiteId, { type: 'move', move: { from: 'e2', to: 'e4' } });
+		clock.advance(70_000); // black flags before its reply reaches the server
+		black.clear();
+		room.handleMessage(blackId, { type: 'move', move: { from: 'e7', to: 'e5' } });
+
+		expect(black.last('gameOver')).toMatchObject({ winner: 'white', reason: 'timeout' });
+		// The mover's board showed e7e5; the authoritative state follows the result.
+		const sent = black.sent.map((m) => m.type);
+		expect(sent.indexOf('gameState')).toBeGreaterThan(sent.indexOf('gameOver'));
+		expect(black.last('gameState')).toMatchObject({
+			moves: ['e2e4'],
+			gameOver: { winner: 'white', reason: 'timeout' }
+		});
+		expect(white.of('opponentMove')).toHaveLength(0);
+	});
+
 	it('scores a timeout against a lone king as a draw', () => {
 		const { room, black, clock } = setup(1);
 		// White to move with K+Q; black has a lone king. If white flags, black

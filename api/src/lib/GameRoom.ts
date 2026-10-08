@@ -277,6 +277,9 @@ export class GameRoom {
 			) <= 0
 		) {
 			this.onFlagFall();
+			// The mover already shows this move on its board (optimistic apply);
+			// send the authoritative position so it's taken back (CR2-4).
+			this.resyncPlayer(player);
 			return;
 		}
 
