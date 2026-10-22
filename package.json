@@ -30,7 +30,7 @@
     "@sveltejs/vite-plugin-svelte": "^7",
     "@tailwindcss/vite": "^4",
     "@types/eslint": "^9.6.1",
-    "@types/node": "^22",
+    "@types/node": "^26",
     "concurrently": "^10.0.3",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
