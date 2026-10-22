@@ -1,8 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/sm-king-horizontal-on-dark.svg">
+    <img src="branding/sm-king-horizontal-color.svg" alt="Stalemates" width="360">
+  </picture>
+</p>
+
 # Stalemates: A Full-Stack Chess Platform
 
 Stalemates is an interactive chess platform where users can play against AI or other players in real-time, showcasing the power of modern web technologies in creating engaging, multiplayer experiences. [Play Stalemates Now](https://stalemates.magedfaiz.xyz/)
 
-![Stale Mates — playing the AI](static/imgs/screenshot-ai.png)
+![Stalemates — playing the AI](static/imgs/screenshot-ai.png)
 
 ## Table of Contents
 

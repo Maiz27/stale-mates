@@ -109,12 +109,12 @@
 </script>
 
 <svelte:head>
-	<title>Play AI · Stale Mates</title>
+	<title>Play AI · Stalemates</title>
 	<meta
 		name="description"
 		content="Play chess against an adaptive Stockfish AI with adjustable difficulty, hints, and takebacks."
 	/>
-	<meta property="og:title" content="Play AI · Stale Mates" />
+	<meta property="og:title" content="Play AI · Stalemates" />
 	<link rel="canonical" href="https://stalemates.magedfaiz.xyz/ai" />
 </svelte:head>
 
@@ -260,7 +260,7 @@
 			white={whiteName}
 			black={blackName}
 			result={$gameState.gameOver}
-			event="Stale Mates vs AI"
+			event="Stalemates vs AI"
 		/>
 	</div>
 </div>

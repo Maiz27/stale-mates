@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">Stalemates symbol (Split King)</title>
+  <g id="symbol" transform="translate(128 0)">
+    <path id="king-left" fill="#111111" d="M -5 60.23 C -28.28 62.39 -44 79.7 -44 104 L -50 104 L -50 114 L -24 114 L -24 126 L -40 126 L -40 138 L -28 138 C -26 166 -58 192 -58 208 L -60 208 L -60 222 L -66 222 L -66 244 L -72 244 L 0 244 L 0 208 L -5 208 Z"/>
+    <path id="king-right" fill="#2563EB" d="M5 60.23 C28.28 62.39 44 79.7 44 104 L50 104 L50 114 L24 114 L24 126 L40 126 L40 138 L28 138 C26 166 58 192 58 208 L60 208 L60 222 L66 222 L66 244 L72 244 L0 244 L0 208 L5 208 Z"/>
+    <path id="cross" fill="#111111" d="M-11 12 H11 V24 H28 V40 H11 V62 H-11 V40 H-28 V24 H-11 Z"/>
+  </g>
+</svg>
