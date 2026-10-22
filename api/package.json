@@ -32,7 +32,7 @@
 		"globals": "^17.13.0",
 		"prettier": "^3.9.10",
 		"tsx": "^4.23.15",
-		"typescript": "^5.5.4",
+		"typescript": "^7.0.2",
 		"typescript-eslint": "^8.71.2",
 		"vitest": "^1.6.0"
 	}
