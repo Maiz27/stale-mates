@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">Stalemates favicon tile</title>
+  <rect width="256" height="256" fill="#111111"/>
+  <g id="symbol" transform="translate(128 18) scale(0.92)">
+    <path fill="#FFFFFF" fill-rule="evenodd" d="M0 62 C28 62 46 80 46 108 L28 108 L28 128 L32 128 C30 160 62 190 62 206 L66 206 L66 222 L74 222 L74 244 L0 244 L-74 244 L-74 222 L-66 222 L-66 206 L-62 206 C-62 190 -30 160 -32 128 L-28 128 L-28 108 L-46 108 C-46 80 -28 62 0 62 Z M-13 12 H13 V22 H34 V42 H13 V64 H-13 V42 H-34 V22 H-13 Z M-8 64 H8 V206 H-8 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">Stalemates maskable tile</title>
+  <rect width="256" height="256" fill="#111111"/>
+  <g id="symbol" transform="translate(128 50) scale(0.62)">
+    <path fill="#FFFFFF" d="M -8 62.52 C -31.38 65.66 -46 82.77 -46 108 L -28 108 L -28 128 L -32 128 C -30 160 -62 190 -62 206 L -66 206 L -66 222 L -74 222 L -74 244 L 0 244 L 0 206 L -8 206 Z"/>
+    <path fill="#3B82F6" d="M8 62.52 C31.38 65.66 46 82.77 46 108 L28 108 L28 128 L32 128 C30 160 62 190 62 206 L66 206 L66 222 L74 222 L74 244 L0 244 L0 206 L8 206 Z"/>
+    <path fill="#FFFFFF" d="M-13 12 H13 V22 H34 V42 H13 V64 H-13 V42 H-34 V22 H-13 Z"/>
+  </g>
+</svg>

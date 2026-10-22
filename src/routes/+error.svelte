@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>{page.status} · Stale Mates</title>
+	<title>{page.status} · Stalemates</title>
 </svelte:head>
 
 <section class="grid min-h-[calc(100dvh-100px)] w-full place-items-center p-6">

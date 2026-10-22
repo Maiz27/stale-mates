@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../branding/sm-king-horizontal-on-dark.svg">
+    <img src="../branding/sm-king-horizontal-color.svg" alt="Stalemates" width="360">
+  </picture>
+</p>
+
 # Stalemates API: Backend for the Chess Platform
 
 This is the backend API for Stalemates, a full-stack chess platform. It handles game logic, real-time communication, and serves as the server-side component of the Stalemates project.

@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-	<meta property="og:title" content="Stale Mates - Play Chess Online" />
+	<meta property="og:title" content="Stalemates - Play Chess Online" />
 	<link rel="canonical" href="https://stalemates.magedfaiz.xyz/" />
 </svelte:head>
 
@@ -21,9 +21,9 @@
 		</h1>
 
 		<p class="max-w-3xl text-lg text-muted-foreground">
-			Welcome to Stale-Mates, where chess meets fun for all levels. Enjoy casual games against our
-			AI or exciting matches with friends. Whether you're unwinding or honing skills, every move on
-			Stale-Mates is a step towards chess enjoyment!
+			Welcome to Stalemates, where chess meets fun for all levels. Enjoy casual games against our AI
+			or exciting matches with friends. Whether you're unwinding or honing skills, every move on
+			Stalemates is a step towards chess enjoyment!
 		</p>
 
 		<div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

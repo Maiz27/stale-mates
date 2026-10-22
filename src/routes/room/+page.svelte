@@ -169,7 +169,7 @@
 
 	async function shareInvite() {
 		try {
-			await navigator.share({ title: 'Play chess with me on Stale Mates', url: opponentLink });
+			await navigator.share({ title: 'Play chess with me on Stalemates', url: opponentLink });
 		} catch {
 			// Dismissed or unsupported — the copy button is still there.
 		}
@@ -225,10 +225,10 @@
 </script>
 
 <svelte:head>
-	<title>Play a Friend · Stale Mates</title>
+	<title>Play a Friend · Stalemates</title>
 	<!-- Rooms are private, ephemeral and token-gated: keep them out of search results. -->
 	<meta name="robots" content="noindex, nofollow" />
-	<meta property="og:title" content="Play a Friend · Stale Mates" />
+	<meta property="og:title" content="Play a Friend · Stalemates" />
 	<meta
 		name="description"
 		content="Play a real-time game of chess against a friend with a shareable invite link and optional time controls."
@@ -513,7 +513,7 @@
 				white={whiteName}
 				black={blackName}
 				result={view.gameOver}
-				event="Stale Mates · friendly game"
+				event="Stalemates · friendly game"
 			/>
 		</div>
 	{/if}

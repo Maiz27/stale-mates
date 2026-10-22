@@ -34,7 +34,7 @@ describe('service worker cache policy (CR-9)', () => {
 		const current = engineDirs([
 			'/engine/stockfish-18.0.8/stockfish-18-lite-single.js',
 			'/engine/stockfish-18.0.8/stockfish-18-lite-single.wasm',
-			'/imgs/logo.png'
+			'/imgs/logo/favicon.svg'
 		]);
 		expect([...current]).toEqual(['/engine/stockfish-18.0.8/']);
 		expect(isStaleEngine('/engine/stockfish-18.0.8/stockfish-18-lite-single.wasm', current)).toBe(

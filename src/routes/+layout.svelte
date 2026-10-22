@@ -15,18 +15,15 @@
 </script>
 
 <svelte:head>
-	<title>Stale Mates - Play Chess Online</title>
-	<meta
-		name="description"
-		content="Welcome to Stale-Mates, where chess meets fun for all levels."
-	/>
+	<title>Stalemates - Play Chess Online</title>
+	<meta name="description" content="Welcome to Stalemates, where chess meets fun for all levels." />
 
 	<!-- Open Graph -->
 	<meta property="og:type" content="website" />
 	<meta property="og:site_name" content="Stalemates" />
 	<meta
 		property="og:description"
-		content="Welcome to Stale-Mates, where chess meets fun for all levels."
+		content="Welcome to Stalemates, where chess meets fun for all levels."
 	/>
 	<meta property="og:url" content={`https://stalemates.magedfaiz.xyz${page.url.pathname}`} />
 	<meta property="og:image" content="https://stalemates.magedfaiz.xyz/imgs/og-image.png" />
@@ -35,10 +32,10 @@
 
 	<!-- Twitter Card -->
 	<meta name="twitter:card" content="summary_large_image" />
-	<meta name="twitter:title" content="Stale Mates - Play Chess Online" />
+	<meta name="twitter:title" content="Stalemates - Play Chess Online" />
 	<meta
 		name="twitter:description"
-		content="Welcome to Stale-Mates, where chess meets fun for all levels."
+		content="Welcome to Stalemates, where chess meets fun for all levels."
 	/>
 	<meta name="twitter:image" content="https://stalemates.magedfaiz.xyz/imgs/og-image.png" />
 </svelte:head>
