@@ -34,7 +34,7 @@ jobs:
 
       # SvelteKit 3 needs Node >= 22.17 (bunx runs the CLIs on the runner's Node).
       - name: Setup Node
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -129,7 +129,7 @@ jobs:
       # deps from bun.lock (as the deploy does); Node runs the previewed app and
       # the API server.
       - name: Setup Node
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
