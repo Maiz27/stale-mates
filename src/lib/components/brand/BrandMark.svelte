@@ -13,13 +13,16 @@
 		class: className,
 		...rest
 	}: SVGAttributes<SVGSVGElement> & { mono?: boolean } = $props();
+
+	// Decorative unless the consumer names it (aria-label or aria-labelledby).
+	const named = $derived(Boolean(rest['aria-label'] || rest['aria-labelledby']));
 </script>
 
 <svg
 	viewBox="56 12 144 232"
 	fill="currentColor"
-	aria-hidden={rest['aria-label'] ? undefined : 'true'}
-	role={rest['aria-label'] ? 'img' : undefined}
+	aria-hidden={named ? undefined : 'true'}
+	role={named ? 'img' : undefined}
 	focusable="false"
 	class={cn('h-[1em] w-[0.62em]', className)}
 	{...rest}
