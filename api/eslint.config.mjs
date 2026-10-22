@@ -12,6 +12,9 @@ export default [
 		languageOptions: {
 			globals: {
 				...globals.node
+			},
+			parserOptions: {
+				tsconfigRootDir: import.meta.dirname
 			}
 		}
 	},
