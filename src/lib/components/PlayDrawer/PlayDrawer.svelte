@@ -52,6 +52,7 @@
 			open = false;
 			// The room id is a query param (the room page is prerendered); the path
 			// part is resolved.
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() takes no query string
 			await goto(`${resolve('/room')}?id=${encodeURIComponent(id)}`);
 		} catch (error) {
 			console.error('Error creating game:', error);
