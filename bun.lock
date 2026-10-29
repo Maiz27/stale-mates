@@ -16,7 +16,7 @@
         "vaul-svelte": "^1.0.0-next.7",
       },
       "devDependencies": {
-        "@eslint/js": "^9.7.0",
+        "@eslint/js": "^10.0.1",
         "@internationalized/date": "^3.12.0",
         "@lucide/svelte": "^1.59.0",
         "@playwright/test": "^1.64.1",
@@ -29,7 +29,7 @@
         "concurrently": "^10.0.6",
         "eslint": "^10.13.0",
         "eslint-config-prettier": "^10.1.8",
-        "eslint-plugin-svelte": "^3.23.1",
+        "eslint-plugin-svelte": "^3",
         "globals": "^17.6.0",
         "prettier": "^3.9.10",
         "prettier-plugin-svelte": "^4.1.1",
@@ -61,7 +61,7 @@
 
     "@eslint/core": ["@eslint/core@1.2.1", "", { "dependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-MwcE1P+AZ4C6DWlpin/OmOA54mmIZ/+xZuJiQd4SyB29oAJjN30UW9wkKNptW2ctp4cEsvhlLY/CsQ1uoHDloQ=="],
 
-    "@eslint/js": ["@eslint/js@9.7.0", "", {}, "sha512-ChuWDQenef8OSFnvuxv0TCVxEwmu3+hPNKvM9B34qpM0rDRbjL8t5QkQeHHeAfsKQjuH9wS82WeCi1J/owatng=="],
+    "@eslint/js": ["@eslint/js@10.0.1", "", { "peerDependencies": { "eslint": "^10.0.0" }, "optionalPeers": ["eslint"] }, "sha512-zeR9k5pd4gxjZ0abRoIaxdc7I3nDktoXZk2qOv9gCNWx3mVwEn32VRhyLaRsDiJjTs0xq/T8mfPtyuXu7GWBcA=="],
 
     "@eslint/object-schema": ["@eslint/object-schema@3.0.5", "", {}, "sha512-vqTaUEgxzm+YDSdElad6PiRoX4t8VGDjCtt05zn4nU810UIx/uNEV7/lZJ6KwFThKZOzOxzXy48da+No7HZaMw=="],
 
